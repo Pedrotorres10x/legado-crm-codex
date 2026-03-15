@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button';
 import { Rss, Send, Clock } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
-import IdealistaApiPanel from './IdealistaApiPanel';
 import { FotocasaApiCard } from '@/components/portals/FotocasaApiCard';
 import { PortalFeedCards } from '@/components/portals/PortalFeedCards';
 import { FEED_BASE_URL } from '@/components/portals/portal-feed-shared';
@@ -74,7 +73,6 @@ const PortalFeedsManager = () => {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <FotocasaApiCard />
-        <IdealistaApiPanel />
         <PortalFeedCards
           feeds={feeds}
           onToggleActive={toggleActive}
