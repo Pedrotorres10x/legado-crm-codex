@@ -210,10 +210,10 @@ const MobileDashboard = () => {
   ];
 
   const focusAction =
-    commercialFocus.focus === 'captacion'
-      ? { label: 'Personas', icon: Users, className: 'bg-primary hover:bg-primary/90', to: '/contacts' }
-      : commercialFocus.focus === 'venta'
-        ? { label: 'Campañas', icon: Radar, className: 'bg-slate-800 hover:bg-slate-900', to: '/matches' }
+      commercialFocus.focus === 'captacion'
+        ? { label: 'Personas', icon: Users, className: 'bg-primary hover:bg-primary/90', to: '/contacts' }
+        : commercialFocus.focus === 'venta'
+        ? { label: 'Compradores y cruces', icon: Radar, className: 'bg-slate-800 hover:bg-slate-900', to: '/matches' }
         : { label: 'Operaciones', icon: Radar, className: 'bg-slate-800 hover:bg-slate-900', to: '/operations' };
 
   const visibleQuickActions = canViewAll

@@ -303,7 +303,7 @@ const Matches = () => {
   return (
     <div className="space-y-4 md:space-y-6">
       <AISectionGuide
-        title="Campanas y cruces: aqui conviertes interes en oferta"
+        title="Compradores y cruces: aqui conviertes interes en oferta"
         context="Aqui trabajas compradores contra producto: visitas, seguimiento, oferta, contraoferta y descarte."
         doNow={`Ahora mismo tienes ${visitsWithoutResult} visita${visitsWithoutResult === 1 ? '' : 's'} sin resultado, ${activeNegotiations} negociacion${activeNegotiations === 1 ? '' : 'es'} viva${activeNegotiations === 1 ? '' : 's'} y ${pendingOffers} oferta${pendingOffers === 1 ? '' : 's'} pendiente${pendingOffers === 1 ? '' : 's'}. Empieza por ahi.`}
         dontForget="Una visita sin resultado no ensena nada. Una oferta sin contexto tampoco. Aqui se ve si negocias de verdad o solo ensenas."
@@ -317,7 +317,7 @@ const Matches = () => {
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Campañas</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Compradores y cruces</h1>
           <p className="text-sm text-muted-foreground">
             {showBackofficeTabs
               ? 'Clasificación, enriquecimiento y cruces'

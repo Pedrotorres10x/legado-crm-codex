@@ -41,7 +41,7 @@ const dailyNavEntries: NavEntry[] = [
 const crmNavEntries: NavEntry[] = [
   { to: '/properties', icon: Building2, label: 'Inmuebles' },
   { to: '/contacts', icon: Users, label: 'Personas' },
-  { to: '/matches', icon: TrendingUp, label: 'Campañas' },
+  { to: '/matches', icon: TrendingUp, label: 'Compradores y cruces' },
   { to: '/guide/advisors', icon: Receipt, label: 'Guía asesores' },
   { to: '/tools', icon: Wrench, label: 'Herramientas' },
 ];

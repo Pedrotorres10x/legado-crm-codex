@@ -290,7 +290,7 @@ const ContactOverviewCards = ({
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium">No recibir comunicaciones</p>
-                <p className="text-xs text-muted-foreground">Excluir de campañas, matches y envíos automáticos</p>
+                <p className="text-xs text-muted-foreground">Excluir de cruces, compradores y envíos automáticos</p>
               </div>
               <Switch checked={contact.opt_out || false} onCheckedChange={onToggleOptOut} />
             </div>

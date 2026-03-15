@@ -513,12 +513,12 @@ const TodayPriorities = ({ playbook, storageKey = 'agent-playbook' }: Props) => 
           route: '/contacts',
           cta: 'Ir a Personas',
         }
-      : playbook.primaryAction.route.startsWith('/matches')
-        ? {
-            label: 'Pantalla base de hoy: Campañas',
+        : playbook.primaryAction.route.startsWith('/matches')
+          ? {
+            label: 'Pantalla base de hoy: Compradores y cruces',
             detail: 'Tu negocio hoy nace de visitas, ofertas, negociación y empuje a arras.',
             route: '/matches',
-            cta: 'Ir a Campañas',
+            cta: 'Ir a Compradores y cruces',
           }
         : {
             label: 'Pantalla base de hoy: Operaciones',
