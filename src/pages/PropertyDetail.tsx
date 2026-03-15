@@ -19,7 +19,7 @@ import {
   ArrowLeft, MapPin, BedDouble, Bath, Maximize, Upload, Image, Video,
   Globe, Trash2, Loader2, X, ChevronLeft, ChevronRight, ChevronDown, MapPinned,
   Share2, Copy, ExternalLink, Zap, User,
-  Plus, Eye, EyeOff, Key, Home, Rss, Crown
+  Plus, Eye, EyeOff, Key, Home, Rss
 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import DocumentScanner from '@/components/DocumentScanner';
@@ -78,9 +78,6 @@ const validateFloorNumber = (value: string): string | null => {
 
 const statusLabels: Record<string, string> = { disponible: 'Disponible', arras: 'Arras', vendido: 'Vendido', no_disponible: 'No disponible', reservado: 'Reservado', alquilado: 'Alquilado', retirado: 'Retirado' };
 const statusColors: Record<string, string> = { disponible: 'bg-success', arras: 'bg-warning', vendido: 'bg-primary', no_disponible: 'bg-muted', reservado: 'bg-warning', alquilado: 'bg-info', retirado: 'bg-muted' };
-
-/** Property qualifies for Magnos (IA Gestión Premium) feed */
-const isMagnos = (p: any): boolean => (p.price || 0) >= 500000 && (p.images?.length || 0) >= 20;
 
 const PropertyDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -336,11 +333,6 @@ const PropertyDetail = () => {
                 <Badge className={`border-0 text-xs font-semibold ${statusColors[property.status]} text-primary-foreground`}>
                   {statusLabels[property.status]}
                 </Badge>
-                {isMagnos(property) && (
-                  <Badge className="bg-amber-500/90 text-white border-0 text-xs font-semibold flex items-center gap-0.5">
-                    <Crown className="h-3 w-3" />Magnos
-                  </Badge>
-                )}
               </div>
               {property.crm_reference && (
                 <div className="absolute top-3 right-3">

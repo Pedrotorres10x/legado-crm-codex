@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
-import { Plus, Bot, Building2, Rss, Search, Crown, Globe, Home } from 'lucide-react';
+import { Plus, Bot, Building2, Rss, Search, Globe, Home } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import ViewToggle from '@/components/ViewToggle';
@@ -43,7 +43,7 @@ const Properties = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [cityPopoverOpen, setCityPopoverOpen] = useState(false);
-  const validTabs = ['all','propias','office','xml','magnos','internacional','idealista'] as const;
+  const validTabs = ['all','propias','office','xml','internacional','idealista'] as const;
   const tabFromUrl = searchParams.get('tab') as typeof validTabs[number] | null;
   const [sourceTab, setSourceTab] = useState<typeof validTabs[number]>(
     tabFromUrl && validTabs.includes(tabFromUrl) ? tabFromUrl : 'all'
@@ -85,7 +85,7 @@ const Properties = () => {
   }, []);
 
   // Whether this tab requires client-side filtering (can't paginate server-side)
-  const isClientFiltered = sourceTab === 'magnos' || sourceTab === 'internacional' || sourceTab === 'idealista';
+  const isClientFiltered = sourceTab === 'internacional' || sourceTab === 'idealista';
 
   const fetchProperties = useCallback(async () => {
     setLoading(true);
@@ -137,9 +137,6 @@ const Properties = () => {
       let result = data || [];
 
       // Client-side filters for special tabs
-      if (sourceTab === 'magnos') {
-        result = result.filter(p => (p.price || 0) >= 500000 && (p.images?.length || 0) >= 20);
-      }
       if (sourceTab === 'internacional') {
         result = result.filter(p => p.country && p.country !== 'España');
       }
@@ -264,7 +261,6 @@ const Properties = () => {
               { key: 'propias', label: 'Propias', icon: Home },
               { key: 'office', label: 'Oficina', icon: Building2 },
               { key: 'xml', label: 'Feed XML', icon: Rss },
-              { key: 'magnos', label: 'Magnos', icon: Crown },
               { key: 'internacional', label: 'Intl.', icon: Globe },
               { key: 'idealista', label: 'Idealista', icon: Rss },
             ] as const).map(({ key, label, icon: Icon }) => (

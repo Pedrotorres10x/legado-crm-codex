@@ -4,7 +4,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Rss } from 'lucide-react';
-import { MapPin, BedDouble, Bath, Maximize, Eye, EyeOff, Home, ShieldCheck, Crown, Globe, Archive, Trash2, Loader2 } from 'lucide-react';
+import { MapPin, BedDouble, Bath, Maximize, Eye, EyeOff, Home, ShieldCheck, Globe, Archive, Trash2, Loader2 } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import HealthDot from '@/components/HealthDot';
 import PriceSparkline from '@/components/PriceSparkline';
@@ -41,11 +41,6 @@ function getLegalRiskBadge(p: any) {
     label: 'Sin análisis',
     className: 'bg-muted text-muted-foreground border-0',
   };
-}
-
-/** Property qualifies for Magnos (IA Gestión Premium) feed */
-function isMagnos(p: any): boolean {
-  return (p.price || 0) >= 500000 && (p.images?.length || 0) >= 20;
 }
 
 /** Property is international (non-Spanish) */
@@ -140,11 +135,6 @@ export const PropertyCard = ({ property: p, healthInfo, mode, onRemoved }: Prope
             {p.mandate_type === 'exclusiva' && (
               <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-primary/40 text-primary shrink-0">Exclusiva</Badge>
             )}
-            {isMagnos(p) && (
-              <Badge className="bg-amber-500/90 text-white border-0 text-[9px] px-1.5 py-0 flex items-center gap-0.5 shrink-0">
-                <Crown className="h-2.5 w-2.5" />Magnos
-              </Badge>
-            )}
             {isInternacional(p) && (
               <Badge className="bg-sky-600/90 text-white border-0 text-[9px] px-1.5 py-0 flex items-center gap-0.5 shrink-0">
                 <Globe className="h-2.5 w-2.5" />{p.country}
@@ -196,11 +186,6 @@ export const PropertyCard = ({ property: p, healthInfo, mode, onRemoved }: Prope
           <Badge variant="secondary" className={`${statusColors[p.status]} text-primary-foreground border-0 text-[11px]`}>
             {statusLabels[p.status]}
           </Badge>
-          {isMagnos(p) && (
-            <Badge className="bg-amber-500/90 text-white border-0 text-[11px] flex items-center gap-0.5">
-              <Crown className="h-3 w-3" />Magnos
-            </Badge>
-          )}
           {isInternacional(p) && (
             <Badge className="bg-sky-600/90 text-white border-0 text-[11px] flex items-center gap-0.5">
               <Globe className="h-3 w-3" />{p.country}
@@ -307,7 +292,6 @@ export const PropertyListView = ({ properties, healthColors, onRemoved }: Proper
             <TableHead>Referencia</TableHead><TableHead>Inmueble</TableHead><TableHead>Salud</TableHead>
             <TableHead>País</TableHead><TableHead>Ciudad</TableHead><TableHead>Legal</TableHead><TableHead>Hab.</TableHead><TableHead>Superficie</TableHead>
             <TableHead>Precio</TableHead><TableHead>Estado</TableHead><TableHead>Mandato</TableHead>
-            <TableHead>Magnos</TableHead>
             <TableHead>Idealista</TableHead>
             <TableHead className="w-10"></TableHead>
           </TableRow>
@@ -351,15 +335,6 @@ export const PropertyListView = ({ properties, healthColors, onRemoved }: Proper
                   : p.mandate_type === 'compartida'
                   ? <span className="text-xs text-muted-foreground">Compartida</span>
                   : '—'}
-              </TableCell>
-              <TableCell>
-                {isMagnos(p) ? (
-                  <Badge className="bg-amber-500/90 text-white border-0 text-[10px] flex items-center gap-0.5 w-fit">
-                    <Crown className="h-3 w-3" />Magnos
-                  </Badge>
-                ) : (
-                  <span className="text-xs text-muted-foreground">—</span>
-                )}
               </TableCell>
               <TableCell>
                 {p.send_to_idealista ? (

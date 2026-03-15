@@ -22,7 +22,7 @@ export const PropertyList = ({
   onPageChange, onRemoved,
 }: PropertyListProps) => {
   // For server-paginated tabs, parent sends exactly 1 page of data.
-  // For client-paginated tabs (magnos, intl), we slice here.
+  // For client-paginated tabs (internacional, idealista), we slice here.
   const totalPages = Math.ceil(totalCount / itemsPerPage);
   const paginated = serverPaginated
     ? properties
