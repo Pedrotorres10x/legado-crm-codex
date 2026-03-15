@@ -3,6 +3,12 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { FEED_BASE_URL, FOTOCASA_FN, fetchWithTimeout, type PortalFeed } from '@/components/portals/portal-feed-shared';
 
+const isFotocasaXmlFeed = (feed: PortalFeed) => {
+  const portalName = (feed.portal_name || '').toLowerCase();
+  const displayName = (feed.display_name || '').toLowerCase();
+  return portalName.includes('fotocasa') || displayName.includes('fotocasa');
+};
+
 export function usePortalFeedsManager() {
   const [feeds, setFeeds] = useState<PortalFeed[]>([]);
   const [loading, setLoading] = useState(true);
@@ -11,7 +17,8 @@ export function usePortalFeedsManager() {
 
   const fetchFeeds = async () => {
     const { data } = await supabase.from('portal_feeds').select('*').order('display_name');
-    setFeeds((data as unknown as PortalFeed[]) || []);
+    const allFeeds = (data as unknown as PortalFeed[]) || [];
+    setFeeds(allFeeds.filter((feed) => !isFotocasaXmlFeed(feed)));
     setLoading(false);
   };
 
