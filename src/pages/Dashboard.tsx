@@ -7,11 +7,13 @@ import DashboardAdmin from '@/pages/DashboardAdmin';
 import { useWorkspacePersona } from '@/hooks/useWorkspacePersona';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { useNavigate } from 'react-router-dom';
 
 const Dashboard = () => {
   const { canViewAll } = useAuth();
   const isMobile = useIsMobile();
   const { persona, setPersona } = useWorkspacePersona(canViewAll);
+  const navigate = useNavigate();
 
   if (isMobile) return <MobileDashboard />;
 
@@ -39,14 +41,20 @@ const Dashboard = () => {
               <Button
                 variant={persona === 'agent' ? 'default' : 'outline'}
                 className="gap-2"
-                onClick={() => setPersona('agent')}
+                onClick={() => {
+                  setPersona('agent');
+                  navigate('/');
+                }}
               >
                 <Home className="h-4 w-4" />Modo agente
               </Button>
               <Button
                 variant={persona === 'admin' ? 'default' : 'outline'}
                 className="gap-2"
-                onClick={() => setPersona('admin')}
+                onClick={() => {
+                  setPersona('admin');
+                  navigate('/admin');
+                }}
               >
                 <Shield className="h-4 w-4" />Modo admin
               </Button>

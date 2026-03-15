@@ -82,6 +82,18 @@ const AppSidebar = () => {
   const isWebsActive = websRoutes.some(r => location.pathname === r || location.pathname.startsWith(r + '/'));
   const [websOpen, setWebsOpen] = useState(isWebsActive);
 
+  useEffect(() => {
+    if (isAdminMode) {
+      setAdminOpen(true);
+    }
+  }, [isAdminMode]);
+
+  useEffect(() => {
+    if (isAdminActive) {
+      setAdminOpen(true);
+    }
+  }, [isAdminActive]);
+
   const crmEntries = isAgentMode
     ? crmNavEntries.filter((entry) =>
         'to' in entry &&
