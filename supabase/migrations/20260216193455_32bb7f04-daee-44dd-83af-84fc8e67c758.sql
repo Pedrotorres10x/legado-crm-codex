@@ -1,0 +1,1 @@
+ALTER TABLE public.demands ADD COLUMN auto_match boolean NOT NULL DEFAULT true;

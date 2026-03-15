@@ -1,0 +1,1 @@
+ALTER TABLE public.properties ADD COLUMN send_to_idealista boolean NOT NULL DEFAULT false;

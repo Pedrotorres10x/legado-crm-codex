@@ -1,0 +1,26 @@
+-- Create pipeline_stage enum with all values used across the codebase
+CREATE TYPE public.pipeline_stage AS ENUM (
+  'nuevo',
+  'contactado',
+  'en_seguimiento',
+  'cualificado',
+  'visitando',
+  'visita_tasacion',
+  'visita_programada',
+  'mandato_firmado',
+  'mandato',
+  'reunion',
+  'prospecto',
+  'activo',
+  'oferta',
+  'negociacion',
+  'reserva',
+  'escritura',
+  'entregado',
+  'en_venta',
+  'en_cierre',
+  'cerrado',
+  'sin_interes',
+  'clasificado',
+  'inactivo'
+);

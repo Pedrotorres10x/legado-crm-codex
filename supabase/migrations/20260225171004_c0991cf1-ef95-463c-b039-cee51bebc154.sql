@@ -1,0 +1,1 @@
+ALTER TYPE public.interaction_type ADD VALUE IF NOT EXISTS 'cafe_comida';

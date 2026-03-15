@@ -1,0 +1,1 @@
+ALTER TABLE public.contacts ADD COLUMN opt_out boolean NOT NULL DEFAULT false;

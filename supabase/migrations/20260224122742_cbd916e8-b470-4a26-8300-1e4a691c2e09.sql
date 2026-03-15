@@ -1,0 +1,1 @@
+ALTER TABLE public.properties ADD COLUMN is_international boolean NOT NULL GENERATED ALWAYS AS (country IS NOT NULL AND country <> 'España') STORED;

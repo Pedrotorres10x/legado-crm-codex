@@ -1,0 +1,1 @@
+DROP POLICY "Service can update heartbeat" ON public.satellite_config;
