@@ -21,6 +21,7 @@ import { useWebLeads } from '@/hooks/useWebLeadsData';
 import { buildTopReasons, extractMatchDiscardReason, extractOfferLossReason, getCommercialSuggestion } from '@/lib/commercial-loss-reasons';
 import { getAgentAutonomyStatus, getAgentCommercialFocus } from '@/lib/property-stock-health';
 import AgentCommercialFocusCard from '@/components/dashboard/AgentCommercialFocusCard';
+import AgentDailyPlaybookCard from '@/components/dashboard/AgentDailyPlaybookCard';
 import { getAgentDailyPlaybook } from '@/lib/agent-daily-playbook';
 import { useWorkspacePersona } from '@/hooks/useWorkspacePersona';
 import { useAgentInfluenceCircle } from '@/hooks/useAgentInfluenceCircle';
