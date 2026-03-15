@@ -58,8 +58,7 @@ Deno.serve(async (req) => {
         .single();
 
       if (error || !data) return json({ error: 'Property not found' }, 404);
-      const enriched = { ...data, is_magnos: (data.price || 0) >= 500000 && (data.images?.length || 0) >= 20 };
-      return json({ success: true, property: enriched });
+      return json({ success: true, property: data });
     }
 
     // ── Lookup by UUID suffix (for slug resolution) ─────────────────────
@@ -134,14 +133,9 @@ Deno.serve(async (req) => {
 
     const cities = [...new Set((citiesData || []).map((c: any) => c.city).filter(Boolean))].sort();
 
-    const enriched = (data || []).map((p: any) => ({
-      ...p,
-      is_magnos: (p.price || 0) >= 500000 && (p.images?.length || 0) >= 20,
-    }));
-
     return json({
       success: true,
-      properties: enriched,
+      properties: data || [],
       total: count || 0,
       page,
       limit,

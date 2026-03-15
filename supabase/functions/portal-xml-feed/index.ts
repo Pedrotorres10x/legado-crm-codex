@@ -202,22 +202,17 @@ function parseFeatures(features: string[] | null): ParsedFeatures {
   return result;
 }
 
-// ── Magnos detection ────────────────────────────────────────────────────────
-function isMagnos(p: any): boolean {
-  return (p.price || 0) >= 500000 && (p.images?.length || 0) >= 20;
-}
-
-// ── Batch AI translation for Magnos properties ─────────────────────────────
+// ── Batch AI translation for premium properties ────────────────────────────
 interface Translations {
   [propertyId: string]: { title_en: string; description_en: string };
 }
 
-async function translateMagnosProperties(properties: any[]): Promise<Translations> {
-  const magnos = properties.filter(isMagnos);
-  if (magnos.length === 0) return {};
+async function translatePremiumProperties(properties: any[]): Promise<Translations> {
+  const premium = properties.filter((p: any) => (p.price || 0) >= 500000 && (p.images?.length || 0) >= 20);
+  if (premium.length === 0) return {};
 
   // Build a compact payload for translation
-  const items = magnos.map(p => ({
+  const items = premium.map(p => ({
     id: p.id,
     title: (p.title || '').substring(0, 200),
     description: (p.description || '').substring(0, 2000),
@@ -389,12 +384,9 @@ function toKyeroXml(properties: any[], portalName: string, supabaseUrl: string, 
     }
 
     // ── Tags (CRM labels for portal context) ────────────────
-    // Always include "Brisa del Mar" MLS tag for IA Gestión
-    {
-      const allTags = new Set<string>(p.tags || []);
-      allTags.add('Brisa del Mar');
+    if ((p.tags || []).length) {
       xml += `    <tags>\n`;
-      for (const tag of allTags) xml += `      <tag>${esc(tag)}</tag>\n`;
+      for (const tag of [...new Set(p.tags || [])]) xml += `      <tag>${esc(tag)}</tag>\n`;
       xml += `    </tags>\n`;
     }
 
@@ -1021,14 +1013,8 @@ Deno.serve(async (req) => {
 
     // Idealista only gets own stock (exclude XML/HabiHub imports)
     const format = feed.format || 'kyero';
-    const isIAGestion = (feed.portal_name || '').toLowerCase().replace(/\s+/g, '').includes('iagestion');
     if (format === 'idealista') {
       filtered = filtered.filter((p: any) => p.send_to_idealista === true);
-    }
-
-    // IA Gestión only gets Magnos properties (price >= 500k & 20+ images)
-    if (isIAGestion) {
-      filtered = filtered.filter((p: any) => (p.price || 0) >= 500000 && (p.images?.length || 0) >= 20);
     }
 
     // ── Apply feed-level filters ────────────────────────────────────────────
@@ -1109,12 +1095,9 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Translate Magnos properties to English ONLY for IA Gestión feed
-    // format already resolved above
     let translations: Translations = {};
-    // isIAGestion already resolved above
-    if (isIAGestion) {
-      translations = await translateMagnosProperties(filtered);
+    if (format === 'kyero') {
+      translations = await translatePremiumProperties(filtered);
     }
 
     // Generate output based on format
