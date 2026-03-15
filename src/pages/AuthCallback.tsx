@@ -17,6 +17,9 @@ const AuthCallback = () => {
         const errorDescription = url.searchParams.get('error_description');
         const error = url.searchParams.get('error');
         const code = url.searchParams.get('code');
+        const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+        const accessToken = hashParams.get('access_token');
+        const refreshToken = hashParams.get('refresh_token');
 
         if (error || errorDescription) {
           if (!cancelled) {
@@ -30,15 +33,27 @@ const AuthCallback = () => {
           return;
         }
 
+        let sessionEstablished = false;
+
+        if (accessToken && refreshToken) {
+          const { data, error: sessionError } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+          if (sessionError) throw sessionError;
+          sessionEstablished = !!data.session;
+        }
+
         if (code) {
-          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+          const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
           if (exchangeError) throw exchangeError;
+          sessionEstablished = sessionEstablished || !!data.session;
         }
 
         const { data } = await supabase.auth.getSession();
 
         if (!cancelled) {
-          if (data.session) {
+          if (sessionEstablished || data.session) {
             navigate('/', { replace: true });
           } else {
             toast({
