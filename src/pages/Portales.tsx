@@ -6,7 +6,7 @@ const Portales = () => {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Portales</h1>
-        <p className="text-muted-foreground">Gestión de feeds XML para portales inmobiliarios</p>
+        <p className="text-muted-foreground">Gestión de publicación por XML y API para portales inmobiliarios</p>
       </div>
       <PortalLeadStats />
       <PortalFeedsManager />
