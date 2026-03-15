@@ -157,6 +157,7 @@ const Contacts = () => {
   const [summary, setSummary] = useState('');
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [pipelineTab, setPipelineTab] = useState<'captacion' | 'compradores' | 'cerrados' | 'red'>('captacion');
+  const [peopleScope, setPeopleScope] = useState<'all' | 'circle'>('all');
   const [stageFilter, setStageFilter] = useState<string | null>(null);
   const [circleTierFilter, setCircleTierFilter] = useState<'all' | 'oro' | 'plata' | 'bronce'>('all');
   const [circleValidationFilter, setCircleValidationFilter] = useState<'all' | 'validado' | 'potencial' | 'sin_validar'>('all');
@@ -230,6 +231,14 @@ const Contacts = () => {
     setCircleValidationFilter('all');
   }, [pipelineTab]);
 
+  useEffect(() => {
+    if (pipelineTab === 'red') {
+      setPeopleScope('circle');
+      return;
+    }
+    setPeopleScope('all');
+  }, [pipelineTab]);
+
   const fetchContactVisits = async (contactId: string) => {
     setVisitsOpen(contactId);
     setVisitsLoading(true);
@@ -273,8 +282,10 @@ const Contacts = () => {
 
   const isCircleView = pipelineTab === 'red';
   const filtered = contacts.filter((contact) => {
+    const belongsToCircle = isInfluenceCircleContact(contact);
+    if (peopleScope === 'circle' && !belongsToCircle) return false;
     if (!isCircleView) return true;
-    if (!isInfluenceCircleContact(contact)) return false;
+    if (!belongsToCircle) return false;
     if (circleTierFilter !== 'all' && getRelationshipTier(contact) !== circleTierFilter) return false;
     if (circleValidationFilter !== 'all' && getRelationshipValidation(contact) !== circleValidationFilter) return false;
     return true;
@@ -353,9 +364,12 @@ const Contacts = () => {
               <p className="mt-1 text-xs text-muted-foreground">Personas registradas para trabajar negocio.</p>
             </div>
             <div className="rounded-xl border border-border/60 p-4">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Red y circulo</p>
+              <div className="flex items-center gap-2">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Circulo de influencia</p>
+                <Badge variant="outline" className="text-[10px] uppercase tracking-wide">Relacional</Badge>
+              </div>
               <p className="mt-2 text-2xl font-bold">{relationshipBaseCount}</p>
-              <p className="mt-1 text-xs text-muted-foreground">Base relacional que puede abrir referrals y propietarios.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Base relacional que puede abrir referrals, propietarios y negocio futuro.</p>
             </div>
             <div className="rounded-xl border border-border/60 p-4">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">Prospectos vendedores</p>
@@ -376,12 +390,35 @@ const Contacts = () => {
         <div>
           <h2 className="text-xl md:text-2xl font-bold tracking-tight">Bandeja de personas</h2>
           <p className="text-sm text-muted-foreground">
-            {peopleBaseTotal} personas registradas para captar, vender y cuidar relaciones.
+            {peopleScope === 'circle'
+              ? `${pipelineContacts.length} personas del círculo de influencia visibles para trabajar relación y referral.`
+              : `${peopleBaseTotal} personas registradas para captar, vender y cuidar relaciones.`}
           </p>
         </div>
         {!isMobile && (
           <Button onClick={() => setDialogOpen(true)}><Plus className="h-4 w-4 mr-2" />Añadir persona</Button>
         )}
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {[
+          { key: 'all', label: `Toda la base (${peopleBaseTotal})` },
+          { key: 'circle', label: `Solo círculo de influencia (${relationshipBaseCount})` },
+        ].map((option) => (
+          <Button
+            key={option.key}
+            variant={peopleScope === option.key ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => {
+              setPeopleScope(option.key as typeof peopleScope);
+              if (option.key === 'circle' && pipelineTab !== 'red') {
+                setPipelineTab('red');
+              }
+            }}
+          >
+            {option.label}
+          </Button>
+        ))}
       </div>
 
       {!isMobile && (
@@ -491,7 +528,7 @@ const Contacts = () => {
               <TabsTrigger value="captacion">🏠 Captación ({captacionCount})</TabsTrigger>
               <TabsTrigger value="compradores">🛒 Compradores ({compradoresCount})</TabsTrigger>
               <TabsTrigger value="cerrados">✅ Cerrados ({cerradosCount})</TabsTrigger>
-              <TabsTrigger value="red">🤝 Red ({redCount})</TabsTrigger>
+              <TabsTrigger value="red">🤝 Círculo de influencia ({redCount})</TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
@@ -541,7 +578,11 @@ const Contacts = () => {
         <Card className="border-0 shadow-[var(--shadow-card)]">
           <CardContent className="space-y-4 p-5">
             <div className="flex flex-col gap-1">
-              <p className="text-sm font-semibold">Vista circulo de influencia</p>
+              <div className="flex items-center gap-2">
+                <Badge className="bg-primary text-primary-foreground border-0">Círculo de influencia</Badge>
+                <Badge variant="outline">Personas clave</Badge>
+              </div>
+              <p className="text-sm font-semibold">Base relacional con potencial real de referral</p>
               <p className="text-xs text-muted-foreground">
                 Trabaja aqui los contactos con mas potencial de referral y segmentalos por valor relacional y validacion real.
               </p>

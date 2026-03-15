@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 import DocumentScanner from '@/components/DocumentScanner';
-import { Plus, Sparkles, Tag, User, Home, ArrowLeft, X } from 'lucide-react';
+import { Plus, Sparkles, Tag, User, Home, ArrowLeft, X, Users } from 'lucide-react';
 import { SUGGESTED_CONTACT_TAGS } from '@/lib/contact-tags';
 import type { ContactCreateForm } from '@/hooks/useContactCreate';
 
@@ -102,6 +102,24 @@ export default function ContactCreateDialog({
             </button>
             <button
               className="rounded-2xl border p-4 text-left hover:border-primary/50 hover:bg-primary/5 transition-colors"
+              onClick={() => {
+                setForm((f) => ({ ...f, contact_type: 'contacto', source_ref: 'circulo' }));
+                setFormTags((current) => Array.from(new Set([...current.filter((tag) => !['Zona', 'Prescriptor', 'Cliente cerrado'].includes(tag)), 'Circulo'])));
+                setDialogStep('form');
+              }}
+            >
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-violet-500/10 flex items-center justify-center">
+                  <Users className="h-5 w-5 text-violet-600" />
+                </div>
+                <div>
+                  <p className="font-medium">Círculo de influencia</p>
+                  <p className="text-xs text-muted-foreground">Alta directa para construir tu red personal desde cero.</p>
+                </div>
+              </div>
+            </button>
+            <button
+              className="rounded-2xl border p-4 text-left hover:border-primary/50 hover:bg-primary/5 transition-colors"
               onClick={() => { setForm((f) => ({ ...f, contact_type: 'contacto' })); setDialogStep('form'); }}
             >
               <div className="flex items-center gap-3">
@@ -129,7 +147,11 @@ export default function ContactCreateDialog({
               <div className="flex items-center justify-between gap-3 rounded-xl border bg-muted/30 p-3">
                 <div>
                   <p className="text-sm font-medium">Tipo seleccionado</p>
-                  <p className="text-xs text-muted-foreground">{form.contact_type}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {form.source_ref === 'circulo' && formTags.includes('Circulo')
+                      ? 'contacto · círculo de influencia'
+                      : form.contact_type}
+                  </p>
                 </div>
                 <DocumentScanner
                   context="contact"

@@ -8,6 +8,7 @@ import PhoneLink from '@/components/PhoneLink';
 import HealthDot from '@/components/HealthDot';
 import ContactHealthBadge from '@/components/ContactHealthBadge';
 import { CONTACTS_PAGE_SIZE } from '@/hooks/useContactsPipeline';
+import { getRelationshipTier, isInfluenceCircleContact } from '@/lib/agent-influence-circle';
 
 interface ContactsListPanelProps {
   contacts: any[];
@@ -80,6 +81,8 @@ const ContactsListPanel = ({
           {contacts.map((contact) => {
             const stageInfo = pipelineStages.find((stage) => stage.key === contact.pipeline_stage);
             const circleInfo = circleMeta[contact.id];
+            const belongsToCircle = isInfluenceCircleContact(contact);
+            const listCircleTier = circleInfo?.tier ?? (belongsToCircle ? getRelationshipTier(contact) : null);
             return (
               <div
                 key={contact.id}
@@ -101,6 +104,14 @@ const ContactsListPanel = ({
                   </div>
                   <div className="mt-0.5 flex flex-wrap items-center gap-2">
                     {healthColors[contact.id] && <ContactHealthBadge info={healthColors[contact.id]} className="text-[10px] px-1.5 py-0" />}
+                    {belongsToCircle && (
+                      <Badge className="border-0 bg-primary text-primary-foreground px-1.5 py-0 text-[10px]">
+                        Círculo de influencia
+                      </Badge>
+                    )}
+                    {belongsToCircle && listCircleTier && (
+                      <Badge className={tierStyles[listCircleTier]}>{tierLabels[listCircleTier]}</Badge>
+                    )}
                     {stageInfo && (
                       <Badge className={`${stageInfo.color} border-0 px-1.5 py-0 text-[10px] text-white`}>
                         {stageInfo.label}
@@ -156,10 +167,20 @@ const ContactsListPanel = ({
               {contacts.map((contact) => {
                 const stageInfo = pipelineStages.find((stage) => stage.key === contact.pipeline_stage);
                 const circleInfo = circleMeta[contact.id];
+                const belongsToCircle = isInfluenceCircleContact(contact);
+                const listCircleTier = circleInfo?.tier ?? (belongsToCircle ? getRelationshipTier(contact) : null);
                 return (
                   <TableRow key={contact.id}>
                     <TableCell className="cursor-pointer font-medium transition-colors hover:text-primary" onClick={() => navigate(`/contacts/${contact.id}`)}>
-                      {contact.full_name}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span>{contact.full_name}</span>
+                        {belongsToCircle && (
+                          <Badge className="border-0 bg-primary text-primary-foreground">Círculo de influencia</Badge>
+                        )}
+                        {belongsToCircle && listCircleTier && (
+                          <Badge className={tierStyles[listCircleTier]}>{tierLabels[listCircleTier]}</Badge>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell><HealthDot info={healthColors[contact.id]} /></TableCell>
                     <TableCell>{healthColors[contact.id] ? <ContactHealthBadge info={healthColors[contact.id]} /> : '-'}</TableCell>
