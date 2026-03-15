@@ -19,6 +19,7 @@ import AgentFilter from '@/components/AgentFilter';
 import { lazy, Suspense } from 'react';
 import ClassificationCampaign from '@/components/ClassificationCampaign';
 import AISectionGuide from '@/components/ai/AISectionGuide';
+import { useWorkspacePersona } from '@/hooks/useWorkspacePersona';
 import {
   MatchAiScoringDialog,
   MatchDiscardDialog,
@@ -55,7 +56,8 @@ const offerStatuses = [
 
 const Matches = () => {
   const { toast } = useToast();
-  const { user, isAdmin } = useAuth();
+  const { user, canViewAll } = useAuth();
+  const { isAgentMode } = useWorkspacePersona(canViewAll);
   const [matches, setMatches] = useState<any[]>([]);
   const [matchesCount, setMatchesCount] = useState(0);
   const [matchesPage, setMatchesPage] = useState(0);
@@ -295,6 +297,9 @@ const Matches = () => {
     });
   })();
 
+  const showBackofficeTabs = canViewAll && !isAgentMode;
+  const defaultTab = showBackofficeTabs ? 'dashboard' : 'matches';
+
   return (
     <div className="space-y-4 md:space-y-6">
       <AISectionGuide
@@ -313,7 +318,11 @@ const Matches = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Campañas</h1>
-          <p className="text-sm text-muted-foreground">Clasificación, enriquecimiento y cruces</p>
+          <p className="text-sm text-muted-foreground">
+            {showBackofficeTabs
+              ? 'Clasificación, enriquecimiento y cruces'
+              : 'Visitas, ofertas, seguimiento y cruces para mover compradores y cerrar.'}
+          </p>
         </div>
         <AgentFilter showAll={showAll} onToggle={setShowAll} />
       </div>
@@ -328,13 +337,17 @@ const Matches = () => {
         />
       </div>
 
-      <Tabs defaultValue="dashboard">
+      <Tabs defaultValue={defaultTab}>
         <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
           <TabsList className="w-max md:w-auto">
-            <TabsTrigger value="dashboard" className="text-xs md:text-sm"><LayoutDashboard className="h-4 w-4 mr-1" />Resumen</TabsTrigger>
-            <TabsTrigger value="classify" className="text-xs md:text-sm"><Megaphone className="h-4 w-4 mr-1" />Clasificación</TabsTrigger>
-            <TabsTrigger value="enrich" className="text-xs md:text-sm"><Target className="h-4 w-4 mr-1" />Enriquecimiento</TabsTrigger>
-            <TabsTrigger value="matches" className="text-xs md:text-sm"><Handshake className="h-4 w-4 mr-1" />Cruces</TabsTrigger>
+            <TabsTrigger value="dashboard" className="text-xs md:text-sm"><LayoutDashboard className="h-4 w-4 mr-1" />Actividad comercial</TabsTrigger>
+            {showBackofficeTabs && (
+              <TabsTrigger value="classify" className="text-xs md:text-sm"><Megaphone className="h-4 w-4 mr-1" />Clasificación</TabsTrigger>
+            )}
+            {showBackofficeTabs && (
+              <TabsTrigger value="enrich" className="text-xs md:text-sm"><Target className="h-4 w-4 mr-1" />Enriquecimiento</TabsTrigger>
+            )}
+            <TabsTrigger value="matches" className="text-xs md:text-sm"><Handshake className="h-4 w-4 mr-1" />Cruces y envíos</TabsTrigger>
           </TabsList>
         </div>
 
