@@ -195,7 +195,7 @@ const PropertyStakeholdersPanel = ({
                     <Rss className="h-4 w-4 text-primary" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-sm">Feed automático XML</p>
+                    <p className="font-semibold text-sm">Feed automático (HabiHub / Kyero)</p>
                     <p className="text-xs text-muted-foreground font-mono truncate">Ref. feed: {property.xml_id}</p>
                   </div>
                   <ExternalLink className="h-4 w-4 text-muted-foreground shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -206,7 +206,7 @@ const PropertyStakeholdersPanel = ({
                     <Rss className="h-4 w-4 text-primary" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-sm">Feed automático XML</p>
+                    <p className="font-semibold text-sm">Feed automático (HabiHub / Kyero)</p>
                     <p className="text-xs text-muted-foreground font-mono">Ref. feed: {property.xml_id}</p>
                   </div>
                 </div>

@@ -152,7 +152,7 @@ export const PropertyCard = ({ property: p, healthInfo, mode, onRemoved }: Prope
             )}
             {(p.xml_id || p.source === 'habihub') && (
               <Badge variant="outline" className="border-orange-400/60 text-orange-600 text-[9px] px-1.5 py-0 flex items-center gap-0.5 shrink-0">
-                <Rss className="h-2.5 w-2.5" />XML
+                <Rss className="h-2.5 w-2.5" />HabiHub
               </Badge>
             )}
             <span className="shrink-0"><HealthDot info={healthInfo} /></span>
@@ -203,7 +203,7 @@ export const PropertyCard = ({ property: p, healthInfo, mode, onRemoved }: Prope
           )}
           {(p.xml_id || p.source === 'habihub') && (
             <Badge variant="outline" className="border-orange-400/60 text-orange-600 bg-card/80 text-[11px] flex items-center gap-0.5">
-              <Rss className="h-3 w-3" />XML
+              <Rss className="h-3 w-3" />HabiHub
             </Badge>
           )}
         </div>
