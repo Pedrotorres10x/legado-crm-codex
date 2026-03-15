@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { TwilioProvider } from "@/contexts/TwilioContext";
 import AppLayout from "@/components/AppLayout";
 import Auth from "@/pages/Auth";
+import AuthCallback from "@/pages/AuthCallback";
 import Dashboard from "@/pages/Dashboard";
 import Properties from "@/pages/Properties";
 import PropertyDetail from "@/pages/PropertyDetail";
@@ -75,6 +76,7 @@ const App = () => (
             <Route path="/visita/:token" element={<ConfirmVisit />} />
             
             <Route path="/auth" element={<AuthRoute />} />
+            <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="/" element={<ProtectedRoute><TwilioProvider><AppLayout /></TwilioProvider></ProtectedRoute>}>
               <Route index element={<Dashboard />} />
               <Route path="properties" element={<Properties />} />
