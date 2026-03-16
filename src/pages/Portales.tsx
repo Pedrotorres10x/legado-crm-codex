@@ -1,5 +1,6 @@
 import PortalFeedsManager from '@/components/PortalFeedsManager';
 import PortalLeadStats from '@/components/PortalLeadStats';
+import XmlFeedsManager from '@/components/XmlFeedsManager';
 
 const Portales = () => {
   return (
@@ -10,6 +11,15 @@ const Portales = () => {
       </div>
       <PortalLeadStats />
       <PortalFeedsManager />
+      <div className="pt-4">
+        <div className="mb-3">
+          <h2 className="text-lg font-semibold">Feeds de entrada (HabiHub / XML)</h2>
+          <p className="text-sm text-muted-foreground">
+            Aquí se gestionan los feeds de captación automática de inmuebles.
+          </p>
+        </div>
+        <XmlFeedsManager />
+      </div>
     </div>
   );
 };
