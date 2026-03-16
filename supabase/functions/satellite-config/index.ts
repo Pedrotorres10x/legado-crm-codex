@@ -6,7 +6,6 @@ const SECRET_MAP: Record<string, string> = {
   legado: 'WEBSITE_API_KEY',
   faktura: 'FAKTURA_WEBHOOK_SECRET',
   multichannel: 'MULTICHANNEL_WEBHOOK_SECRET',
-  mls: 'MLS_AGENCY_ID',
   linkinbio: 'WEBSITE_API_KEY', // shares the website key
 };
 

@@ -33,7 +33,6 @@ interface LogEntry {
 }
 
 const TARGET_LABELS: Record<string, string> = {
-  mls: 'MLS Benidorm',
   website: 'Legado Colección',
   legado: 'Legado Colección',
   faktura: 'Faktura',

@@ -363,19 +363,6 @@ const AppSidebar = () => {
                     <span className="flex items-center gap-1.5">Faktura <ExternalLink className="h-3 w-3 opacity-50" /></span>
                   </a>
                 )}
-                {canViewAll && (
-                  <a
-                    href="https://mls-benidorm.es"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-3 rounded-xl px-3 py-2.5 pl-12 text-sm font-medium transition-all duration-300 text-sidebar-foreground/55 hover:text-sidebar-foreground hover:bg-sidebar-accent/60"
-                  >
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/45">
-                      <TrendingUp className="h-[18px] w-[18px]" />
-                    </div>
-                    <span className="flex items-center gap-1.5">MLS Benidorm <ExternalLink className="h-3 w-3 opacity-50" /></span>
-                  </a>
-                )}
               </div>
             </div>
           )}

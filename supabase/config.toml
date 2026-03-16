@@ -81,13 +81,6 @@ verify_jwt = false
 [functions.og-agent]
 verify_jwt = false
 
-[functions.mls-publish]
-verify_jwt = true
-
-[functions.mls-ingest]
-verify_jwt = true
-
-
 [functions.erp-dispatch]
 verify_jwt = true
 
@@ -142,3 +135,6 @@ verify_jwt = true
 
 [functions.idealista-api]
 verify_jwt = true
+
+[functions.web-leads-admin]
+verify_jwt = false

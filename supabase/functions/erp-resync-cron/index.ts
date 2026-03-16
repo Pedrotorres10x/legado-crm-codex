@@ -6,7 +6,6 @@ import { corsHeaders, json, handleCors } from '../_shared/cors.ts';
  *
  * All satellites now use pull-based data bridges:
  * - Legado Colección → reads via public-properties API
- * - MLS Benidorm → shared database
  * - Faktura → crm-faktura-data bridge
  *
  * This cron function logs audit entries for properties that changed

@@ -1,6 +1,5 @@
 import { Home } from 'lucide-react';
 
-import MlsPublishButton from '@/components/MlsPublishButton';
 import PropertyCommission from '@/components/PropertyCommission';
 import { AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -31,7 +30,7 @@ const PropertyBusinessPanel = ({
             Negocio y publicacion
           </p>
           <p className="text-xs text-muted-foreground mt-1">
-            Comision del asesor y publicacion MLS del inmueble.
+            Comision del asesor y configuracion comercial del inmueble.
           </p>
         </div>
       </AccordionTrigger>
@@ -54,8 +53,6 @@ const PropertyBusinessPanel = ({
             />
           </CardContent>
         </Card>
-
-        <MlsPublishButton propertyId={propertyId} />
       </AccordionContent>
     </AccordionItem>
   );

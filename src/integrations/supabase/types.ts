@@ -1859,50 +1859,6 @@ export type Database = {
           },
         ]
       }
-      mls_listings: {
-        Row: {
-          created_at: string
-          error_message: string | null
-          id: string
-          last_synced_at: string | null
-          mls_property_id: string | null
-          property_id: string
-          published_at: string | null
-          status: string
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          error_message?: string | null
-          id?: string
-          last_synced_at?: string | null
-          mls_property_id?: string | null
-          property_id: string
-          published_at?: string | null
-          status?: string
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          error_message?: string | null
-          id?: string
-          last_synced_at?: string | null
-          mls_property_id?: string | null
-          property_id?: string
-          published_at?: string | null
-          status?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "mls_listings_property_id_fkey"
-            columns: ["property_id"]
-            isOneToOne: true
-            referencedRelation: "properties"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       notifications: {
         Row: {
           agent_id: string | null
