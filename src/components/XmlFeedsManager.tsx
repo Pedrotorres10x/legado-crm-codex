@@ -77,6 +77,11 @@ const XmlFeedsManager = () => {
   const handleSync = async (feedId?: string) => {
     setSyncing(feedId || 'all');
     try {
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      if (userError || !userData?.user) {
+        await supabase.auth.signOut();
+        throw new Error('Sesión inválida. Vuelve a iniciar sesión en este CRM.');
+      }
       let { data: sessionData } = await supabase.auth.getSession();
       let accessToken = sessionData?.session?.access_token;
       if (!accessToken) {
