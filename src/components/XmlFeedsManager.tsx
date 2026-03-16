@@ -77,8 +77,13 @@ const XmlFeedsManager = () => {
   const handleSync = async (feedId?: string) => {
     setSyncing(feedId || 'all');
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const accessToken = sessionData?.session?.access_token;
+      let { data: sessionData } = await supabase.auth.getSession();
+      let accessToken = sessionData?.session?.access_token;
+      if (!accessToken) {
+        const refresh = await supabase.auth.refreshSession();
+        sessionData = refresh.data;
+        accessToken = sessionData?.session?.access_token;
+      }
       if (!accessToken) {
         throw new Error('Sesión no válida. Vuelve a iniciar sesión.');
       }
@@ -86,6 +91,7 @@ const XmlFeedsManager = () => {
         body: feedId ? { feed_id: feedId } : {},
         headers: {
           Authorization: `Bearer ${accessToken}`,
+          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
         },
       });
       if (res.error) throw res.error;
