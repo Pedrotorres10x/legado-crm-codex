@@ -80,6 +80,7 @@ Deno.serve(async (req) => {
       .from('contacts')
       .select(`
         id, full_name, email, phone, agent_id, status, pipeline_stage, created_at, tags,
+        buyer_intent, intent_score, intent_stage, intent_top_area_slug, intent_top_topic,
         interactions(property_id, created_at, properties(id, title, crm_reference))
       `, { count: 'exact' })
       .order('created_at', { ascending: false })
@@ -187,6 +188,17 @@ Deno.serve(async (req) => {
         offerCount === 0 &&
         (!contact.pipeline_stage || ['nuevo', 'contactado'].includes(contact.pipeline_stage));
 
+      const metadata =
+        contact.buyer_intent ??
+        (contact.intent_score || contact.intent_stage || contact.intent_top_area_slug || contact.intent_top_topic
+          ? {
+              score: contact.intent_score ?? null,
+              stage: contact.intent_stage ?? null,
+              topAreaSlug: contact.intent_top_area_slug ?? null,
+              topTopic: contact.intent_top_topic ?? null,
+            }
+          : null);
+
       return {
         id: contact.id,
         full_name: contact.full_name,
@@ -213,6 +225,7 @@ Deno.serve(async (req) => {
         needs_follow_up: needsFollowUp,
         is_discarded: isDiscarded,
         loss_reason: lossReason,
+        metadata,
       };
     });
 

@@ -25,6 +25,7 @@ Deno.serve(async (req) => {
 
     const body = await req.json()
     const { full_name, email, phone, message, property_id, gdpr_consent } = body
+    const rawMetadata = body?.metadata ?? null
 
     // RGPD: require explicit consent from web leads
     if (gdpr_consent !== true) {
@@ -123,6 +124,22 @@ Deno.serve(async (req) => {
       })
     }
 
+    // Normalize optional intent metadata (do not fail if missing)
+    const safeMetadata = rawMetadata && typeof rawMetadata === 'object' && !Array.isArray(rawMetadata)
+      ? {
+          score: Number.isFinite(rawMetadata.score) ? Math.round(Number(rawMetadata.score)) : null,
+          stage: typeof rawMetadata.stage === 'string' ? rawMetadata.stage.slice(0, 32) : null,
+          topAreaSlug: typeof rawMetadata.topAreaSlug === 'string' ? rawMetadata.topAreaSlug.slice(0, 128) : null,
+          topTopic: typeof rawMetadata.topTopic === 'string' ? rawMetadata.topTopic.slice(0, 128) : null,
+          topCities: Array.isArray(rawMetadata.topCities)
+            ? rawMetadata.topCities.filter((c: any) => typeof c === 'string').map((c: string) => c.slice(0, 64)).slice(0, 10)
+            : null,
+          recentPropertyIds: Array.isArray(rawMetadata.recentPropertyIds)
+            ? rawMetadata.recentPropertyIds.filter((id: any) => typeof id === 'string').map((id: string) => id.slice(0, 64)).slice(0, 10)
+            : null,
+        }
+      : null
+
     // Build notes from message and property interest (strip HTML tags for safety)
     const safeMessage = message
       ? String(message).replace(/<[^>]*>/g, '').trim().substring(0, 1000)
@@ -148,6 +165,12 @@ Deno.serve(async (req) => {
         notes: notesParts.join('\n'),
         tags: ['web-lead', 'legadocoleccion'],
         agent_id: prop.agent_id || null,
+        // Buyer intent metadata (optional)
+        buyer_intent: safeMetadata,
+        intent_score: safeMetadata?.score ?? null,
+        intent_stage: safeMetadata?.stage ?? null,
+        intent_top_area_slug: safeMetadata?.topAreaSlug ?? null,
+        intent_top_topic: safeMetadata?.topTopic ?? null,
         // RGPD fields
         gdpr_consent: true,
         gdpr_consent_at: new Date().toISOString(),
