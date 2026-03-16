@@ -77,8 +77,16 @@ const XmlFeedsManager = () => {
   const handleSync = async (feedId?: string) => {
     setSyncing(feedId || 'all');
     try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+      if (!accessToken) {
+        throw new Error('Sesión no válida. Vuelve a iniciar sesión.');
+      }
       const res = await supabase.functions.invoke('import-xml-feed', {
         body: feedId ? { feed_id: feedId } : {},
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
       });
       if (res.error) throw res.error;
       const data = res.data;
