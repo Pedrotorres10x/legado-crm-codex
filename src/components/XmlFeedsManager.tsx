@@ -89,8 +89,11 @@ const XmlFeedsManager = () => {
         toast.success('Sincronización completada', { description: summary });
       }
       fetchData();
-    } catch (err) {
-      toast.error('Error al sincronizar');
+    } catch (err: any) {
+      const details = err?.context?.status
+        ? `HTTP ${err.context.status}`
+        : err?.message || 'Error desconocido';
+      toast.error('Error al sincronizar', { description: details });
     } finally {
       setSyncing(null);
     }
