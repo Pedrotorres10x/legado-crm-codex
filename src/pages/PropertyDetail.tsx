@@ -80,6 +80,34 @@ const validateFloorNumber = (value: string): string | null => {
 const statusLabels: Record<string, string> = { disponible: 'Disponible', arras: 'Arras', vendido: 'Vendido', no_disponible: 'No disponible', reservado: 'Reservado', alquilado: 'Alquilado', retirado: 'Retirado' };
 const statusColors: Record<string, string> = { disponible: 'bg-success', arras: 'bg-warning', vendido: 'bg-primary', no_disponible: 'bg-muted', reservado: 'bg-warning', alquilado: 'bg-info', retirado: 'bg-muted' };
 
+function getPropertyOriginBadge(property: any) {
+  const source = String(property?.source || '').toLowerCase();
+  const sourceFeedName = String(property?.source_feed_name || '').toLowerCase();
+  const legacyOrigin = String(property?.source_metadata?.legacy_origin || '').toLowerCase();
+
+  if (source === 'habihub' || sourceFeedName.includes('habihub')) {
+    return {
+      label: 'HabiHub',
+      className: 'border-orange-400/60 text-orange-600 bg-orange-50',
+      icon: Rss,
+    };
+  }
+
+  if (source === 'legacy-crm' || legacyOrigin) {
+    return {
+      label: 'CRM original',
+      className: 'border-sky-400/60 text-sky-700 bg-sky-50',
+      icon: Globe,
+    };
+  }
+
+  return {
+    label: 'Manual',
+    className: 'border-slate-300 text-slate-600 bg-slate-50',
+    icon: Home,
+  };
+}
+
 const PropertyDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -271,6 +299,8 @@ const PropertyDetail = () => {
     );
   }
 
+  const originBadge = getPropertyOriginBadge(property);
+  const OriginIcon = originBadge.icon;
   const canSeePropertyContactData = canViewAll || property.agent_id === user?.id;
   const visibleAnomalies = anomalyNotifications.filter(n => !dismissedAnomalies.has(n.id));
   const propertyIssueCount = [
@@ -353,6 +383,17 @@ const PropertyDetail = () => {
           {/* Info principal */}
           <div className="px-5 pt-4 pb-3">
             <h2 className="font-display font-bold text-[17px] leading-tight mb-1">{property.title}</h2>
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <Badge variant="outline" className={`${originBadge.className} flex items-center gap-1`}>
+                <OriginIcon className="h-3 w-3" />
+                {originBadge.label}
+              </Badge>
+              {property.crm_reference && (
+                <span className="font-mono text-[11px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-md border border-primary/15">
+                  {property.crm_reference}
+                </span>
+              )}
+            </div>
             {property.address && (
               <div className="flex items-center gap-1.5 text-sm text-muted-foreground mb-2">
                 <MapPin className="h-3.5 w-3.5 shrink-0" />
@@ -437,6 +478,10 @@ const PropertyDetail = () => {
                 onChange={e => setProperty((p: any) => ({ ...p, title: e.target.value }))}
                 onBlur={() => saveField({ title: property.title })}
               />
+              <Badge variant="outline" className={`${originBadge.className} flex items-center gap-1`}>
+                <OriginIcon className="h-3 w-3" />
+                {originBadge.label}
+              </Badge>
               {property.crm_reference && (
                 <span className="font-mono text-sm font-bold text-primary bg-primary/10 px-2.5 py-1 rounded-md border border-primary/20 select-all">
                   {property.crm_reference}

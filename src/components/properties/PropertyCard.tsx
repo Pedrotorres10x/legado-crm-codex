@@ -43,6 +43,34 @@ function getLegalRiskBadge(p: any) {
   };
 }
 
+function getPropertyOriginBadge(p: any) {
+  const source = String(p?.source || '').toLowerCase();
+  const sourceFeedName = String(p?.source_feed_name || '').toLowerCase();
+  const legacyOrigin = String(p?.source_metadata?.legacy_origin || '').toLowerCase();
+
+  if (source === 'habihub' || sourceFeedName.includes('habihub')) {
+    return {
+      label: 'HabiHub',
+      className: 'border-orange-400/60 text-orange-600 bg-orange-50',
+      icon: Rss,
+    };
+  }
+
+  if (source === 'legacy-crm' || legacyOrigin) {
+    return {
+      label: 'CRM original',
+      className: 'border-sky-400/60 text-sky-700 bg-sky-50',
+      icon: Globe,
+    };
+  }
+
+  return {
+    label: 'Manual',
+    className: 'border-slate-300 text-slate-600 bg-slate-50',
+    icon: Home,
+  };
+}
+
 /** Property is international (non-Spanish) */
 function isInternacional(p: any): boolean {
   return !!p.country && p.country !== 'España';
@@ -72,6 +100,8 @@ export const PropertyCard = ({ property: p, healthInfo, mode, onRemoved }: Prope
   const [deleting, setDeleting] = useState(false);
   const coverImage = getCoverImage(p.images, p.image_order, p.id);
   const legalRiskBadge = getLegalRiskBadge(p);
+  const originBadge = getPropertyOriginBadge(p);
+  const OriginIcon = originBadge.icon;
 
   const handleArchive = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -150,11 +180,10 @@ export const PropertyCard = ({ property: p, healthInfo, mode, onRemoved }: Prope
                 {legalRiskBadge.label}
               </Badge>
             )}
-            {(p.xml_id || p.source === 'habihub') && (
-              <Badge variant="outline" className="border-orange-400/60 text-orange-600 text-[9px] px-1.5 py-0 flex items-center gap-0.5 shrink-0">
-                <Rss className="h-2.5 w-2.5" />HabiHub
-              </Badge>
-            )}
+            <Badge variant="outline" className={`${originBadge.className} text-[9px] px-1.5 py-0 flex items-center gap-0.5 shrink-0`}>
+              <OriginIcon className="h-2.5 w-2.5" />
+              {originBadge.label}
+            </Badge>
             <span className="shrink-0"><HealthDot info={healthInfo} /></span>
           </div>
         </div>
@@ -201,11 +230,10 @@ export const PropertyCard = ({ property: p, healthInfo, mode, onRemoved }: Prope
               {legalRiskBadge.label}
             </Badge>
           )}
-          {(p.xml_id || p.source === 'habihub') && (
-            <Badge variant="outline" className="border-orange-400/60 text-orange-600 bg-card/80 text-[11px] flex items-center gap-0.5">
-              <Rss className="h-3 w-3" />HabiHub
-            </Badge>
-          )}
+          <Badge variant="outline" className={`${originBadge.className} bg-card/80 text-[11px] flex items-center gap-0.5`}>
+            <OriginIcon className="h-3 w-3" />
+            {originBadge.label}
+          </Badge>
         </div>
         {healthInfo && <div className="absolute bottom-2.5 right-2.5"><HealthDot info={healthInfo} size="md" /></div>}
       </div>
@@ -290,14 +318,19 @@ export const PropertyListView = ({ properties, healthColors, onRemoved }: Proper
         <TableHeader>
          <TableRow>
             <TableHead>Referencia</TableHead><TableHead>Inmueble</TableHead><TableHead>Salud</TableHead>
-            <TableHead>País</TableHead><TableHead>Ciudad</TableHead><TableHead>Legal</TableHead><TableHead>Hab.</TableHead><TableHead>Superficie</TableHead>
+            <TableHead>País</TableHead><TableHead>Ciudad</TableHead><TableHead>Origen</TableHead><TableHead>Legal</TableHead><TableHead>Hab.</TableHead><TableHead>Superficie</TableHead>
             <TableHead>Precio</TableHead><TableHead>Estado</TableHead><TableHead>Mandato</TableHead>
             <TableHead>Idealista</TableHead>
             <TableHead className="w-10"></TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {properties.map(p => (
+          {properties.map(p => {
+            const legalRiskBadge = getLegalRiskBadge(p);
+            const originBadge = getPropertyOriginBadge(p);
+            const OriginIcon = originBadge.icon;
+
+            return (
             <TableRow key={p.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/properties/${p.id}`)}>
               <TableCell><span className="font-mono text-xs font-bold text-primary">{p.crm_reference || '—'}</span></TableCell>
               <TableCell className="font-medium">{p.title}</TableCell>
@@ -312,6 +345,12 @@ export const PropertyListView = ({ properties, healthColors, onRemoved }: Proper
                 )}
               </TableCell>
               <TableCell>{p.city || '—'}</TableCell>
+              <TableCell>
+                <Badge variant="outline" className={`${originBadge.className} text-[10px] flex items-center gap-1 w-fit`}>
+                  <OriginIcon className="h-3 w-3" />
+                  {originBadge.label}
+                </Badge>
+              </TableCell>
               <TableCell>
                 {legalRiskBadge ? (
                   <Badge className={`${legalRiskBadge.className} text-[10px] w-fit`}>
@@ -349,7 +388,7 @@ export const PropertyListView = ({ properties, healthColors, onRemoved }: Proper
                 <PropertyRowActions property={p} onRemoved={onRemoved} />
               </TableCell>
             </TableRow>
-          ))}
+          )})}
         </TableBody>
       </Table>
     </Card>
