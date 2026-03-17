@@ -34,86 +34,6 @@ function sanitizeSource(source: unknown): string {
   return 'legacy-crm'
 }
 
-async function ensureSourceOwnerContact(
-  supabase: ReturnType<typeof createClient>,
-  sourceName: string,
-): Promise<string> {
-  const normalizedName = sanitizeSource(sourceName)
-  const sourceRef = `owner:${normalizedName}`
-  const baseTags = [normalizedName, 'sistema', 'propietario']
-
-  const { data: bySourceRef, error: bySourceErr } = await supabase
-    .from('contacts')
-    .select('id, tags')
-    .eq('source_ref', sourceRef)
-    .limit(1)
-    .maybeSingle()
-
-  if (bySourceErr) throw bySourceErr
-
-  if (bySourceRef?.id) {
-    const mergedTags = [...new Set([...(bySourceRef.tags || []), ...baseTags])]
-    await supabase
-      .from('contacts')
-      .update({
-        full_name: normalizedName,
-        contact_type: 'propietario',
-        status: 'activo',
-        agent_id: null,
-        tags: mergedTags,
-      })
-      .eq('id', bySourceRef.id)
-
-    return bySourceRef.id
-  }
-
-  const { data: byName, error: byNameErr } = await supabase
-    .from('contacts')
-    .select('id, tags')
-    .eq('full_name', normalizedName)
-    .limit(1)
-    .maybeSingle()
-
-  if (byNameErr) throw byNameErr
-
-  if (byName?.id) {
-    const mergedTags = [...new Set([...(byName.tags || []), ...baseTags])]
-    await supabase
-      .from('contacts')
-      .update({
-        full_name: normalizedName,
-        contact_type: 'propietario',
-        status: 'activo',
-        agent_id: null,
-        tags: mergedTags,
-        source_ref: sourceRef,
-      })
-      .eq('id', byName.id)
-
-    return byName.id
-  }
-
-  const { data: created, error: createErr } = await supabase
-    .from('contacts')
-    .insert({
-      full_name: normalizedName,
-      contact_type: 'propietario',
-      status: 'activo',
-      agent_id: null,
-      tags: baseTags,
-      source_ref: sourceRef,
-      notes: `Propietario técnico automático para inmuebles importados desde ${normalizedName}.`,
-    })
-    .select('id')
-    .single()
-
-  if (createErr || !created?.id) {
-    throw createErr || new Error(`Could not create owner contact for source ${normalizedName}`)
-  }
-
-  return created.id
-}
-
 function uniqueStrings(values: unknown): string[] {
   if (!Array.isArray(values)) return []
   return Array.from(
@@ -125,7 +45,7 @@ function uniqueStrings(values: unknown): string[] {
   )
 }
 
-function sanitizeProperty(record: LegacyProperty, ownerId: string) {
+function sanitizeProperty(record: LegacyProperty) {
   const fallbackXmlId =
     record.xml_id ??
     (record.crm_reference ? `legacy-${record.crm_reference}` : null) ??
@@ -149,7 +69,7 @@ function sanitizeProperty(record: LegacyProperty, ownerId: string) {
     created_at,
     updated_at,
     agent_id: null,
-    owner_id: ownerId,
+    owner_id: null,
     key_location: 'oficina',
     source: sanitizeSource(record.source),
     xml_id: fallbackXmlId,
@@ -290,7 +210,6 @@ Deno.serve(async (req) => {
 
     const legacyProperties = await loadAllLegacyProperties()
     const { crmReferenceMap, portalTokenMap } = await loadCurrentReferences(supabase)
-    const ownerIdBySource = new Map<string, string>()
 
     let inserted = 0
     let updated = 0
@@ -298,13 +217,6 @@ Deno.serve(async (req) => {
     const errors: string[] = []
 
     for (const legacyProperty of legacyProperties) {
-      const sourceName = sanitizeSource(legacyProperty.source)
-      let ownerId = ownerIdBySource.get(sourceName)
-      if (!ownerId) {
-        ownerId = await ensureSourceOwnerContact(supabase, sourceName)
-        ownerIdBySource.set(sourceName, ownerId)
-      }
-
       const crmReference = legacyProperty.crm_reference ?? null
       const portalToken = legacyProperty.portal_token ?? null
       const existing =
@@ -312,10 +224,9 @@ Deno.serve(async (req) => {
         (portalToken ? portalTokenMap.get(portalToken) : null) ??
         null
 
-      const payload = sanitizeProperty(legacyProperty, ownerId)
+      const payload = sanitizeProperty(legacyProperty)
 
       let resultError: { message: string } | null = null
-      let affectedPropertyId: string | null = existing?.id ?? null
 
       if (existing) {
         const { error } = await supabase
@@ -337,7 +248,6 @@ Deno.serve(async (req) => {
         resultError = error
         if (!error) {
           inserted += 1
-          affectedPropertyId = data?.id ?? null
           if (data?.crm_reference) crmReferenceMap.set(data.crm_reference, data as CurrentPropertyRef)
           if (data?.portal_token) portalTokenMap.set(data.portal_token, data as CurrentPropertyRef)
         }
@@ -345,25 +255,6 @@ Deno.serve(async (req) => {
 
       if (resultError) {
         errors.push(`${crmReference ?? portalToken ?? legacyProperty.id}: ${resultError.message}`)
-        continue
-      }
-
-      if (affectedPropertyId) {
-        const { error: ownerLinkErr } = await supabase
-          .from('property_owners')
-          .upsert(
-            {
-              property_id: affectedPropertyId,
-              contact_id: ownerId,
-              role: 'propietario',
-              notes: `Asignado automáticamente desde importación ${sourceName}`,
-            },
-            { onConflict: 'property_id,contact_id', ignoreDuplicates: false },
-          )
-
-        if (ownerLinkErr) {
-          errors.push(`${crmReference ?? portalToken ?? legacyProperty.id}: owner link ${ownerLinkErr.message}`)
-        }
       }
     }
 
