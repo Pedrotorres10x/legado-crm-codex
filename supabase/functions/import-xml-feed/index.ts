@@ -915,26 +915,30 @@ Deno.serve(async (req) => {
     }
 
     const token = authHeader.replace('Bearer ', '').trim()
-    const { data: authData, error: authErr } = await supabase.auth.getUser(token)
-    const user = authData?.user
+    const isInternalCron = token === serviceKey
 
-    if (authErr || !user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
+    if (!isInternalCron) {
+      const { data: authData, error: authErr } = await supabase.auth.getUser(token)
+      const user = authData?.user
 
-    const [{ data: isAdmin }, { data: isCoord }] = await Promise.all([
-      supabase.rpc('has_role', { _user_id: user.id, _role: 'admin' }),
-      supabase.rpc('has_role', { _user_id: user.id, _role: 'coordinadora' }),
-    ])
+      if (authErr || !user) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
 
-    if (!isAdmin && !isCoord) {
-      return new Response(JSON.stringify({ error: 'Admin or coordinadora only' }), {
-        status: 403,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+      const [{ data: isAdmin }, { data: isCoord }] = await Promise.all([
+        supabase.rpc('has_role', { _user_id: user.id, _role: 'admin' }),
+        supabase.rpc('has_role', { _user_id: user.id, _role: 'coordinadora' }),
+      ])
+
+      if (!isAdmin && !isCoord) {
+        return new Response(JSON.stringify({ error: 'Admin or coordinadora only' }), {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
     }
 
     let feedId: string | null = null
