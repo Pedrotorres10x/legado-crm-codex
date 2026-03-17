@@ -473,37 +473,41 @@ const PropertyDetail = () => {
                 onChange={e => setProperty((p: any) => ({ ...p, title: e.target.value }))}
                 onBlur={() => saveField({ title: property.title })}
               />
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="outline" className={`${originBadge.className} flex items-center gap-1`}>
-                  <OriginIcon className="h-3 w-3" />
-                  {originBadge.label}
-                </Badge>
-                {property.crm_reference && (
-                  <span className="select-all rounded-md border border-primary/20 bg-primary/10 px-2.5 py-1 font-mono text-sm font-bold text-primary">
-                    {property.crm_reference}
-                  </span>
-                )}
-                <Select value={property.status} onValueChange={v => saveField({ status: v })}>
-                  <SelectTrigger className="h-8 w-[130px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {statusOptions.map(s => <SelectItem key={s} value={s}>{statusLabels[s]}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                {(() => {
-                  const isPublished = property.status === 'disponible';
-                  return (
-                    <Button
-                      size="sm"
-                      variant={isPublished ? 'default' : 'outline'}
-                      className={`gap-1.5 ${isPublished ? 'bg-success hover:bg-success/90 text-success-foreground' : 'text-muted-foreground'}`}
-                      onClick={() => saveField({ status: isPublished ? 'no_disponible' : 'disponible' })}
-                    >
-                      {isPublished ? <><Eye className="h-3.5 w-3.5" />Publicado</> : <><EyeOff className="h-3.5 w-3.5" />No publicado</>}
-                    </Button>
-                  );
-                })()}
+              <div className="flex flex-col gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="outline" className={`${originBadge.className} flex shrink-0 items-center gap-1`}>
+                    <OriginIcon className="h-3 w-3" />
+                    {originBadge.label}
+                  </Badge>
+                  {property.crm_reference && (
+                    <span className="max-w-full select-all truncate rounded-md border border-primary/20 bg-primary/10 px-2.5 py-1 font-mono text-sm font-bold text-primary">
+                      {property.crm_reference}
+                    </span>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Select value={property.status} onValueChange={v => saveField({ status: v })}>
+                    <SelectTrigger className="h-8 w-[130px] shrink-0">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {statusOptions.map(s => <SelectItem key={s} value={s}>{statusLabels[s]}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  {(() => {
+                    const isPublished = property.status === 'disponible';
+                    return (
+                      <Button
+                        size="sm"
+                        variant={isPublished ? 'default' : 'outline'}
+                        className={`shrink-0 gap-1.5 ${isPublished ? 'bg-success hover:bg-success/90 text-success-foreground' : 'text-muted-foreground'}`}
+                        onClick={() => saveField({ status: isPublished ? 'no_disponible' : 'disponible' })}
+                      >
+                        {isPublished ? <><Eye className="h-3.5 w-3.5" />Publicado</> : <><EyeOff className="h-3.5 w-3.5" />No publicado</>}
+                      </Button>
+                    );
+                  })()}
+                </div>
               </div>
               <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                 <div className="flex items-center gap-2 rounded-lg border border-border/60 px-3 py-1.5">
