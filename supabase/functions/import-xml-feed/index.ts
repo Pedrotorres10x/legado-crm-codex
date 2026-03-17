@@ -963,6 +963,76 @@ async function translateToSpanish(texts: { idx: number; text: string }[]): Promi
   return results
 }
 
+async function ensureHabihubOwnerContact(supabase: ReturnType<typeof createClient>): Promise<string> {
+  const sourceRef = 'owner:habihub'
+  const baseTags = ['habihub', 'sistema', 'propietario']
+
+  const { data: bySourceRef, error: bySourceErr } = await supabase
+    .from('contacts')
+    .select('id, tags')
+    .eq('source_ref', sourceRef)
+    .limit(1)
+    .maybeSingle()
+
+  if (bySourceErr) throw bySourceErr
+  if (bySourceRef?.id) {
+    const mergedTags = [...new Set([...(bySourceRef.tags || []), ...baseTags])]
+    await supabase
+      .from('contacts')
+      .update({
+        full_name: 'habihub',
+        contact_type: 'propietario',
+        status: 'activo',
+        agent_id: null,
+        tags: mergedTags,
+      })
+      .eq('id', bySourceRef.id)
+    return bySourceRef.id
+  }
+
+  const { data: byName, error: byNameErr } = await supabase
+    .from('contacts')
+    .select('id, tags')
+    .eq('full_name', 'habihub')
+    .limit(1)
+    .maybeSingle()
+
+  if (byNameErr) throw byNameErr
+  if (byName?.id) {
+    const mergedTags = [...new Set([...(byName.tags || []), ...baseTags])]
+    const { error: updateErr } = await supabase
+      .from('contacts')
+      .update({
+        source_ref: sourceRef,
+        contact_type: 'propietario',
+        status: 'activo',
+        agent_id: null,
+        tags: mergedTags,
+      })
+      .eq('id', byName.id)
+
+    if (updateErr) throw updateErr
+    return byName.id
+  }
+
+  const { data: created, error: createErr } = await supabase
+    .from('contacts')
+    .insert({
+      full_name: 'habihub',
+      contact_type: 'propietario',
+      status: 'activo',
+      agent_id: null,
+      tags: baseTags,
+      source_ref: sourceRef,
+      notes: 'Propietario técnico automático para inmuebles importados desde HabiHub.',
+    })
+    .select('id')
+    .single()
+
+  if (createErr || !created?.id) throw createErr || new Error('Could not create habihub owner contact')
+  return created.id
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -1025,6 +1095,7 @@ Deno.serve(async (req) => {
     }
 
     const results: any[] = []
+    const habihubOwnerId = await ensureHabihubOwnerContact(supabase)
 
     for (const feed of feeds) {
       try {
@@ -1102,6 +1173,7 @@ Deno.serve(async (req) => {
             const merged: any = {
               ...p,
               agent_id: null,
+              owner_id: habihubOwnerId,
               source: 'habihub',
               key_location: 'oficina',
               source_feed_id: feed.id,
@@ -1166,6 +1238,34 @@ Deno.serve(async (req) => {
             console.error(`Upsert error batch ${i}:`, upsertErr)
           } else {
             upserted += batch.length
+          }
+        }
+
+        if (xmlIds.length > 0) {
+          const { data: importedProperties, error: importedErr } = await supabase
+            .from('properties')
+            .select('id')
+            .eq('source', 'habihub')
+            .eq('source_feed_id', feed.id)
+            .in('xml_id', xmlIds)
+
+          if (importedErr) {
+            console.error(`Owner backfill read error for feed ${feed.name}:`, importedErr)
+          } else if (importedProperties && importedProperties.length > 0) {
+            const ownerLinks = importedProperties.map((property) => ({
+              property_id: property.id,
+              contact_id: habihubOwnerId,
+              role: 'propietario',
+              notes: 'Asignado automáticamente desde feed HabiHub',
+            }))
+
+            const { error: ownerLinkErr } = await supabase
+              .from('property_owners')
+              .upsert(ownerLinks, { onConflict: 'property_id,contact_id', ignoreDuplicates: false })
+
+            if (ownerLinkErr) {
+              console.error(`Owner backfill link error for feed ${feed.name}:`, ownerLinkErr)
+            }
           }
         }
 
