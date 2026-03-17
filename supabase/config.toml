@@ -21,6 +21,9 @@ verify_jwt = false
 [functions.import-xml-feed]
 verify_jwt = false
 
+[functions.import-legacy-properties]
+verify_jwt = false
+
 [functions.ai-property-extract]
 verify_jwt = true
 
