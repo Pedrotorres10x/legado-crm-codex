@@ -150,6 +150,7 @@ export function usePropertyMediaManager({
     setPhotoOrderOpen,
     bulkDeleteOpen,
     setBulkDeleteOpen,
+    saveImageOrder,
     moveImage,
     handleDragDrop,
     updateImageLabel,

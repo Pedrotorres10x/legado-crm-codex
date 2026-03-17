@@ -98,9 +98,11 @@ const Properties = () => {
         .select(selectFields, { count: 'exact' })
         .order(order.column, { ascending: order.ascending });
 
-      if (!showAll && user?.id) query = query.eq('agent_id', user.id);
+      if (!showAll && user?.id) {
+        query = query.or(`agent_id.eq.${user.id},agent_id.is.null`);
+      }
       if (sourceTab === 'propias') query = query.is('xml_id', null).or('source.is.null,source.neq.habihub');
-      if (sourceTab === 'office') query = query.is('xml_id', null);
+      if (sourceTab === 'office') query = query.is('agent_id', null);
       if (sourceTab === 'xml') query = query.not('xml_id', 'is', null);
 
       // Text search

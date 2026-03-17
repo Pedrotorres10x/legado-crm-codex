@@ -233,6 +233,7 @@ const PropertyDetail = () => {
     setPhotoOrderOpen,
     bulkDeleteOpen,
     setBulkDeleteOpen,
+    saveImageOrder,
     moveImage,
     handleDragDrop,
     updateImageLabel,

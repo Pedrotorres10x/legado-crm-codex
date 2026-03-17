@@ -35,7 +35,7 @@ const XmlFeedsManager = () => {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: '', url: '', agent_id: '' });
+  const [form, setForm] = useState({ name: '', url: '', agent_id: 'office' });
 
   const fetchData = async () => {
     const [feedsRes, agentsRes] = await Promise.all([
@@ -54,11 +54,11 @@ const XmlFeedsManager = () => {
     const { error } = await supabase.from('xml_feeds').insert({
       name: form.name,
       url: form.url,
-      agent_id: form.agent_id || null,
+      agent_id: !form.agent_id || form.agent_id === 'office' ? null : form.agent_id,
     } as any);
     if (error) { toast.error('Error al crear feed'); return; }
     toast.success('Feed añadido');
-    setForm({ name: '', url: '', agent_id: '' });
+    setForm({ name: '', url: '', agent_id: 'office' });
     setShowForm(false);
     fetchData();
   };
@@ -119,7 +119,7 @@ const XmlFeedsManager = () => {
   };
 
   const getAgentName = (agentId: string | null) => {
-    if (!agentId) return 'Sin asignar';
+    if (!agentId) return 'Oficina';
     return agents.find(a => a.user_id === agentId)?.full_name || 'Desconocido';
   };
 
@@ -156,10 +156,11 @@ const XmlFeedsManager = () => {
               <Input placeholder="https://..." value={form.url} onChange={e => setForm({ ...form, url: e.target.value })} />
             </div>
             <div className="space-y-1">
-              <Label>Agente asignado</Label>
+              <Label>Asignación</Label>
               <Select value={form.agent_id} onValueChange={v => setForm({ ...form, agent_id: v })}>
-                <SelectTrigger><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Oficina" /></SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="office">Oficina (sin agente)</SelectItem>
                   {agents.map(a => (
                     <SelectItem key={a.user_id} value={a.user_id}>{a.full_name}</SelectItem>
                   ))}
@@ -180,7 +181,7 @@ const XmlFeedsManager = () => {
             <TableHeader>
               <TableRow>
                 <TableHead>Nombre</TableHead>
-                <TableHead>Agente</TableHead>
+                <TableHead>Asignación</TableHead>
                 <TableHead>Última sync</TableHead>
                 <TableHead>Propiedades</TableHead>
                 <TableHead>Activo</TableHead>

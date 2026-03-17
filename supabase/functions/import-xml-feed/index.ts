@@ -105,6 +105,10 @@ function extractAllTags(block: string): Map<string, string[]> {
   return tags
 }
 
+function serializeTags(tags: Map<string, string[]>): Record<string, string[]> {
+  return Object.fromEntries(Array.from(tags.entries()))
+}
+
 function stripCdata(val: string): string {
   return val.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/gi, '$1').trim()
 }
@@ -745,6 +749,27 @@ function parseProperty(block: string): any | null {
     return images
   }
 
+  function extractFloorPlans(): string[] {
+    const plans: string[] = []
+    const seen = new Set<string>()
+    const add = (url: string) => {
+      const clean = url.trim()
+      if (clean.startsWith('http') && !seen.has(clean)) {
+        seen.add(clean)
+        plans.push(clean)
+      }
+    }
+
+    const plansContainer = getFirst(tags, ['plans', 'planos', 'floorplans', 'floor_plans'])
+    if (plansContainer && plansContainer.includes('<')) {
+      const urlRegex = /<url[^>]*>([^<]+)<\/url>/gi
+      let match
+      while ((match = urlRegex.exec(plansContainer)) !== null) add(stripCdata(match[1]))
+    }
+
+    return plans
+  }
+
   let has_garage = parseBoolFromTags(tags, ['parking', 'garage', 'garaje', 'has_garage', 'cochera', 'plaza_garaje'])
   let has_pool = parseBoolFromTags(tags, ['pool', 'piscina', 'has_pool', 'swimmingpool', 'swimming_pool'])
   let has_terrace = parseBoolFromTags(tags, ['terrace', 'terraza', 'has_terrace'])
@@ -756,6 +781,7 @@ function parseProperty(block: string): any | null {
   const features = extractAllFeatures()
   const images = extractAllImages()
   const videos = extractVideos(tags, block)
+  const floor_plans = extractFloorPlans()
 
   // ── Infer boolean fields from feature text when XML tags are absent ────
   if (features.length > 0) {
@@ -795,8 +821,45 @@ function parseProperty(block: string): any | null {
   zone = normalized.zone
   if (normalized.province) province = normalized.province
 
+  const source_metadata = {
+    provider: 'habihub',
+    import_format: 'xml',
+    raw_tags: serializeTags(tags),
+    raw_values: {
+      property_type: rawType || null,
+      operation: opRaw || null,
+      price: getFirst(tags, ['price', 'precio', 'amount', 'originalprice', 'sale_price', 'rent_price', 'precio_venta', 'precio_alquiler']) || null,
+      title: titleRaw || null,
+      city,
+      province,
+      zone,
+      zip_code,
+      address,
+      floor: floor || null,
+      door: door || null,
+      surface: surfaceVal || null,
+      built_area: builtAreaVal || null,
+      plot_area: plotArea,
+      energy_cert,
+      reference,
+    },
+    media: {
+      images,
+      videos,
+      floor_plans,
+      virtual_tour_url,
+      source_url,
+    },
+    import_notes: {
+      assigned_to_office: true,
+      agent_assigned: false,
+      translated_to_spanish: false,
+    },
+  }
+
   const prop: any = {
     title, property_type: finalType, operation, price,
+    secondary_property_type: rawType ? cleanText(rawType) : null,
     surface_area: surfaceNum,
     built_area: builtNum,
     bedrooms, bathrooms,
@@ -807,9 +870,13 @@ function parseProperty(block: string): any | null {
     energy_cert: energy_cert || null,
     images: images.length > 0 ? images : null,
     videos: videos.length > 0 ? videos : null,
+    floor_plans: floor_plans.length > 0 ? floor_plans : null,
     xml_id, source_url, virtual_tour_url, latitude, longitude, reference,
     features: features.length > 0 ? features : null,
     year_built,
+    key_location: 'oficina',
+    source_metadata,
+    source_raw_xml: block,
   }
 
   // Door number (stored in floor field if no dedicated column, or skip)
@@ -994,6 +1061,13 @@ Deno.serve(async (req) => {
           const translations = await translateToSpanish(toTranslate)
           for (const [idx, translated] of translations) {
             properties[idx].description = translated.substring(0, 5000)
+            properties[idx].source_metadata = {
+              ...(properties[idx].source_metadata || {}),
+              import_notes: {
+                ...((properties[idx].source_metadata || {}).import_notes || {}),
+                translated_to_spanish: true,
+              },
+            }
           }
           console.log(`Translated ${translations.size} descriptions`)
         }
@@ -1001,19 +1075,38 @@ Deno.serve(async (req) => {
         const xmlIds = properties.map(p => p.xml_id).filter(Boolean)
         const { data: existingProps } = await supabase
           .from('properties')
-          .select('xml_id, images, videos, virtual_tour_url')
+          .select('xml_id, images, videos, virtual_tour_url, floor_plans, source_metadata')
           .in('xml_id', xmlIds)
         
-        const existingMap = new Map<string, { images: string[] | null; videos: string[] | null; virtual_tour_url: string | null }>()
+        const existingMap = new Map<string, {
+          images: string[] | null
+          videos: string[] | null
+          virtual_tour_url: string | null
+          floor_plans: string[] | null
+          source_metadata: Record<string, unknown> | null
+        }>()
         for (const ep of (existingProps || [])) {
-          existingMap.set(ep.xml_id, { images: ep.images, videos: ep.videos, virtual_tour_url: ep.virtual_tour_url })
+          existingMap.set(ep.xml_id, {
+            images: ep.images,
+            videos: ep.videos,
+            virtual_tour_url: ep.virtual_tour_url,
+            floor_plans: ep.floor_plans,
+            source_metadata: ep.source_metadata,
+          })
         }
 
         let upserted = 0
         for (let i = 0; i < properties.length; i += 50) {
-          const batch = properties.slice(i, i + 50).map(p => {
-            const existing = existingMap.get(p.xml_id)
-            const merged: any = { ...p, agent_id: feed.agent_id || null, source: 'habihub' }
+            const batch = properties.slice(i, i + 50).map(p => {
+              const existing = existingMap.get(p.xml_id)
+            const merged: any = {
+              ...p,
+              agent_id: null,
+              source: 'habihub',
+              key_location: 'oficina',
+              source_feed_id: feed.id,
+              source_feed_name: feed.name,
+            }
 
             // Never overwrite existing images/videos/tour with empty — prefer XML if it has more
             if (existing) {
@@ -1030,6 +1123,35 @@ Deno.serve(async (req) => {
               // Tour: keep existing if XML brings nothing new
               if (!merged.virtual_tour_url && existing.virtual_tour_url) {
                 merged.virtual_tour_url = existing.virtual_tour_url
+              }
+              // Floor plans: merge and deduplicate
+              if (existing.floor_plans && existing.floor_plans.length > 0) {
+                const xmlPlans = merged.floor_plans || []
+                const mergedPlans = [...new Set([...xmlPlans, ...existing.floor_plans])]
+                merged.floor_plans = mergedPlans.length > 0 ? mergedPlans : null
+              }
+
+              // Preserve previous source metadata while replacing raw snapshot with the latest one
+              merged.source_metadata = {
+                ...(existing.source_metadata || {}),
+                ...(merged.source_metadata || {}),
+                feed: {
+                  id: feed.id,
+                  name: feed.name,
+                  url: feed.url,
+                  assignment: 'oficina',
+                },
+                previous_snapshot: existing.source_metadata || null,
+              }
+            } else {
+              merged.source_metadata = {
+                ...(merged.source_metadata || {}),
+                feed: {
+                  id: feed.id,
+                  name: feed.name,
+                  url: feed.url,
+                  assignment: 'oficina',
+                },
               }
             }
 
@@ -1049,13 +1171,15 @@ Deno.serve(async (req) => {
 
         // ── Cleanup: DELETE properties no longer in the feed ──
         let staleDeleted = 0
-        if (xmlIds.length > 0) {
-          // Fetch all XML-imported properties that are still active
-          const { data: existingAll } = await supabase
-            .from('properties')
-            .select('id, xml_id')
-            .not('xml_id', 'is', null)
-            .in('status', ['disponible', 'reservado'])
+          if (xmlIds.length > 0) {
+            // Fetch only properties previously imported from this exact feed.
+            const { data: existingAll } = await supabase
+              .from('properties')
+              .select('id, xml_id')
+              .eq('source', 'habihub')
+              .eq('source_feed_id', feed.id)
+              .not('xml_id', 'is', null)
+              .in('status', ['disponible', 'reservado'])
 
           const feedXmlIdSet = new Set(xmlIds)
           const staleIds = (existingAll || [])
