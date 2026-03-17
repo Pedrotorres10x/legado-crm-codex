@@ -19,7 +19,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.import-xml-feed]
-verify_jwt = true
+verify_jwt = false
 
 [functions.ai-property-extract]
 verify_jwt = true
