@@ -388,11 +388,6 @@ const PropertyDetail = () => {
                 <OriginIcon className="h-3 w-3" />
                 {originBadge.label}
               </Badge>
-              {property.crm_reference && (
-                <span className="font-mono text-[11px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-md border border-primary/15">
-                  {property.crm_reference}
-                </span>
-              )}
             </div>
             {property.address && (
               <div className="flex items-center gap-1.5 text-sm text-muted-foreground mb-2">
@@ -470,68 +465,72 @@ const PropertyDetail = () => {
         </div>
         {/* Title row + actions */}
         <div className="flex items-start gap-4">
-          <div className="flex-1">
-            <div className="flex items-center gap-3 flex-wrap">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-col gap-3">
               <Input
-                className="text-2xl font-display font-bold tracking-tight border-0 bg-transparent px-0 h-auto focus-visible:ring-1 max-w-md"
+                className="h-auto max-w-2xl border-0 bg-transparent px-0 text-2xl font-display font-bold tracking-tight focus-visible:ring-1"
                 value={property.title}
                 onChange={e => setProperty((p: any) => ({ ...p, title: e.target.value }))}
                 onBlur={() => saveField({ title: property.title })}
               />
-              <Badge variant="outline" className={`${originBadge.className} flex items-center gap-1`}>
-                <OriginIcon className="h-3 w-3" />
-                {originBadge.label}
-              </Badge>
-              {property.crm_reference && (
-                <span className="font-mono text-sm font-bold text-primary bg-primary/10 px-2.5 py-1 rounded-md border border-primary/20 select-all">
-                  {property.crm_reference}
-                </span>
-              )}
-              <Select value={property.status} onValueChange={v => saveField({ status: v })}>
-                <SelectTrigger className="w-[130px] h-8">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {statusOptions.map(s => <SelectItem key={s} value={s}>{statusLabels[s]}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              {(() => {
-                const isPublished = property.status === 'disponible';
-                return (
-                  <Button
-                    size="sm"
-                    variant={isPublished ? 'default' : 'outline'}
-                    className={`gap-1.5 ${isPublished ? 'bg-success hover:bg-success/90 text-success-foreground' : 'text-muted-foreground'}`}
-                    onClick={() => saveField({ status: isPublished ? 'no_disponible' : 'disponible' })}
-                  >
-                    {isPublished ? <><Eye className="h-3.5 w-3.5" />Publicado</> : <><EyeOff className="h-3.5 w-3.5" />No publicado</>}
-                  </Button>
-                );
-              })()}
-              <div className="flex items-center gap-2 ml-2 pl-2 border-l">
-                <Zap className={`h-3.5 w-3.5 ${property.auto_match !== false ? 'text-primary' : 'text-muted-foreground'}`} />
-                <span className="text-xs text-muted-foreground">Cruce auto</span>
-                <Switch
-                  checked={property.auto_match !== false}
-                  onCheckedChange={async (checked) => {
-                    await saveField({ auto_match: checked });
-                  }}
-                  className="scale-75"
-                />
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline" className={`${originBadge.className} flex items-center gap-1`}>
+                  <OriginIcon className="h-3 w-3" />
+                  {originBadge.label}
+                </Badge>
+                {property.crm_reference && (
+                  <span className="select-all rounded-md border border-primary/20 bg-primary/10 px-2.5 py-1 font-mono text-sm font-bold text-primary">
+                    {property.crm_reference}
+                  </span>
+                )}
+                <Select value={property.status} onValueChange={v => saveField({ status: v })}>
+                  <SelectTrigger className="h-8 w-[130px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {statusOptions.map(s => <SelectItem key={s} value={s}>{statusLabels[s]}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                {(() => {
+                  const isPublished = property.status === 'disponible';
+                  return (
+                    <Button
+                      size="sm"
+                      variant={isPublished ? 'default' : 'outline'}
+                      className={`gap-1.5 ${isPublished ? 'bg-success hover:bg-success/90 text-success-foreground' : 'text-muted-foreground'}`}
+                      onClick={() => saveField({ status: isPublished ? 'no_disponible' : 'disponible' })}
+                    >
+                      {isPublished ? <><Eye className="h-3.5 w-3.5" />Publicado</> : <><EyeOff className="h-3.5 w-3.5" />No publicado</>}
+                    </Button>
+                  );
+                })()}
               </div>
-              {!property.xml_id && (
-                <div className="flex items-center gap-2 ml-2 pl-2 border-l">
-                  <Globe className={`h-3.5 w-3.5 ${property.send_to_idealista ? 'text-success' : 'text-muted-foreground'}`} />
-                  <span className="text-xs text-muted-foreground">Idealista</span>
+              <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                <div className="flex items-center gap-2 rounded-lg border border-border/60 px-3 py-1.5">
+                  <Zap className={`h-3.5 w-3.5 ${property.auto_match !== false ? 'text-primary' : 'text-muted-foreground'}`} />
+                  <span className="text-xs text-muted-foreground">Cruce auto</span>
                   <Switch
-                    checked={!!property.send_to_idealista}
+                    checked={property.auto_match !== false}
                     onCheckedChange={async (checked) => {
-                      await saveField({ send_to_idealista: checked });
+                      await saveField({ auto_match: checked });
                     }}
                     className="scale-75"
                   />
                 </div>
-              )}
+                {!property.xml_id && (
+                  <div className="flex items-center gap-2 rounded-lg border border-border/60 px-3 py-1.5">
+                    <Globe className={`h-3.5 w-3.5 ${property.send_to_idealista ? 'text-success' : 'text-muted-foreground'}`} />
+                    <span className="text-xs text-muted-foreground">Idealista</span>
+                    <Switch
+                      checked={!!property.send_to_idealista}
+                      onCheckedChange={async (checked) => {
+                        await saveField({ send_to_idealista: checked });
+                      }}
+                      className="scale-75"
+                    />
+                  </div>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
               <Select value={property.property_type} onValueChange={v => saveField({ property_type: v })}>

@@ -211,7 +211,7 @@ export const PropertyCard = ({ property: p, healthInfo, mode, onRemoved }: Prope
             {isAvailable ? <><Eye className="h-3 w-3 mr-1" />Publicado</> : <><EyeOff className="h-3 w-3 mr-1" />No publicado</>}
           </Badge>
         </div>
-        <div className="absolute top-2.5 right-2.5 flex gap-1.5">
+        <div className="absolute top-2.5 right-2.5 flex max-w-[72%] flex-wrap justify-end gap-1.5">
           <Badge variant="secondary" className={`${statusColors[p.status]} text-primary-foreground border-0 text-[11px]`}>
             {statusLabels[p.status]}
           </Badge>
