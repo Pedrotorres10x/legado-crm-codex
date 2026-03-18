@@ -31,6 +31,39 @@ const operationMap: Record<string, string> = {
   traspaso: 'transfer',
 };
 
+function normalizePropertyTypeKey(value: unknown): string {
+  const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  const normalized = raw
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  const aliases: Record<string, string> = {
+    apartment: 'piso',
+    flat: 'piso',
+    house: 'casa',
+    home: 'casa',
+    villa: 'chalet',
+    penthouse: 'atico',
+    storage: 'trastero',
+    storage_room: 'trastero',
+    storeroom: 'trastero',
+    office: 'oficina',
+    land: 'terreno',
+    plot: 'terreno',
+    premises: 'local',
+    commercial: 'local',
+    warehouse: 'nave',
+    industrial: 'nave',
+    garage: 'garaje',
+    parking: 'garaje',
+    aparcamiento: 'garaje',
+    plaza_garaje: 'garaje',
+    'plaza de garaje': 'garaje',
+  };
+
+  return aliases[normalized] || normalized;
+}
+
 function esc(val: string | null | undefined): string {
   if (!val) return '';
   return val.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -54,7 +87,7 @@ function resolveCert(prop: any): string {
     // Any other value (including "en_tramite") → treat as empty
   }
   // No valid cert → decide by property type
-  const propType = (prop.property_type || '').toLowerCase().trim();
+  const propType = normalizePropertyTypeKey(prop.property_type);
   if (RESIDENTIAL_TYPES.includes(propType)) {
     return Math.random() < 0.5 ? 'A' : 'B';
   }
@@ -278,7 +311,7 @@ function toKyeroXml(properties: any[], portalName: string, supabaseUrl: string, 
 
   for (const p of properties) {
     const imgs = orderImages(p.images, p.image_order).map(u => proxyImageUrl(u, supabaseUrl));
-    const mapped = typeMap[p.property_type] || typeMap.otro;
+    const mapped = typeMap[normalizePropertyTypeKey(p.property_type)] || typeMap.otro;
     const op = operationMap[p.operation] || 'sale';
     const pf = parseFeatures(p.features);
 
@@ -453,7 +486,7 @@ function toFotocasaXml(properties: any[], supabaseUrl: string): string {
 
   for (const p of properties) {
     const imgs = orderImages(p.images, p.image_order).map(u => proxyImageUrl(u, supabaseUrl));
-    const mapped = typeMap[p.property_type] || typeMap.otro;
+    const mapped = typeMap[normalizePropertyTypeKey(p.property_type)] || typeMap.otro;
     const op = operationMap[p.operation] || 'sale';
     const pf = parseFeatures(p.features);
 
@@ -611,7 +644,7 @@ function toPisosXml(properties: any[], supabaseUrl: string): string {
     const pf = parseFeatures(p.features);
     const op = (p.operation || 'venta').toLowerCase();
     const cert = resolveCert(p);
-    const propType = (p.property_type || 'piso').toLowerCase();
+    const propType = normalizePropertyTypeKey(p.property_type || 'piso');
 
     xml += `    <Inmueble>\n`;
 
