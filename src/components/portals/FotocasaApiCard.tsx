@@ -51,9 +51,36 @@ export function FotocasaApiCard() {
   const lastProcessedRef = useRef<number | null>(null);
 
   useEffect(() => {
-    supabase.from('erp_sync_logs').select('created_at').eq('target', 'fotocasa').order('created_at', { ascending: false }).limit(1).then(({ data }) => {
-      if (data?.[0]) setLastSync(data[0].created_at);
-    });
+    supabase
+      .from('erp_sync_logs')
+      .select('created_at')
+      .eq('target', 'fotocasa')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .then(({ data }) => {
+        if (data?.[0]) setLastSync(data[0].created_at);
+      });
+
+    supabase
+      .from('erp_sync_logs')
+      .select('payload')
+      .eq('target', 'fotocasa')
+      .eq('event', 'sync_batch_summary')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .then(({ data }) => {
+        if (!data?.[0]?.payload) return;
+        const payload = data[0].payload as Record<string, unknown>;
+        setLastResult({
+          ok: true,
+          action: 'sync_all',
+          total: Number(payload.batch_size ?? 0),
+          succeeded: Number(payload.succeeded ?? 0),
+          failed: Number(payload.failed ?? 0),
+          has_more: payload.has_more === true,
+          total_available: Number(payload.total_available ?? 0),
+        });
+      });
   }, []);
 
   useEffect(() => {
@@ -222,7 +249,7 @@ export function FotocasaApiCard() {
 
         {!syncing && lastResult && (
           <div className="flex gap-2 text-xs">
-            <Badge variant="secondary">{lastResult.total} total</Badge>
+            <Badge variant="secondary">{lastResult.total_available ?? lastResult.total} inmuebles</Badge>
             <Badge variant="default">{lastResult.succeeded} ok</Badge>
             {lastResult.failed > 0 && <Badge variant="destructive">{lastResult.failed} errores</Badge>}
           </div>
