@@ -42,7 +42,9 @@ export function PortalFeedCards({ feeds, onToggleActive, onCopyFeedUrl, onTestFe
             </div>
 
             <div className="text-xs text-muted-foreground">
-              {feed.last_accessed_at ? <>Último acceso: {formatDistanceToNow(new Date(feed.last_accessed_at), { addSuffix: true, locale: es })}</> : 'Sin accesos aún'}
+              {feed.last_accessed_at
+                ? <>Última lectura del feed: {formatDistanceToNow(new Date(feed.last_accessed_at), { addSuffix: true, locale: es })}</>
+                : 'El portal aún no ha leído este feed'}
             </div>
 
             <div className="space-y-1.5">
@@ -74,10 +76,14 @@ export function PortalFeedCards({ feeds, onToggleActive, onCopyFeedUrl, onTestFe
 
             {feed.api_credentials && Object.keys(feed.api_credentials).length > 0 && <div className="text-xs text-muted-foreground">🔑 Credenciales API configuradas</div>}
 
+            <p className="text-xs text-muted-foreground">
+              Este contador refleja el feed preparado por el CRM. El portal se actualiza cuando relee esta URL.
+            </p>
+
             {feed.is_active && (
               <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5 w-full" onClick={() => onForceFeed(feed)}>
                 <Send className="h-3.5 w-3.5" />
-                Forzar envío
+                Regenerar feed
               </Button>
             )}
           </CardContent>

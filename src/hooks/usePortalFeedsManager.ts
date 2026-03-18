@@ -29,6 +29,14 @@ function getPortalErrorLabel(portalName: string, detail?: string, status?: numbe
   return detail || `Estado ${status ?? 0}`;
 }
 
+function getXmlLaunchLabel(item: { ok?: boolean; status?: number; bytes?: number; error?: string }) {
+  if (item.ok) {
+    return `Feed regenerado y disponible (${item.bytes ?? 0} bytes)`;
+  }
+
+  return item.error || `Estado ${item.status ?? 0}`;
+}
+
 function getFotocasaLaunchLabel(payload?: {
   error?: string;
   message?: string;
@@ -123,8 +131,8 @@ export function usePortalFeedsManager() {
         return fetchFeeds();
       }),
       {
-        loading: `Enviando a ${feed.display_name}...`,
-        success: `✅ ${feed.display_name} sincronizado`,
+        loading: `Regenerando feed de ${feed.display_name}...`,
+        success: `✅ Feed de ${feed.display_name} listo. El portal lo procesará en su próxima lectura.`,
         error: `❌ Error en ${feed.display_name}`,
       },
     );
@@ -174,11 +182,11 @@ export function usePortalFeedsManager() {
     fetchFeeds();
 
     if (fotocasaBackground) {
-      toast.info(`✅ ${ok} portales listos · Fotocasa continúa en segundo plano`);
+      toast.info(`✅ ${ok} feeds XML listos · Fotocasa continúa en segundo plano`);
       return;
     }
 
-    if (fail === 0) toast.success(`✅ ${ok} portales sincronizados correctamente`);
+    if (fail === 0) toast.success(`✅ ${ok} feeds listos. Los portales XML se actualizarán al releerlos.`);
     else toast.warning(`${ok} ok · ${fail} con error`);
   };
 
@@ -214,7 +222,7 @@ export function usePortalFeedsManager() {
           display_name: item.display_name || 'Feed XML',
           ok: item.ok === true,
           status: item.status ?? 0,
-          detail: item.error,
+          detail: getXmlLaunchLabel(item),
         })),
         {
           display_name: 'Fotocasa',
@@ -235,34 +243,34 @@ export function usePortalFeedsManager() {
       await Promise.all([fetchFeeds(), fetchLastCronRuns()]);
 
       if (fotocasaError === 'FOTOCASA_API_KEY not configured') {
-        toast.warning(`XML listos: ${xmlOk} ok${xmlFail ? ` · ${xmlFail} con error` : ''}. Fotocasa pendiente de API key.`);
+        toast.warning(`Feeds XML listos: ${xmlOk} ok${xmlFail ? ` · ${xmlFail} con error` : ''}. Fotocasa pendiente de API key.`);
         return;
       }
 
       if (isFotocasaAuthorizationError(fotocasaError)) {
-        toast.warning(`XML listos: ${xmlOk} ok${xmlFail ? ` · ${xmlFail} con error` : ''}. Fotocasa ha rechazado la credencial.`);
+        toast.warning(`Feeds XML listos: ${xmlOk} ok${xmlFail ? ` · ${xmlFail} con error` : ''}. Fotocasa ha rechazado la credencial.`);
         return;
       }
 
       if (fotocasaInProgress) {
-        toast.info(`XML listos: ${xmlOk} ok${xmlFail ? ` · ${xmlFail} con error` : ''}. Fotocasa sigue procesando la cartera en segundo plano.`);
+        toast.info(`Feeds XML listos: ${xmlOk} ok${xmlFail ? ` · ${xmlFail} con error` : ''}. Fotocasa sigue procesando la cartera en segundo plano.`);
         return;
       }
 
       if (xmlFail === 0 && fotocasaOk) {
-        toast.success('Publicacion lanzada en portales correctamente');
+        toast.success('Publicación lanzada: feeds XML listos y Fotocasa actualizada');
         return;
       }
 
       if (xmlOk > 0 || fotocasaOk) {
-        toast.warning(`Publicacion parcial: XML ${xmlOk} ok${xmlFail ? ` · ${xmlFail} error` : ''}${fotocasaOk ? ' · Fotocasa ok' : ''}`);
+        toast.warning(`Lanzamiento parcial: feeds XML ${xmlOk} ok${xmlFail ? ` · ${xmlFail} error` : ''}${fotocasaOk ? ' · Fotocasa ok' : ''}`);
         return;
       }
 
-      toast.error('No se pudo lanzar la publicacion en portales');
+      toast.error('No se pudo lanzar la publicación en portales');
     } catch (error) {
       const timedOut = error instanceof Error && error.message === 'timeout';
-      toast.error(timedOut ? 'La publicacion tardo demasiado en responder' : 'Error al lanzar la publicacion');
+      toast.error(timedOut ? 'La publicación tardó demasiado en responder' : 'Error al lanzar la publicación');
     } finally {
       setLaunchingPublication(false);
     }
