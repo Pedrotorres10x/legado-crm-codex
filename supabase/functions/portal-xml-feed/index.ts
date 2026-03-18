@@ -132,6 +132,47 @@ function orderImages(images: string[] | null, imageOrder: any): string[] {
   return ordered;
 }
 
+/**
+ * Resolve portal images using the same legacy-aware rules as the property detail:
+ * image_order may contain inherited absolute URLs (xmlurl_...) even when images[]
+ * is empty or incomplete.
+ */
+function resolvePortalImageUrls(prop: any): string[] {
+  const baseImages = Array.isArray(prop.images) ? prop.images.filter((url: unknown): url is string => typeof url === 'string' && url.length > 0) : [];
+  const imageOrder = Array.isArray(prop.image_order) ? prop.image_order : [];
+  const ordered: string[] = [];
+
+  for (const entry of imageOrder) {
+    const rawValue = typeof entry === 'string' ? entry : entry?.url || entry?.name;
+    if (typeof rawValue !== 'string' || !rawValue) continue;
+
+    let resolvedUrl = '';
+    if (rawValue.startsWith('xmlurl_')) {
+      resolvedUrl = rawValue.replace('xmlurl_', '');
+    } else if (/^https?:\/\//i.test(rawValue)) {
+      resolvedUrl = rawValue;
+    }
+
+    if (!resolvedUrl) continue;
+    if (/\.(mp4|webm|mov|avi)(\?|$)/i.test(resolvedUrl)) continue;
+    if (/youtube\.com|youtu\.be|vimeo\.com/i.test(resolvedUrl)) continue;
+
+    ordered.push(resolvedUrl);
+  }
+
+  const combined = ordered.length > 0
+    ? [...ordered, ...baseImages.filter((url) => !ordered.includes(url))]
+    : baseImages;
+
+  const seen = new Set<string>();
+  return combined.filter((url) => {
+    const normalized = url.split('?')[0];
+    if (seen.has(normalized)) return false;
+    seen.add(normalized);
+    return true;
+  });
+}
+
 /** Rewrite external image URLs through our proxy so portals can access them */
 function proxyImageUrl(url: string, supabaseUrl: string): string {
   if (url.includes(supabaseUrl)) return url;
@@ -333,7 +374,7 @@ function toKyeroXml(properties: any[], portalName: string, supabaseUrl: string, 
   xml += `  <kyero>\n    <feed_version>3</feed_version>\n  </kyero>\n`;
 
   for (const p of properties) {
-    const imgs = orderImages(p.images, p.image_order).map(u => proxyImageUrl(u, supabaseUrl));
+    const imgs = resolvePortalImageUrls(p).map(u => proxyImageUrl(u, supabaseUrl));
     const mapped = typeMap[normalizePropertyTypeKey(p.property_type)] || typeMap.otro;
     const op = operationMap[normalizeOperationKey(p.operation)] || 'sale';
     const pf = parseFeatures(p.features);
@@ -508,7 +549,7 @@ function toFotocasaXml(properties: any[], supabaseUrl: string): string {
   xml += `  <info>\n    <agency>Legado Real Estate</agency>\n    <date>${new Date().toISOString().substring(0, 10)}</date>\n  </info>\n`;
 
   for (const p of properties) {
-    const imgs = orderImages(p.images, p.image_order).map(u => proxyImageUrl(u, supabaseUrl));
+    const imgs = resolvePortalImageUrls(p).map(u => proxyImageUrl(u, supabaseUrl));
     const mapped = typeMap[normalizePropertyTypeKey(p.property_type)] || typeMap.otro;
     const op = operationMap[normalizeOperationKey(p.operation)] || 'sale';
     const pf = parseFeatures(p.features);
@@ -663,7 +704,7 @@ function toPisosXml(properties: any[], supabaseUrl: string): string {
   xml += `  <Table Name="Inmuebles">\n`;
 
   for (const p of properties) {
-    const imgs = orderImages(p.images, p.image_order).map(u => proxyImageUrl(u, supabaseUrl));
+    const imgs = resolvePortalImageUrls(p).map(u => proxyImageUrl(u, supabaseUrl));
     const pf = parseFeatures(p.features);
     const op = normalizeOperationKey(p.operation || 'venta');
     const cert = resolveCert(p);
@@ -960,7 +1001,7 @@ Deno.serve(async (req) => {
       filtered = filtered.filter((p: any) => (p.price || 0) >= filters.min_price);
     }
     if (filters?.min_images) {
-      filtered = filtered.filter((p: any) => (p.images?.length || 0) >= filters.min_images);
+      filtered = filtered.filter((p: any) => resolvePortalImageUrls(p).length >= filters.min_images);
     }
 
     // Auto-tag: add tag to properties that pass filters but don't have it yet
