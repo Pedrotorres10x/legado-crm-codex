@@ -101,27 +101,49 @@ Deno.serve(async (req) => {
       }
     }
 
-    // property_id is REQUIRED — must be a valid UUID
+    const normalizedPropertyId =
+      typeof property_id === 'string' && property_id.trim().length > 0
+        ? property_id.trim()
+        : null
+
+    // If provided, property_id must be a valid UUID
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-    if (!property_id || typeof property_id !== 'string' || !UUID_RE.test(property_id.trim())) {
-      return new Response(JSON.stringify({ error: 'Se requiere la propiedad de interés para procesar el lead' }), {
+    if (normalizedPropertyId && !UUID_RE.test(normalizedPropertyId)) {
+      return new Response(JSON.stringify({ error: 'La propiedad indicada no es válida' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
-    // Fetch property data first (required)
-    const { data: prop, error: propError } = await supabase
-      .from('properties')
-      .select('id, title, price, city, province, property_type, operation, bedrooms, bathrooms, surface_area, agent_id')
-      .eq('id', property_id.trim())
-      .single()
+    let prop: {
+      id: string
+      title: string | null
+      price: number | null
+      city: string | null
+      province: string | null
+      property_type: string | null
+      operation: string | null
+      bedrooms: number | null
+      bathrooms: number | null
+      surface_area: number | null
+      agent_id: string | null
+    } | null = null
 
-    if (propError || !prop) {
-      return new Response(JSON.stringify({ error: 'Propiedad no encontrada' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+    if (normalizedPropertyId) {
+      const { data: propertyData, error: propError } = await supabase
+        .from('properties')
+        .select('id, title, price, city, province, property_type, operation, bedrooms, bathrooms, surface_area, agent_id')
+        .eq('id', normalizedPropertyId)
+        .single()
+
+      if (propError || !propertyData) {
+        return new Response(JSON.stringify({ error: 'Propiedad no encontrada' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+
+      prop = propertyData
     }
 
     // Normalize optional intent metadata (do not fail if missing)
@@ -132,10 +154,10 @@ Deno.serve(async (req) => {
           topAreaSlug: typeof rawMetadata.topAreaSlug === 'string' ? rawMetadata.topAreaSlug.slice(0, 128) : null,
           topTopic: typeof rawMetadata.topTopic === 'string' ? rawMetadata.topTopic.slice(0, 128) : null,
           topCities: Array.isArray(rawMetadata.topCities)
-            ? rawMetadata.topCities.filter((c: any) => typeof c === 'string').map((c: string) => c.slice(0, 64)).slice(0, 10)
+            ? rawMetadata.topCities.filter((c: unknown): c is string => typeof c === 'string').map((c) => c.slice(0, 64)).slice(0, 10)
             : null,
           recentPropertyIds: Array.isArray(rawMetadata.recentPropertyIds)
-            ? rawMetadata.recentPropertyIds.filter((id: any) => typeof id === 'string').map((id: string) => id.slice(0, 64)).slice(0, 10)
+            ? rawMetadata.recentPropertyIds.filter((id: unknown): id is string => typeof id === 'string').map((id) => id.slice(0, 64)).slice(0, 10)
             : null,
         }
       : null
@@ -146,9 +168,13 @@ Deno.serve(async (req) => {
       : null
     const notesParts: string[] = []
     if (safeMessage) notesParts.push(`Mensaje: ${safeMessage}`)
-    notesParts.push(`Propiedad de interés: ${prop.title} (${property_id})`)
-    if (prop.price) notesParts.push(`Precio: ${prop.price.toLocaleString('es-ES')} €`)
-    if (prop.city) notesParts.push(`Ciudad: ${prop.city}`)
+    if (prop) {
+      notesParts.push(`Propiedad de interés: ${prop.title} (${prop.id})`)
+      if (prop.price) notesParts.push(`Precio: ${prop.price.toLocaleString('es-ES')} €`)
+      if (prop.city) notesParts.push(`Ciudad: ${prop.city}`)
+    } else {
+      notesParts.push('Consulta general desde Legado Colección')
+    }
     notesParts.push(`Origen: Legado Colección`)
     notesParts.push(`Fecha: ${new Date().toISOString()}`)
 
@@ -163,8 +189,8 @@ Deno.serve(async (req) => {
         status: 'nuevo',
         pipeline_stage: 'nuevo',
         notes: notesParts.join('\n'),
-        tags: ['web-lead', 'legadocoleccion'],
-        agent_id: prop.agent_id || null,
+        tags: prop ? ['web-lead', 'legadocoleccion'] : ['web-lead', 'legadocoleccion', 'general-web-lead'],
+        agent_id: prop?.agent_id || null,
         // Buyer intent metadata (optional)
         buyer_intent: safeMetadata,
         intent_score: safeMetadata?.score ?? null,
@@ -185,42 +211,52 @@ Deno.serve(async (req) => {
       throw contactError
     }
 
-    // Create interaction linking contact to property (always, since property_id is required)
+    const interactionDescription = prop
+      ? safeMessage
+        ? `Interesado en: ${prop.title}. Mensaje: ${safeMessage.substring(0, 500)}`
+        : `Interesado en: ${prop.title}`
+      : safeMessage
+        ? `Lead general desde web. Mensaje: ${safeMessage.substring(0, 500)}`
+        : 'Lead general desde web'
+
     await supabase.from('interactions').insert({
       contact_id: contact.id,
-      property_id: prop.id,
-      agent_id: prop.agent_id || null,
+      property_id: prop?.id || null,
+      agent_id: prop?.agent_id || null,
       interaction_type: 'nota',
-      subject: 'Lead desde web',
-      description: safeMessage
-        ? `Interesado en: ${prop.title}. Mensaje: ${safeMessage.substring(0, 500)}`
-        : `Interesado en: ${prop.title}`,
+      subject: prop ? 'Lead desde web' : 'Lead general desde web',
+      description: interactionDescription,
     })
 
-    // Auto-create demand based on property
-    const minPrice = prop.price ? Math.round(prop.price * 0.75) : null
-    const maxPrice = prop.price ? Math.round(prop.price * 1.25) : null
-    const cities = prop.city ? [prop.city] : []
+    if (prop) {
+      const minPrice = prop.price ? Math.round(prop.price * 0.75) : null
+      const maxPrice = prop.price ? Math.round(prop.price * 1.25) : null
+      const cities = prop.city ? [prop.city] : []
 
-    await supabase.from('demands').insert({
-      contact_id: contact.id,
-      property_type: prop.property_type || null,
-      operation: prop.operation || 'venta',
-      min_price: minPrice,
-      max_price: maxPrice,
-      cities,
-      min_bedrooms: prop.bedrooms && prop.bedrooms > 0 ? Math.max(prop.bedrooms - 1, 1) : null,
-      min_bathrooms: prop.bathrooms && prop.bathrooms > 0 ? prop.bathrooms : null,
-      min_surface: prop.surface_area ? Math.round(prop.surface_area * 0.8) : null,
-      notes: `Demanda auto-generada desde lead web (legadocoleccion). Interesado en: ${prop.title}, ${prop.city || 'zona no especificada'}, ${prop.price ? prop.price.toLocaleString('es-ES') + ' €' : 'precio no indicado'}`,
-      auto_match: true,
-      is_active: true,
-    })
+      await supabase.from('demands').insert({
+        contact_id: contact.id,
+        property_type: prop.property_type || null,
+        operation: prop.operation || 'venta',
+        min_price: minPrice,
+        max_price: maxPrice,
+        cities,
+        min_bedrooms: prop.bedrooms && prop.bedrooms > 0 ? Math.max(prop.bedrooms - 1, 1) : null,
+        min_bathrooms: prop.bathrooms && prop.bathrooms > 0 ? prop.bathrooms : null,
+        min_surface: prop.surface_area ? Math.round(prop.surface_area * 0.8) : null,
+        notes: `Demanda auto-generada desde lead web (legadocoleccion). Interesado en: ${prop.title}, ${prop.city || 'zona no especificada'}, ${prop.price ? prop.price.toLocaleString('es-ES') + ' €' : 'precio no indicado'}`,
+        auto_match: true,
+        is_active: true,
+      })
+    }
 
-    console.log(`Lead created: contact ${contact.id} → property ${property_id} (${prop.title})`)
+    console.log(
+      prop
+        ? `Lead created: contact ${contact.id} → property ${normalizedPropertyId} (${prop.title})`
+        : `General lead created: contact ${contact.id}`
+    )
 
     // Send push notification to the assigned agent
-    if (prop.agent_id) {
+    if (prop?.agent_id) {
       try {
         await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/send-push-notification`, {
           method: 'POST',
