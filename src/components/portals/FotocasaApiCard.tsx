@@ -47,6 +47,7 @@ export function FotocasaApiCard() {
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [singleRef, setSingleRef] = useState('');
   const [syncProgress, setSyncProgress] = useState<{ offset: number; total: number; succeeded: number; failed: number } | null>(null);
+  const [activeSyncRunId, setActiveSyncRunId] = useState<string | null>(null);
   const stagnantPollsRef = useRef(0);
   const lastProcessedRef = useRef<number | null>(null);
 
@@ -79,6 +80,7 @@ export function FotocasaApiCard() {
           failed: Number(payload.failed ?? 0),
           has_more: payload.has_more === true,
           total_available: Number(payload.total_available ?? 0),
+          sync_run_id: typeof payload.sync_run_id === 'string' ? payload.sync_run_id : undefined,
         });
       });
   }, []);
@@ -88,24 +90,37 @@ export function FotocasaApiCard() {
       setSyncProgress(null);
       stagnantPollsRef.current = 0;
       lastProcessedRef.current = null;
+      setActiveSyncRunId(null);
       return;
     }
 
     const poll = async () => {
-      const { data } = await supabase
+      const query = supabase
         .from('erp_sync_logs')
         .select('payload')
         .eq('target', 'fotocasa')
         .eq('event', 'sync_batch_summary')
         .order('created_at', { ascending: false })
-        .limit(1);
+        .limit(10);
 
-      if (data?.[0]?.payload) {
-        const payload = data[0].payload as Record<string, unknown>;
+      const { data } = activeSyncRunId
+        ? await query.contains('payload', { sync_run_id: activeSyncRunId })
+        : await query;
+
+      const matchingRow = data?.find((row) => {
+        if (!activeSyncRunId) return true;
+        const payload = row.payload as Record<string, unknown>;
+        return payload.sync_run_id === activeSyncRunId;
+      });
+
+      if (matchingRow?.payload) {
+        const payload = matchingRow.payload as Record<string, unknown>;
         const offset = Number(payload.offset ?? 0);
         const total = Number(payload.total_available ?? 0);
         const hasMore = payload.has_more === true;
         const processed = offset + Number(payload.succeeded ?? 0) + Number(payload.failed ?? 0);
+        const succeeded = Number(payload.succeeded ?? 0);
+        const failed = Number(payload.failed ?? 0);
 
         if (lastProcessedRef.current === processed) stagnantPollsRef.current += 1;
         else {
@@ -113,7 +128,17 @@ export function FotocasaApiCard() {
           lastProcessedRef.current = processed;
         }
 
-        setSyncProgress({ offset: processed, total, succeeded: processed, failed: 0 });
+        setSyncProgress({ offset: processed, total, succeeded: processed - failed, failed });
+        setLastResult({
+          ok: failed === 0,
+          action: 'sync_all',
+          total: Number(payload.batch_size ?? 0),
+          succeeded: offset + succeeded,
+          failed,
+          has_more: hasMore,
+          total_available: total,
+          sync_run_id: typeof payload.sync_run_id === 'string' ? payload.sync_run_id : undefined,
+        });
 
         if (!hasMore) {
           setSyncing(false);
@@ -156,6 +181,7 @@ export function FotocasaApiCard() {
 
       if (action === 'sync_all') {
         setLastResult(data);
+        setActiveSyncRunId(typeof data.sync_run_id === 'string' ? data.sync_run_id : null);
         if (data.has_more) toast.success(`Fotocasa: lote ${data.succeeded}/${data.total_available} enviado, sincronizando el resto automáticamente…`);
         else if (data.succeeded > 0) {
           toast.success(`Fotocasa: ${data.succeeded} sincronizados, ${data.failed} errores`);
@@ -250,7 +276,9 @@ export function FotocasaApiCard() {
         {!syncing && lastResult && (
           <div className="flex gap-2 text-xs">
             <Badge variant="secondary">{lastResult.total_available ?? lastResult.total} inmuebles</Badge>
-            <Badge variant="default">{lastResult.succeeded} ok</Badge>
+            <Badge variant={lastResult.has_more ? 'outline' : 'default'}>
+              {lastResult.has_more ? 'En progreso' : `${lastResult.succeeded} ok`}
+            </Badge>
             {lastResult.failed > 0 && <Badge variant="destructive">{lastResult.failed} errores</Badge>}
           </div>
         )}

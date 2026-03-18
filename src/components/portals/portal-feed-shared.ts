@@ -21,6 +21,7 @@ export interface FotocasaSyncResult {
   failed: number;
   has_more?: boolean;
   total_available?: number;
+  sync_run_id?: string;
 }
 
 export const FEED_BASE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/portal-xml-feed`;

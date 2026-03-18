@@ -7,6 +7,7 @@ type PublicationLaunchPortalResult = {
   display_name: string;
   ok: boolean;
   status: number;
+  inProgress?: boolean;
   detail?: string;
 };
 
@@ -26,6 +27,24 @@ function getPortalErrorLabel(portalName: string, detail?: string, status?: numbe
   }
 
   return detail || `Estado ${status ?? 0}`;
+}
+
+function getFotocasaLaunchLabel(payload?: {
+  error?: string;
+  message?: string;
+  has_more?: boolean;
+  succeeded?: number;
+  total_available?: number;
+}) {
+  if (!payload) return 'Sin respuesta de Fotocasa';
+  if (payload.error) return getPortalErrorLabel('Fotocasa', payload.error);
+  if (payload.has_more) {
+    return `Procesando cartera: ${payload.succeeded ?? 0}/${payload.total_available ?? 0} enviados`;
+  }
+  if ((payload.total_available ?? 0) > 0) {
+    return `Cartera actualizada: ${payload.total_available ?? 0} inmuebles`;
+  }
+  return payload.message || 'Sin respuesta de Fotocasa';
 }
 
 const isFotocasaXmlFeed = (feed: PortalFeed) => {
@@ -189,6 +208,7 @@ export function usePortalFeedsManager() {
       const xmlFail = payload.xml_results?.filter((item) => !item.ok).length ?? 0;
       const fotocasaOk = payload.fotocasa_result?.ok === true;
       const fotocasaError = payload.fotocasa_result?.payload?.error;
+      const fotocasaInProgress = payload.fotocasa_result?.payload?.has_more === true;
       const summaryPortals: PublicationLaunchPortalResult[] = [
         ...(payload.xml_results ?? []).map((item) => ({
           display_name: item.display_name || 'Feed XML',
@@ -198,9 +218,12 @@ export function usePortalFeedsManager() {
         })),
         {
           display_name: 'Fotocasa',
-          ok: fotocasaOk,
+          ok: fotocasaOk && !fotocasaInProgress,
+          inProgress: fotocasaInProgress,
           status: payload.fotocasa_result?.status ?? 0,
-          detail: getPortalErrorLabel('Fotocasa', fotocasaError || payload.fotocasa_result?.payload?.message, payload.fotocasa_result?.status),
+          detail: fotocasaError
+            ? getPortalErrorLabel('Fotocasa', fotocasaError || payload.fotocasa_result?.payload?.message, payload.fotocasa_result?.status)
+            : getFotocasaLaunchLabel(payload.fotocasa_result?.payload),
         },
       ];
 
@@ -218,6 +241,11 @@ export function usePortalFeedsManager() {
 
       if (isFotocasaAuthorizationError(fotocasaError)) {
         toast.warning(`XML listos: ${xmlOk} ok${xmlFail ? ` · ${xmlFail} con error` : ''}. Fotocasa ha rechazado la credencial.`);
+        return;
+      }
+
+      if (fotocasaInProgress) {
+        toast.info(`XML listos: ${xmlOk} ok${xmlFail ? ` · ${xmlFail} con error` : ''}. Fotocasa sigue procesando la cartera en segundo plano.`);
         return;
       }
 

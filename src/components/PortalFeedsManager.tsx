@@ -60,12 +60,15 @@ const PortalFeedsManager = () => {
                 <div key={portal.display_name} className="rounded-md bg-background p-3 text-xs">
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-medium">{portal.display_name}</span>
-                    <Badge variant={portal.ok ? 'secondary' : 'destructive'} className="text-[10px]">
-                      {portal.ok ? 'OK' : 'Error'}
+                    <Badge
+                      variant={portal.inProgress ? 'outline' : portal.ok ? 'secondary' : 'destructive'}
+                      className="text-[10px]"
+                    >
+                      {portal.inProgress ? 'En progreso' : portal.ok ? 'OK' : 'Error'}
                     </Badge>
                   </div>
                   <p className="mt-2 text-muted-foreground">
-                    {portal.ok ? `Estado ${portal.status}` : portal.detail || `Estado ${portal.status}`}
+                    {portal.detail || `Estado ${portal.status}`}
                   </p>
                 </div>
               ))}
