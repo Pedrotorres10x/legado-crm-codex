@@ -25,6 +25,7 @@ export interface FotocasaSyncResult {
 
 export const FEED_BASE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/portal-xml-feed`;
 export const FOTOCASA_FN = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fotocasa-sync`;
+export const PORTAL_CUTOVER_LAUNCH_FN = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/portal-cutover-launch`;
 
 export const fetchWithTimeout = async (
   input: RequestInfo | URL,

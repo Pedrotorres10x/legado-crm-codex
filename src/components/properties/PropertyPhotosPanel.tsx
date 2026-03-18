@@ -1,4 +1,4 @@
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import * as AccordionUI from '@/components/ui/accordion';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -87,15 +87,15 @@ const PropertyPhotosPanel = ({
   return (
     <>
       <Card className="animate-fade-in-up">
-        <Accordion type="single" collapsible>
-          <AccordionItem value="photos" className="border-b-0">
+        <AccordionUI.Accordion type="single" collapsible>
+          <AccordionUI.AccordionItem value="photos" className="border-b-0">
             <div className="px-6 pt-6 pb-2 flex items-center justify-between gap-2 flex-wrap">
-              <AccordionTrigger className="py-0 hover:no-underline flex-1 min-w-0">
+              <AccordionUI.AccordionTrigger className="py-0 hover:no-underline flex-1 min-w-0">
                 <span className="text-base font-semibold flex items-center gap-2">
                   <Image className="h-4 w-4 text-primary" />
                   Fotos ({images.length})
                 </span>
-              </AccordionTrigger>
+              </AccordionUI.AccordionTrigger>
               <div className="flex items-center gap-2 flex-wrap" onClick={(event) => event.stopPropagation()}>
                 {canManagePhotos && images.length > 1 && (
                   <>
@@ -125,7 +125,7 @@ const PropertyPhotosPanel = ({
                 )}
               </div>
             </div>
-            <AccordionContent className="px-6 pb-6">
+            <AccordionUI.AccordionContent className="px-6 pb-6">
               {images.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground text-sm">
                   <Image className="h-10 w-10 mx-auto mb-2 opacity-30" />
@@ -244,9 +244,9 @@ const PropertyPhotosPanel = ({
                   ))}
                 </div>
               )}
-            </AccordionContent>
-          </AccordionItem>
-        </Accordion>
+            </AccordionUI.AccordionContent>
+          </AccordionUI.AccordionItem>
+        </AccordionUI.Accordion>
       </Card>
 
       <PhotoOrderDialog

@@ -170,11 +170,6 @@ export const PropertyCard = ({ property: p, healthInfo, mode, onRemoved }: Prope
                 <Globe className="h-2.5 w-2.5" />{p.country}
               </Badge>
             )}
-            {p.send_to_idealista && (
-              <Badge className="bg-success/90 text-success-foreground border-0 text-[9px] px-1.5 py-0 flex items-center gap-0.5 shrink-0">
-                <Globe className="h-2.5 w-2.5" />Idealista
-              </Badge>
-            )}
             {legalRiskBadge && (
               <Badge className={`${legalRiskBadge.className} text-[9px] px-1.5 py-0 shrink-0`}>
                 {legalRiskBadge.label}
@@ -218,11 +213,6 @@ export const PropertyCard = ({ property: p, healthInfo, mode, onRemoved }: Prope
           {isInternacional(p) && (
             <Badge className="bg-sky-600/90 text-white border-0 text-[11px] flex items-center gap-0.5">
               <Globe className="h-3 w-3" />{p.country}
-            </Badge>
-          )}
-          {p.send_to_idealista && (
-            <Badge className="bg-success/90 text-success-foreground border-0 text-[11px] flex items-center gap-0.5">
-              <Globe className="h-3 w-3" />Idealista
             </Badge>
           )}
           {legalRiskBadge && (
@@ -320,7 +310,6 @@ export const PropertyListView = ({ properties, healthColors, onRemoved }: Proper
             <TableHead>Referencia</TableHead><TableHead>Inmueble</TableHead><TableHead>Salud</TableHead>
             <TableHead>País</TableHead><TableHead>Ciudad</TableHead><TableHead>Origen</TableHead><TableHead>Legal</TableHead><TableHead>Hab.</TableHead><TableHead>Superficie</TableHead>
             <TableHead>Precio</TableHead><TableHead>Estado</TableHead><TableHead>Mandato</TableHead>
-            <TableHead>Idealista</TableHead>
             <TableHead className="w-10"></TableHead>
           </TableRow>
         </TableHeader>
@@ -374,15 +363,6 @@ export const PropertyListView = ({ properties, healthColors, onRemoved }: Proper
                   : p.mandate_type === 'compartida'
                   ? <span className="text-xs text-muted-foreground">Compartida</span>
                   : '—'}
-              </TableCell>
-              <TableCell>
-                {p.send_to_idealista ? (
-                  <Badge className="bg-success/90 text-success-foreground border-0 text-[10px] flex items-center gap-0.5 w-fit">
-                    <Globe className="h-3 w-3" />Sí
-                  </Badge>
-                ) : (
-                  <span className="text-xs text-muted-foreground">—</span>
-                )}
               </TableCell>
               <TableCell>
                 <PropertyRowActions property={p} onRemoved={onRemoved} />

@@ -11,11 +11,17 @@ const LEGACY_SUPABASE_URL = Deno.env.get('LEGACY_CRM_SUPABASE_URL') ?? ''
 const LEGACY_SUPABASE_ANON_KEY = Deno.env.get('LEGACY_CRM_SUPABASE_ANON_KEY') ?? ''
 const LEGACY_PROJECT_ID = 'srhkvthmzusfrbqtijlw'
 
-type LegacyProperty = Record<string, any>
+type LegacyProperty = Record<string, unknown>
 type CurrentPropertyRef = {
   id: string
   crm_reference: string | null
   portal_token: string | null
+}
+
+type NormalizedImageOrderEntry = {
+  name: string
+  label: string
+  source: 'xml' | 'storage' | 'external'
 }
 
 function json(data: unknown, init: ResponseInit = {}) {
@@ -67,45 +73,152 @@ function isVideoFileName(value: string): boolean {
     normalized.endsWith('.mp4') ||
     normalized.endsWith('.mov') ||
     normalized.endsWith('.webm') ||
-    normalized.endsWith('.m4v')
+    normalized.endsWith('.m4v') ||
+    normalized.includes('youtube.com/watch') ||
+    normalized.includes('youtu.be/') ||
+    normalized.includes('vimeo.com/')
   )
+}
+
+function isVirtualTourUrl(value: string): boolean {
+  const normalized = value.toLowerCase()
+  return (
+    normalized.includes('matterport.com') ||
+    normalized.includes('cloudpano.com') ||
+    normalized.includes('kuula.co') ||
+    normalized.includes('3dvista.com') ||
+    normalized.includes('virtualtour') ||
+    normalized.includes('/tour/')
+  )
+}
+
+function isFloorPlanLabel(value: string): boolean {
+  const normalized = value.toLowerCase()
+  return normalized.includes('plano') || normalized.includes('floor plan')
+}
+
+function getLegacyImageBaseUrl(record: LegacyProperty, images: string[]): string {
+  return typeof images[0] === 'string' && images[0].includes('/property-media/')
+    ? images[0].slice(0, images[0].lastIndexOf('/') + 1)
+    : `${LEGACY_SUPABASE_URL}/storage/v1/object/public/property-media/${record.id}/`
+}
+
+function extractValueFromImageOrderItem(item: unknown): string | null {
+  const candidate = item as { url?: unknown; src?: unknown; path?: unknown; name?: unknown }
+  return (
+    normalizeUrl(candidate?.url) ??
+    normalizeUrl(candidate?.src) ??
+    normalizeUrl(candidate?.path) ??
+    normalizeUrl(candidate?.name)
+  )
+}
+
+function normalizeLegacyImageOrder(record: LegacyProperty, images: string[]) {
+  const imageBaseUrl = getLegacyImageBaseUrl(record, images)
+  const entries: NormalizedImageOrderEntry[] = []
+  const videos: string[] = []
+  const floorPlans: string[] = []
+  let virtualTourUrl: string | null = null
+
+  for (const item of Array.isArray(record.image_order) ? record.image_order : []) {
+    const candidate = item as { label?: unknown; source?: unknown }
+    const rawValue = extractValueFromImageOrderItem(item)
+    const label = typeof candidate?.label === 'string' ? candidate.label.trim() : ''
+    const source = typeof candidate?.source === 'string' ? candidate.source.trim().toLowerCase() : ''
+
+    if (!rawValue) continue
+
+    const directUrl = rawValue.startsWith('xmlurl_') ? rawValue.replace('xmlurl_', '') : rawValue
+    if (/^https?:\/\//i.test(directUrl)) {
+      if (isVideoFileName(directUrl)) {
+        videos.push(directUrl)
+        continue
+      }
+      if (isVirtualTourUrl(directUrl)) {
+        virtualTourUrl ??= directUrl
+        continue
+      }
+
+      entries.push({
+        name: `xmlurl_${directUrl}`,
+        label,
+        source: source === 'xml' ? 'xml' : 'external',
+      })
+      if (isFloorPlanLabel(label)) floorPlans.push(directUrl)
+      continue
+    }
+
+    if (rawValue.startsWith('xml_')) {
+      const imageIndex = parseInt(rawValue.replace('xml_', ''), 10)
+      const matchedImage = !Number.isNaN(imageIndex) ? images[imageIndex] ?? null : null
+
+      if (matchedImage && isVideoFileName(matchedImage)) {
+        videos.push(matchedImage)
+        continue
+      }
+
+      entries.push({ name: rawValue, label, source: 'xml' })
+      if (matchedImage && isFloorPlanLabel(label)) floorPlans.push(matchedImage)
+      continue
+    }
+
+    if (isVideoFileName(rawValue)) {
+      videos.push(source === 'storage' ? `${imageBaseUrl}${rawValue}` : rawValue)
+      continue
+    }
+
+    const matchedImage = images.find((imageUrl) => imageUrl.includes(rawValue))
+    if (matchedImage) {
+      entries.push({
+        name: `xmlurl_${matchedImage}`,
+        label,
+        source: source === 'xml' ? 'xml' : 'external',
+      })
+      if (isFloorPlanLabel(label)) floorPlans.push(matchedImage)
+      continue
+    }
+
+    entries.push({
+      name: rawValue,
+      label,
+      source: source === 'xml' ? 'xml' : 'storage',
+    })
+  }
+
+  const dedupedEntries = entries.filter((entry, index) =>
+    entries.findIndex((candidate) => candidate.name === entry.name) === index,
+  )
+
+  return {
+    imageOrder: dedupedEntries,
+    videos: uniqueUrlList(videos),
+    floorPlans: uniqueUrlList(floorPlans),
+    virtualTourUrl,
+  }
 }
 
 function extractLegacyMedia(record: LegacyProperty) {
   const images = uniqueStrings(record.images)
-  const directVideos = uniqueStrings(record.videos)
-  const floorPlans = uniqueStrings(record.floor_plans)
+  const normalizedOrder = normalizeLegacyImageOrder(record, images)
+  const directVideos = uniqueUrlList([
+    ...uniqueStrings(record.videos),
+    record.video_url,
+    record.video,
+  ])
+  const floorPlans = uniqueUrlList([
+    ...uniqueStrings(record.floor_plans),
+    ...normalizedOrder.floorPlans,
+  ])
   const virtualTourUrl =
     normalizeUrl(record.virtual_tour_url) ??
     normalizeUrl(record.virtual_tour) ??
-    normalizeUrl(record.tour_url)
-
-  const storageCandidates = Array.isArray(record.image_order) ? record.image_order : []
-  const imageBaseUrl =
-    typeof images[0] === 'string' && images[0].includes('/property-media/')
-      ? images[0].slice(0, images[0].lastIndexOf('/') + 1)
-      : `${LEGACY_SUPABASE_URL}/storage/v1/object/public/property-media/${record.id}/`
-
-  const imageOrderVideos = storageCandidates.flatMap((item: any) => {
-    const maybeUrl =
-      normalizeUrl(item?.url) ??
-      normalizeUrl(item?.src) ??
-      normalizeUrl(item?.path) ??
-      normalizeUrl(item?.name)
-
-    if (!maybeUrl) return []
-    if (/^https?:\/\//i.test(maybeUrl) && isVideoFileName(maybeUrl)) {
-      return [maybeUrl]
-    }
-    if (item?.source === 'storage' && isVideoFileName(maybeUrl)) {
-      return [`${imageBaseUrl}${maybeUrl}`]
-    }
-    return []
-  })
+    normalizeUrl(record.tour_url) ??
+    normalizedOrder.virtualTourUrl
 
   return {
     images,
-    videos: uniqueUrlList([...directVideos, ...imageOrderVideos]),
+    imageOrder: normalizedOrder.imageOrder,
+    videos: uniqueUrlList([...directVideos, ...normalizedOrder.videos]),
     floorPlans,
     virtualTourUrl,
   }
@@ -141,6 +254,7 @@ function sanitizeProperty(record: LegacyProperty) {
     source: sanitizeSource(record.source),
     xml_id: fallbackXmlId,
     images: media.images,
+    image_order: media.imageOrder,
     videos: media.videos,
     floor_plans: media.floorPlans,
     virtual_tour_url: media.virtualTourUrl,
@@ -209,9 +323,10 @@ function summarizeMediaStats(records: LegacyProperty[]) {
   )
   const withVideoInImageOrder = records.filter((record) =>
     Array.isArray(record.image_order) &&
-    record.image_order.some((item: any) => {
-      const name = typeof item?.name === 'string' ? item.name.toLowerCase() : ''
-      const label = typeof item?.label === 'string' ? item.label.toLowerCase() : ''
+    record.image_order.some((item: unknown) => {
+      const candidate = item as { name?: unknown; label?: unknown }
+      const name = typeof candidate?.name === 'string' ? candidate.name.toLowerCase() : ''
+      const label = typeof candidate?.label === 'string' ? candidate.label.toLowerCase() : ''
       return (
         name.endsWith('.mp4') ||
         name.endsWith('.mov') ||

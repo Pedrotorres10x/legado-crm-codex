@@ -24,7 +24,7 @@ const AdminStockRadar = () => {
       const [{ data: propertyRows }, { data: profileRows }] = await Promise.all([
         supabase
           .from('properties')
-          .select('id, title, status, agent_id, mandate_type, mandate_end, send_to_idealista, xml_id, source, price, images, description'),
+          .select('id, title, status, agent_id, mandate_type, mandate_end, xml_id, source, price, images, description'),
         supabase.from('profiles').select('user_id, full_name').order('full_name'),
       ]);
 
@@ -85,7 +85,7 @@ const AdminStockRadar = () => {
         <div className="rounded-xl border border-border/50 p-4">
           <p className="text-sm font-medium">Difusión pendiente</p>
           <p className="text-xs text-muted-foreground mt-1">
-            {loading ? 'Calculando...' : `${teamSummary.distributionGapCount} inmueble${teamSummary.distributionGapCount === 1 ? '' : 's'} con ficha válida pero sin Idealista ni feed activo.`}
+            {loading ? 'Calculando...' : `${teamSummary.distributionGapCount} inmueble${teamSummary.distributionGapCount === 1 ? '' : 's'} con ficha válida pero sin feed activo.`}
           </p>
         </div>
 
@@ -97,7 +97,7 @@ const AdminStockRadar = () => {
             </div>
             <Badge variant="outline" className="gap-1">
               <Globe className="h-3 w-3" />
-              Idealista {loading ? '...' : teamSummary.idealistaReadyCount}
+              Feed {loading ? '...' : teamSummary.feedReadyCount}
             </Badge>
           </div>
 

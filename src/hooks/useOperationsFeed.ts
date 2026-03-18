@@ -13,7 +13,6 @@ type PropertyRow = {
   agent_id: string | null;
   mandate_type?: string | null;
   mandate_end?: string | null;
-  send_to_idealista?: boolean | null;
   xml_id?: string | null;
   source?: string | null;
   price?: number | null;
@@ -174,14 +173,14 @@ export const useOperationsFeed = ({
 
       let legalQuery = supabase
         .from('properties')
-        .select('id, title, city, status, agent_id, mandate_type, mandate_end, send_to_idealista, xml_id, source, price, images, description, legal_risk_level, legal_risk_summary, legal_risk_updated_at, reservation_date, reservation_amount, arras_status, arras_date, arras_amount, arras_buyer_id, deed_date, deed_notary, updated_at')
+        .select('id, title, city, status, agent_id, mandate_type, mandate_end, xml_id, source, price, images, description, legal_risk_level, legal_risk_summary, legal_risk_updated_at, reservation_date, reservation_amount, arras_status, arras_date, arras_amount, arras_buyer_id, deed_date, deed_notary, updated_at')
         .in('legal_risk_level', ['alto', 'medio', 'sin_datos'])
         .order('legal_risk_updated_at', { ascending: true, nullsFirst: true })
         .limit(10);
 
       let closingQuery = supabase
         .from('properties')
-        .select('id, title, city, status, agent_id, mandate_type, mandate_end, send_to_idealista, xml_id, source, price, images, description, legal_risk_level, legal_risk_summary, legal_risk_updated_at, reservation_date, reservation_amount, arras_status, arras_date, arras_amount, arras_buyer_id, deed_date, deed_notary, updated_at')
+        .select('id, title, city, status, agent_id, mandate_type, mandate_end, xml_id, source, price, images, description, legal_risk_level, legal_risk_summary, legal_risk_updated_at, reservation_date, reservation_amount, arras_status, arras_date, arras_amount, arras_buyer_id, deed_date, deed_notary, updated_at')
         .or('reservation_date.not.is.null,arras_status.neq.sin_arras,deed_date.not.is.null,status.eq.arras,status.eq.reservado')
         .order('updated_at', { ascending: false })
         .limit(12);
@@ -401,7 +400,7 @@ export const useOperationsFeed = ({
             severity: 'media',
             title: `Ficha floja: ${property.title || 'Inmueble'}`,
             summary: 'Faltan básicos de publicación como precio, fotos o descripción consistente para mover mejor este stock.',
-            meta: [property.city, property.send_to_idealista ? 'Idealista activo' : 'Sin Idealista'].filter(Boolean).join(' · ') || 'Stock publicable',
+            meta: [property.city, hasDistributionReady(property as any) ? 'Feed activo' : 'Sin feed'].filter(Boolean).join(' · ') || 'Stock publicable',
             route: `/properties/${property.id}#ficha`,
             routeLabel: 'Completar ficha',
             secondaryRoute: `/properties/${property.id}#fotos`,
@@ -418,7 +417,7 @@ export const useOperationsFeed = ({
             kind: 'stock',
             severity: 'media',
             title: `Sin difusión: ${property.title || 'Inmueble'}`,
-            summary: 'La ficha ya está lista para publicar, pero aún no tiene Idealista ni feed activo.',
+            summary: 'La ficha ya está lista para publicar, pero aún no tiene feed activo.',
             meta: [property.city, 'Publicación pendiente'].filter(Boolean).join(' · ') || 'Stock publicable',
             route: `/properties/${property.id}#publicacion`,
             routeLabel: 'Activar difusión',

@@ -77,7 +77,7 @@ export function useNotifications() {
         .limit(12),
       supabase.from('matches').select('notes').eq('agent_id', user.id).eq('status', 'descartado'),
       supabase.from('offers').select('notes').eq('agent_id', user.id).in('status', ['rechazada', 'retirada', 'expirada']),
-      supabase.from('properties').select('id, title, status, mandate_type, mandate_end, send_to_idealista, xml_id, source, price, images, description').eq('agent_id', user.id),
+      supabase.from('properties').select('id, title, status, mandate_type, mandate_end, xml_id, source, price, images, description').eq('agent_id', user.id),
       supabase.from('properties').select('id, title, status, updated_at').eq('agent_id', user.id).in('status', ['vendido', 'alquilado']),
     ]);
     const kpiSummary = await getAgentKpiSummary(user.id);
@@ -288,7 +288,7 @@ export function useNotifications() {
         id: 'stock-distribution-pending',
         type: 'stock_issue',
         title: `🌐 ${distributionPending.length} inmueble${distributionPending.length === 1 ? '' : 's'} sin difusión`,
-        description: 'Hay fichas ya listas que aún no están activas en Idealista o feed.',
+        description: 'Hay fichas ya listas que aún no tienen feed activo.',
         icon: Building2,
         color: 'text-sky-600',
         priority: 4,

@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.1"
+    PostgrestVersion: "14.4"
   }
   public: {
     Tables: {
@@ -734,6 +734,7 @@ export type Database = {
           address: string | null
           agent_id: string | null
           birth_date: string | null
+          buyer_intent: Json | null
           city: string | null
           contact_type: Database["public"]["Enums"]["contact_type"]
           created_at: string
@@ -745,6 +746,10 @@ export type Database = {
           gdpr_legal_basis: string
           id: string
           id_number: string | null
+          intent_score: number | null
+          intent_stage: string | null
+          intent_top_area_slug: string | null
+          intent_top_topic: string | null
           listing_price: number | null
           nationality: string | null
           needs_mortgage: boolean
@@ -765,6 +770,7 @@ export type Database = {
           address?: string | null
           agent_id?: string | null
           birth_date?: string | null
+          buyer_intent?: Json | null
           city?: string | null
           contact_type?: Database["public"]["Enums"]["contact_type"]
           created_at?: string
@@ -776,6 +782,10 @@ export type Database = {
           gdpr_legal_basis?: string
           id?: string
           id_number?: string | null
+          intent_score?: number | null
+          intent_stage?: string | null
+          intent_top_area_slug?: string | null
+          intent_top_topic?: string | null
           listing_price?: number | null
           nationality?: string | null
           needs_mortgage?: boolean
@@ -796,6 +806,7 @@ export type Database = {
           address?: string | null
           agent_id?: string | null
           birth_date?: string | null
+          buyer_intent?: Json | null
           city?: string | null
           contact_type?: Database["public"]["Enums"]["contact_type"]
           created_at?: string
@@ -807,6 +818,10 @@ export type Database = {
           gdpr_legal_basis?: string
           id?: string
           id_number?: string | null
+          intent_score?: number | null
+          intent_stage?: string | null
+          intent_top_area_slug?: string | null
+          intent_top_topic?: string | null
           listing_price?: number | null
           nationality?: string | null
           needs_mortgage?: boolean
@@ -942,6 +957,92 @@ export type Database = {
         }
         Relationships: []
       }
+      demands: {
+        Row: {
+          auto_match: boolean
+          cities: string[] | null
+          contact_id: string
+          created_at: string
+          features: string[] | null
+          financing_type: string | null
+          floor_preference: string | null
+          id: string
+          is_active: boolean | null
+          max_mortgage_payment: number | null
+          max_price: number | null
+          min_bathrooms: number | null
+          min_bedrooms: number | null
+          min_price: number | null
+          min_surface: number | null
+          notes: string | null
+          operation: Database["public"]["Enums"]["operation_type"] | null
+          preferred_orientation: string[] | null
+          property_type: Database["public"]["Enums"]["property_type"] | null
+          property_types: string[] | null
+          updated_at: string
+          urgency_months: number | null
+          zones: string[] | null
+        }
+        Insert: {
+          auto_match?: boolean
+          cities?: string[] | null
+          contact_id: string
+          created_at?: string
+          features?: string[] | null
+          financing_type?: string | null
+          floor_preference?: string | null
+          id?: string
+          is_active?: boolean | null
+          max_mortgage_payment?: number | null
+          max_price?: number | null
+          min_bathrooms?: number | null
+          min_bedrooms?: number | null
+          min_price?: number | null
+          min_surface?: number | null
+          notes?: string | null
+          operation?: Database["public"]["Enums"]["operation_type"] | null
+          preferred_orientation?: string[] | null
+          property_type?: Database["public"]["Enums"]["property_type"] | null
+          property_types?: string[] | null
+          updated_at?: string
+          urgency_months?: number | null
+          zones?: string[] | null
+        }
+        Update: {
+          auto_match?: boolean
+          cities?: string[] | null
+          contact_id?: string
+          created_at?: string
+          features?: string[] | null
+          financing_type?: string | null
+          floor_preference?: string | null
+          id?: string
+          is_active?: boolean | null
+          max_mortgage_payment?: number | null
+          max_price?: number | null
+          min_bathrooms?: number | null
+          min_bedrooms?: number | null
+          min_price?: number | null
+          min_surface?: number | null
+          notes?: string | null
+          operation?: Database["public"]["Enums"]["operation_type"] | null
+          preferred_orientation?: string[] | null
+          property_type?: Database["public"]["Enums"]["property_type"] | null
+          property_types?: string[] | null
+          updated_at?: string
+          urgency_months?: number | null
+          zones?: string[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "demands_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       document_contacts: {
         Row: {
           contact_id: string
@@ -1069,92 +1170,6 @@ export type Database = {
             columns: ["contract_id"]
             isOneToOne: false
             referencedRelation: "generated_contracts"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      demands: {
-        Row: {
-          auto_match: boolean
-          cities: string[] | null
-          contact_id: string
-          created_at: string
-          features: string[] | null
-          financing_type: string | null
-          floor_preference: string | null
-          id: string
-          is_active: boolean | null
-          max_mortgage_payment: number | null
-          max_price: number | null
-          min_bathrooms: number | null
-          min_bedrooms: number | null
-          min_price: number | null
-          min_surface: number | null
-          notes: string | null
-          operation: Database["public"]["Enums"]["operation_type"] | null
-          preferred_orientation: string[] | null
-          property_type: Database["public"]["Enums"]["property_type"] | null
-          property_types: string[] | null
-          updated_at: string
-          urgency_months: number | null
-          zones: string[] | null
-        }
-        Insert: {
-          auto_match?: boolean
-          cities?: string[] | null
-          contact_id: string
-          created_at?: string
-          features?: string[] | null
-          financing_type?: string | null
-          floor_preference?: string | null
-          id?: string
-          is_active?: boolean | null
-          max_mortgage_payment?: number | null
-          max_price?: number | null
-          min_bathrooms?: number | null
-          min_bedrooms?: number | null
-          min_price?: number | null
-          min_surface?: number | null
-          notes?: string | null
-          operation?: Database["public"]["Enums"]["operation_type"] | null
-          preferred_orientation?: string[] | null
-          property_type?: Database["public"]["Enums"]["property_type"] | null
-          property_types?: string[] | null
-          updated_at?: string
-          urgency_months?: number | null
-          zones?: string[] | null
-        }
-        Update: {
-          auto_match?: boolean
-          cities?: string[] | null
-          contact_id?: string
-          created_at?: string
-          features?: string[] | null
-          financing_type?: string | null
-          floor_preference?: string | null
-          id?: string
-          is_active?: boolean | null
-          max_mortgage_payment?: number | null
-          max_price?: number | null
-          min_bathrooms?: number | null
-          min_bedrooms?: number | null
-          min_price?: number | null
-          min_surface?: number | null
-          notes?: string | null
-          operation?: Database["public"]["Enums"]["operation_type"] | null
-          preferred_orientation?: string[] | null
-          property_type?: Database["public"]["Enums"]["property_type"] | null
-          property_types?: string[] | null
-          updated_at?: string
-          urgency_months?: number | null
-          zones?: string[] | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "demands_contact_id_fkey"
-            columns: ["contact_id"]
-            isOneToOne: false
-            referencedRelation: "contacts"
             referencedColumns: ["id"]
           },
         ]
@@ -1315,95 +1330,10 @@ export type Database = {
           },
         ]
       }
-      idealista_contact_mappings: {
-        Row: {
-          created_at: string
-          id: string
-          idealista_contact_id: number
-          idealista_contact_name: string | null
-          profile_id: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          idealista_contact_id: number
-          idealista_contact_name?: string | null
-          profile_id: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          idealista_contact_id?: number
-          idealista_contact_name?: string | null
-          profile_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "idealista_contact_mappings_profile_id_fkey"
-            columns: ["profile_id"]
-            isOneToOne: true
-            referencedRelation: "profiles"
-            referencedColumns: ["user_id"]
-          },
-        ]
-      }
-      idealista_mappings: {
-        Row: {
-          created_at: string
-          id: string
-          idealista_ad_id: string | null
-          idealista_customer_id: string | null
-          idealista_property_code: string | null
-          idealista_response: Json | null
-          image_checksums: Json | null
-          last_error: string | null
-          last_synced_at: string | null
-          property_id: string
-          status: string
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          idealista_ad_id?: string | null
-          idealista_customer_id?: string | null
-          idealista_property_code?: string | null
-          idealista_response?: Json | null
-          image_checksums?: Json | null
-          last_error?: string | null
-          last_synced_at?: string | null
-          property_id: string
-          status?: string
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          idealista_ad_id?: string | null
-          idealista_customer_id?: string | null
-          idealista_property_code?: string | null
-          idealista_response?: Json | null
-          image_checksums?: Json | null
-          last_error?: string | null
-          last_synced_at?: string | null
-          property_id?: string
-          status?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "idealista_mappings_property_id_fkey"
-            columns: ["property_id"]
-            isOneToOne: true
-            referencedRelation: "properties"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       interactions: {
         Row: {
-          ai_summary: string | null
           agent_id: string | null
+          ai_summary: string | null
           call_duration_seconds: number | null
           call_sid: string | null
           call_status: string | null
@@ -1421,8 +1351,8 @@ export type Database = {
           transcript_status: string | null
         }
         Insert: {
-          ai_summary?: string | null
           agent_id?: string | null
+          ai_summary?: string | null
           call_duration_seconds?: number | null
           call_sid?: string | null
           call_status?: string | null
@@ -1440,8 +1370,8 @@ export type Database = {
           transcript_status?: string | null
         }
         Update: {
-          ai_summary?: string | null
           agent_id?: string | null
+          ai_summary?: string | null
           call_duration_seconds?: number | null
           call_sid?: string | null
           call_status?: string | null
@@ -1464,6 +1394,13 @@ export type Database = {
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "interactions_follow_up_task_id_fkey"
+            columns: ["follow_up_task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
             referencedColumns: ["id"]
           },
           {
@@ -1758,101 +1695,6 @@ export type Database = {
           {
             foreignKeyName: "media_access_logs_property_id_fkey"
             columns: ["property_id"]
-            isOneToOne: false
-            referencedRelation: "properties"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      mls_incoming: {
-        Row: {
-          address: string | null
-          bathrooms: number | null
-          bedrooms: number | null
-          city: string | null
-          created_at: string
-          description: string | null
-          energy_certificate: string | null
-          features: string[] | null
-          id: string
-          images: string[] | null
-          imported_property_id: string | null
-          latitude: number | null
-          longitude: number | null
-          mls_agency_name: string | null
-          mls_property_id: string
-          operation_type: string | null
-          price: number | null
-          property_type: string | null
-          raw_data: Json | null
-          reference_code: string | null
-          reviewed_by: string | null
-          status: string
-          surface_area: number | null
-          title: string
-          updated_at: string
-          zone: string | null
-        }
-        Insert: {
-          address?: string | null
-          bathrooms?: number | null
-          bedrooms?: number | null
-          city?: string | null
-          created_at?: string
-          description?: string | null
-          energy_certificate?: string | null
-          features?: string[] | null
-          id?: string
-          images?: string[] | null
-          imported_property_id?: string | null
-          latitude?: number | null
-          longitude?: number | null
-          mls_agency_name?: string | null
-          mls_property_id: string
-          operation_type?: string | null
-          price?: number | null
-          property_type?: string | null
-          raw_data?: Json | null
-          reference_code?: string | null
-          reviewed_by?: string | null
-          status?: string
-          surface_area?: number | null
-          title: string
-          updated_at?: string
-          zone?: string | null
-        }
-        Update: {
-          address?: string | null
-          bathrooms?: number | null
-          bedrooms?: number | null
-          city?: string | null
-          created_at?: string
-          description?: string | null
-          energy_certificate?: string | null
-          features?: string[] | null
-          id?: string
-          images?: string[] | null
-          imported_property_id?: string | null
-          latitude?: number | null
-          longitude?: number | null
-          mls_agency_name?: string | null
-          mls_property_id?: string
-          operation_type?: string | null
-          price?: number | null
-          property_type?: string | null
-          raw_data?: Json | null
-          reference_code?: string | null
-          reviewed_by?: string | null
-          status?: string
-          surface_area?: number | null
-          title?: string
-          updated_at?: string
-          zone?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "mls_incoming_imported_property_id_fkey"
-            columns: ["imported_property_id"]
             isOneToOne: false
             referencedRelation: "properties"
             referencedColumns: ["id"]
@@ -2329,11 +2171,11 @@ export type Database = {
           is_featured: boolean
           is_international: boolean
           key_location: string | null
+          latitude: number | null
           legal_risk_docs_count: number
           legal_risk_level: string | null
           legal_risk_summary: string | null
           legal_risk_updated_at: string | null
-          latitude: number | null
           longitude: number | null
           mandate_end: string | null
           mandate_notes: string | null
@@ -2351,8 +2193,11 @@ export type Database = {
           reservation_date: string | null
           search_vector: unknown
           secondary_property_type: string | null
-          send_to_idealista: boolean
           source: string | null
+          source_feed_id: string | null
+          source_feed_name: string | null
+          source_metadata: Json | null
+          source_raw_xml: string | null
           source_url: string | null
           staircase: string | null
           status: Database["public"]["Enums"]["property_status"]
@@ -2406,11 +2251,11 @@ export type Database = {
           is_featured?: boolean
           is_international?: boolean
           key_location?: string | null
+          latitude?: number | null
           legal_risk_docs_count?: number
           legal_risk_level?: string | null
           legal_risk_summary?: string | null
           legal_risk_updated_at?: string | null
-          latitude?: number | null
           longitude?: number | null
           mandate_end?: string | null
           mandate_notes?: string | null
@@ -2428,8 +2273,11 @@ export type Database = {
           reservation_date?: string | null
           search_vector?: unknown
           secondary_property_type?: string | null
-          send_to_idealista?: boolean
           source?: string | null
+          source_feed_id?: string | null
+          source_feed_name?: string | null
+          source_metadata?: Json | null
+          source_raw_xml?: string | null
           source_url?: string | null
           staircase?: string | null
           status?: Database["public"]["Enums"]["property_status"]
@@ -2483,11 +2331,11 @@ export type Database = {
           is_featured?: boolean
           is_international?: boolean
           key_location?: string | null
+          latitude?: number | null
           legal_risk_docs_count?: number
           legal_risk_level?: string | null
           legal_risk_summary?: string | null
           legal_risk_updated_at?: string | null
-          latitude?: number | null
           longitude?: number | null
           mandate_end?: string | null
           mandate_notes?: string | null
@@ -2505,8 +2353,11 @@ export type Database = {
           reservation_date?: string | null
           search_vector?: unknown
           secondary_property_type?: string | null
-          send_to_idealista?: boolean
           source?: string | null
+          source_feed_id?: string | null
+          source_feed_name?: string | null
+          source_metadata?: Json | null
+          source_raw_xml?: string | null
           source_url?: string | null
           staircase?: string | null
           status?: Database["public"]["Enums"]["property_status"]
@@ -3057,6 +2908,7 @@ export type Database = {
         Args: { _channel_id: string; _user_id: string }
         Returns: boolean
       }
+      run_xml_feed_import_cron: { Args: never; Returns: undefined }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
       wa_increment_daily: { Args: never; Returns: number }

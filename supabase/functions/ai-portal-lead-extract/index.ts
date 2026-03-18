@@ -4,12 +4,12 @@ import { callAI } from "../_shared/ai.ts";
 
 /**
  * Extracts portal lead data from a screenshot of a portal notification email
- * (Idealista, Fotocasa, etc.) using AI vision.
+ * using AI vision.
  * Creates contact + demand + interaction, same logic as portal-lead-inbound.
  */
 
 const EXTRACT_PROMPT = `Eres un parser de emails de notificación de portales inmobiliarios españoles.
-Analiza esta captura de pantalla de un email de notificación de un portal (Idealista, Fotocasa, Todopisos, Pisos.com, SpainHouses, etc.).
+Analiza esta captura de pantalla de un email de notificación de un portal inmobiliario español.
 Extrae los datos del lead interesado y del inmueble que consulta.
 
 Responde SOLO con JSON válido, sin explicaciones:

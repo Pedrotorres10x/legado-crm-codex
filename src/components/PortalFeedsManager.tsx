@@ -1,7 +1,7 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Rss, Send, Clock } from 'lucide-react';
+import { Rss, Clock, Rocket } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { FotocasaApiCard } from '@/components/portals/FotocasaApiCard';
@@ -14,12 +14,15 @@ const PortalFeedsManager = () => {
     feeds,
     loading,
     forcingAll,
+    launchingPublication,
+    lastLaunchSummary,
     lastCronRuns,
     toggleActive,
     copyFeedUrl,
     testFeed,
     forceFeed,
     forceAllFeeds,
+    launchPublication,
   } = usePortalFeedsManager();
 
   if (loading) return <div className="py-8 text-center text-muted-foreground">Cargando portales...</div>;
@@ -32,11 +35,44 @@ const PortalFeedsManager = () => {
         <Badge variant="secondary" className="ml-auto">
           {feeds.filter((feed) => feed.is_active).length + 1} activos
         </Badge>
-        <Button size="sm" className="h-8 text-xs gap-1.5" disabled={forcingAll} onClick={forceAllFeeds}>
-          <Send className={`h-3.5 w-3.5 ${forcingAll ? 'animate-pulse' : ''}`} />
-          {forcingAll ? 'Enviando...' : 'Forzar reenvío a todos'}
+        <Button size="sm" className="h-8 text-xs gap-1.5" disabled={launchingPublication} onClick={launchPublication}>
+          <Rocket className={`h-3.5 w-3.5 ${launchingPublication ? 'animate-pulse' : ''}`} />
+          {launchingPublication ? 'Publicando...' : 'Publicar ahora en portales'}
         </Button>
       </div>
+
+      {lastLaunchSummary && (
+        <Card className="border-0 shadow-[var(--shadow-card)] bg-muted/30">
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div>
+                <h3 className="text-sm font-medium">Ultimo lanzamiento de publicacion</h3>
+                <p className="text-xs text-muted-foreground">
+                  {formatDistanceToNow(new Date(lastLaunchSummary.launchedAt), { addSuffix: true, locale: es })}
+                </p>
+              </div>
+              <Badge variant="secondary">
+                {lastLaunchSummary.portals.filter((portal) => portal.ok).length}/{lastLaunchSummary.portals.length} ok
+              </Badge>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+              {lastLaunchSummary.portals.map((portal) => (
+                <div key={portal.display_name} className="rounded-md bg-background p-3 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium">{portal.display_name}</span>
+                    <Badge variant={portal.ok ? 'secondary' : 'destructive'} className="text-[10px]">
+                      {portal.ok ? 'OK' : 'Error'}
+                    </Badge>
+                  </div>
+                  <p className="mt-2 text-muted-foreground">
+                    {portal.ok ? `Estado ${portal.status}` : portal.detail || `Estado ${portal.status}`}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card className="border-0 shadow-[var(--shadow-card)] bg-muted/30">
         <CardContent className="p-4">

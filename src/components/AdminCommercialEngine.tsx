@@ -122,7 +122,7 @@ const AdminCommercialEngine = () => {
         supabase.from('profiles').select('user_id, full_name').order('full_name'),
         supabase
           .from('properties')
-          .select('id, title, status, agent_id, mandate_type, mandate_end, send_to_idealista, xml_id, source, price, images, description'),
+          .select('id, title, status, agent_id, mandate_type, mandate_end, xml_id, source, price, images, description'),
         supabase
           .from('contacts')
           .select('id', { count: 'exact', head: true })

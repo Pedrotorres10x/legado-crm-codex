@@ -4,7 +4,7 @@ import { Calendar, CheckCircle, Clock, GitMerge, User } from 'lucide-react';
 
 import AddToGoogleCalendarButton from '@/components/AddToGoogleCalendarButton';
 import MatchEmailHistory from '@/components/MatchEmailHistory';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import * as AccordionUI from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -30,8 +30,8 @@ const PropertyCommercialActivityPanel = ({
   onUpdateMatchStatus,
 }: PropertyCommercialActivityPanelProps) => {
   return (
-    <AccordionItem value="activity" className="border-b border-border/60">
-      <AccordionTrigger className="px-6 py-4 hover:no-underline">
+    <AccordionUI.AccordionItem value="activity" className="border-b border-border/60">
+      <AccordionUI.AccordionTrigger className="px-6 py-4 hover:no-underline">
         <div className="min-w-0 text-left">
           <p className="text-base font-semibold flex items-center gap-2">
             <Calendar className="h-4 w-4 text-primary" />
@@ -41,8 +41,8 @@ const PropertyCommercialActivityPanel = ({
             Visitas, cruces y seguimiento comercial sobre este inmueble.
           </p>
         </div>
-      </AccordionTrigger>
-      <AccordionContent className="px-6 pb-6 space-y-6">
+      </AccordionUI.AccordionTrigger>
+      <AccordionUI.AccordionContent className="px-6 pb-6 space-y-6">
         <Card>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
@@ -104,15 +104,15 @@ const PropertyCommercialActivityPanel = ({
         </Card>
 
         <Card>
-          <Accordion type="single" collapsible>
-            <AccordionItem value="matches" className="border-b-0">
-              <AccordionTrigger className="px-6 py-4 hover:no-underline">
+          <AccordionUI.Accordion type="single" collapsible>
+            <AccordionUI.AccordionItem value="matches" className="border-b-0">
+              <AccordionUI.AccordionTrigger className="px-6 py-4 hover:no-underline">
                 <span className="text-base font-semibold flex items-center gap-2">
                   <GitMerge className="h-4 w-4 text-primary" />
                   Historial de Cruces ({propertyMatches.length})
                 </span>
-              </AccordionTrigger>
-              <AccordionContent>
+              </AccordionUI.AccordionTrigger>
+              <AccordionUI.AccordionContent>
                 <div className="px-6 pb-4">
                   {propertyMatches.length === 0 ? (
                     <p className="text-sm text-muted-foreground text-center py-4">
@@ -175,14 +175,14 @@ const PropertyCommercialActivityPanel = ({
                     </Table>
                   )}
                 </div>
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
+              </AccordionUI.AccordionContent>
+            </AccordionUI.AccordionItem>
+          </AccordionUI.Accordion>
         </Card>
 
         <MatchEmailHistory propertyId={propertyId} />
-      </AccordionContent>
-    </AccordionItem>
+      </AccordionUI.AccordionContent>
+    </AccordionUI.AccordionItem>
   );
 };
 

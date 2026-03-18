@@ -90,7 +90,7 @@ export default function PortalLeadUploadDialog() {
 
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Pega un pantallazo con <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border text-xs font-mono">Ctrl+V</kbd> del email de notificación de Idealista, Fotocasa, etc.
+            Pega un pantallazo con <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border text-xs font-mono">Ctrl+V</kbd> del email de notificación del portal.
           </p>
 
           {!preview && (

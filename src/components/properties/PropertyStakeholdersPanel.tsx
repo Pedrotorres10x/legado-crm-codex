@@ -4,7 +4,7 @@ import { ExternalLink, Plus, Rss, User, X } from 'lucide-react';
 import PhoneLink from '@/components/PhoneLink';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import * as AccordionUI from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -306,14 +306,14 @@ const PropertyStakeholdersPanel = ({
           </div>
 
           {interestedBuyers.length > 0 && (
-            <Accordion type="single" collapsible className="w-full">
-              <AccordionItem value="buyers" className="border-none">
-                <AccordionTrigger className="py-1 hover:no-underline">
+            <AccordionUI.Accordion type="single" collapsible className="w-full">
+              <AccordionUI.AccordionItem value="buyers" className="border-none">
+                <AccordionUI.AccordionTrigger className="py-1 hover:no-underline">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                     🛒 Compradores interesados ({interestedBuyers.length})
                   </p>
-                </AccordionTrigger>
-                <AccordionContent>
+                </AccordionUI.AccordionTrigger>
+                <AccordionUI.AccordionContent>
                   <div className="space-y-1.5 pt-1">
                     {interestedBuyers.map(({ contact, hasVisit, hasOffer, offerAmount, offerStatus }) => (
                       <div
@@ -337,9 +337,9 @@ const PropertyStakeholdersPanel = ({
                       </div>
                     ))}
                   </div>
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
+                </AccordionUI.AccordionContent>
+              </AccordionUI.AccordionItem>
+            </AccordionUI.Accordion>
           )}
         </CardContent>
       </Card>

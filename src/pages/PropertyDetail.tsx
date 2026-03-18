@@ -521,19 +521,6 @@ const PropertyDetail = () => {
                     className="scale-75"
                   />
                 </div>
-                {!property.xml_id && (
-                  <div className="flex items-center gap-2 rounded-lg border border-border/60 px-3 py-1.5">
-                    <Globe className={`h-3.5 w-3.5 ${property.send_to_idealista ? 'text-success' : 'text-muted-foreground'}`} />
-                    <span className="text-xs text-muted-foreground">Idealista</span>
-                    <Switch
-                      checked={!!property.send_to_idealista}
-                      onCheckedChange={async (checked) => {
-                        await saveField({ send_to_idealista: checked });
-                      }}
-                      className="scale-75"
-                    />
-                  </div>
-                )}
               </div>
             </div>
             <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">

@@ -167,7 +167,7 @@ const TodayPriorities = ({ playbook, storageKey = 'agent-playbook' }: Props) => 
           ? supabase.from('offers').select('notes').eq('agent_id', uid).in('status', ['rechazada', 'retirada', 'expirada'])
           : Promise.resolve({ data: [] }),
         uid
-          ? supabase.from('properties').select('id, title, status, mandate_type, mandate_end, send_to_idealista, xml_id, source, price, images, description').eq('agent_id', uid)
+          ? supabase.from('properties').select('id, title, status, mandate_type, mandate_end, xml_id, source, price, images, description').eq('agent_id', uid)
           : Promise.resolve({ data: [] }),
         uid
           ? supabase.from('properties').select('id, title, status, updated_at').eq('agent_id', uid).in('status', ['vendido', 'alquilado'])
@@ -349,7 +349,7 @@ const TodayPriorities = ({ playbook, storageKey = 'agent-playbook' }: Props) => 
         items.push({
           icon: Share2,
           label: `${distributionPending.length} inmueble${distributionPending.length === 1 ? '' : 's'} sin difusión`,
-          detail: 'La ficha está lista, pero sigue sin Idealista o feed activo.',
+          detail: 'La ficha está lista, pero sigue sin feed activo.',
           count: distributionPending.length,
           action: 'Publicar',
           route: '/operations?kind=stock',

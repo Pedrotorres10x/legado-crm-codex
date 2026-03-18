@@ -43,9 +43,9 @@ export const PropertiesStockSummary = ({ properties }: { properties: any[] }) =>
             <Globe className="h-4 w-4" />
             <p className="text-xs font-medium uppercase tracking-wide">Difusión</p>
           </div>
-          <p className="text-3xl font-semibold mt-2">{summary.idealistaReadyCount}</p>
+          <p className="text-3xl font-semibold mt-2">{summary.feedReadyCount}</p>
           <p className="text-xs text-muted-foreground mt-1">
-            Idealista · <span className="font-medium">{summary.feedReadyCount}</span> en feed XML/HabiHub · {summary.distributionGapCount} sin difusión.
+            Feed XML/HabiHub · {summary.distributionGapCount} sin difusión activa.
           </p>
         </CardContent>
       </Card>

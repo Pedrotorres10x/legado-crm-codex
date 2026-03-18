@@ -28,8 +28,8 @@ export function PortalFeedCards({ feeds, onToggleActive, onCopyFeedUrl, onTestFe
               <div className="space-y-1">
                 <h3 className="font-semibold">{feed.display_name}</h3>
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  <Badge variant="outline" className={`text-xs ${feed.format === 'idealista' ? 'bg-primary/10 text-primary border-primary/30' : ''}`}>
-                    {feed.format === 'idealista' ? 'JSON V6' : feed.format}
+                  <Badge variant="outline" className="text-xs">
+                    {feed.format}
                   </Badge>
                   {feed.properties_count > 0 && <Badge variant="secondary" className="text-xs">{feed.properties_count} inmuebles</Badge>}
                   <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
@@ -46,7 +46,7 @@ export function PortalFeedCards({ feeds, onToggleActive, onCopyFeedUrl, onTestFe
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">URL del feed {feed.format === 'idealista' ? 'JSON' : 'XML'}</label>
+              <label className="text-xs font-medium text-muted-foreground">URL del feed</label>
               <div className="flex gap-1">
                 <Input readOnly value={`${feedBaseUrl}?token=${feed.feed_token}`} className="text-xs font-mono h-8" />
                 <TooltipProvider>
@@ -66,7 +66,7 @@ export function PortalFeedCards({ feeds, onToggleActive, onCopyFeedUrl, onTestFe
                         <ExternalLink className="h-3.5 w-3.5" />
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>Previsualizar {feed.format === 'idealista' ? 'JSON' : 'XML'}</TooltipContent>
+                    <TooltipContent>Previsualizar feed</TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
               </div>

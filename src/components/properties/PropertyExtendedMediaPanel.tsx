@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import { Globe, Loader2, Trash2, Upload, Video } from 'lucide-react';
 
-import { AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import * as AccordionUI from '@/components/ui/accordion';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -34,8 +34,8 @@ const PropertyExtendedMediaPanel = ({
   const videoInputRef = useRef<HTMLInputElement>(null);
 
   return (
-    <AccordionItem value="media" className="border-b border-border/60">
-      <AccordionTrigger className="px-6 py-4 hover:no-underline">
+    <AccordionUI.AccordionItem value="media" className="border-b border-border/60">
+      <AccordionUI.AccordionTrigger className="px-6 py-4 hover:no-underline">
         <div className="min-w-0 text-left">
           <p className="text-base font-semibold flex items-center gap-2">
             <Video className="h-4 w-4 text-primary" />
@@ -45,8 +45,8 @@ const PropertyExtendedMediaPanel = ({
             Videos y tour virtual del inmueble.
           </p>
         </div>
-      </AccordionTrigger>
-      <AccordionContent className="px-6 pb-6 space-y-6">
+      </AccordionUI.AccordionTrigger>
+      <AccordionUI.AccordionContent className="px-6 pb-6 space-y-6">
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -149,8 +149,8 @@ const PropertyExtendedMediaPanel = ({
             )}
           </CardContent>
         </Card>
-      </AccordionContent>
-    </AccordionItem>
+      </AccordionUI.AccordionContent>
+    </AccordionUI.AccordionItem>
   );
 };
 

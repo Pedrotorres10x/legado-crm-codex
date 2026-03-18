@@ -43,7 +43,7 @@ const Properties = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [cityPopoverOpen, setCityPopoverOpen] = useState(false);
-  const validTabs = ['all','propias','office','xml','internacional','idealista'] as const;
+  const validTabs = ['all','propias','office','xml','internacional'] as const;
   const tabFromUrl = searchParams.get('tab') as typeof validTabs[number] | null;
   const [sourceTab, setSourceTab] = useState<typeof validTabs[number]>(
     tabFromUrl && validTabs.includes(tabFromUrl) ? tabFromUrl : 'all'
@@ -85,13 +85,13 @@ const Properties = () => {
   }, []);
 
   // Whether this tab requires client-side filtering (can't paginate server-side)
-  const isClientFiltered = sourceTab === 'internacional' || sourceTab === 'idealista';
+  const isClientFiltered = sourceTab === 'internacional';
 
   const fetchProperties = useCallback(async () => {
     setLoading(true);
     try {
       const order = getOrderConfig(filters.sortBy);
-      const selectFields = 'id,title,description,property_type,operation,price,surface_area,built_area,bedrooms,bathrooms,city,province,address,zone,floor_number,energy_cert,has_elevator,has_garage,has_pool,has_terrace,has_garden,features,images,image_order,crm_reference,status,country,is_international,created_at,updated_at,xml_id,source,agent_id,owner_id,mandate_type,mandate_end,reference,latitude,longitude,send_to_idealista,legal_risk_level,legal_risk_summary,legal_risk_updated_at,legal_risk_docs_count';
+      const selectFields = 'id,title,description,property_type,operation,price,surface_area,built_area,bedrooms,bathrooms,city,province,address,zone,floor_number,energy_cert,has_elevator,has_garage,has_pool,has_terrace,has_garden,features,images,image_order,crm_reference,status,country,is_international,created_at,updated_at,xml_id,source,agent_id,owner_id,mandate_type,mandate_end,reference,latitude,longitude,legal_risk_level,legal_risk_summary,legal_risk_updated_at,legal_risk_docs_count';
 
       let query = supabase
         .from('properties')
@@ -142,10 +142,6 @@ const Properties = () => {
       if (sourceTab === 'internacional') {
         result = result.filter(p => p.country && p.country !== 'España');
       }
-      if (sourceTab === 'idealista') {
-        result = result.filter(p => (p as any).send_to_idealista === true);
-      }
-
       setProperties(result);
       setTotalCount(isClientFiltered ? result.length : (count || 0));
     } finally {
@@ -264,7 +260,6 @@ const Properties = () => {
               { key: 'office', label: 'Oficina', icon: Building2 },
               { key: 'xml', label: 'Feed XML', icon: Rss },
               { key: 'internacional', label: 'Intl.', icon: Globe },
-              { key: 'idealista', label: 'Idealista', icon: Rss },
             ] as const).map(({ key, label, icon: Icon }) => (
               <button
                 key={key}

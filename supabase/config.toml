@@ -119,10 +119,13 @@ verify_jwt = false
 verify_jwt = true
 
 [functions.portal-xml-feed]
-verify_jwt = true
+verify_jwt = false
 
 [functions.fotocasa-sync]
-verify_jwt = true
+verify_jwt = false
+
+[functions.portal-cutover-launch]
+verify_jwt = false
 
 [functions.campaign-demand-enrich]
 verify_jwt = true
@@ -134,9 +137,6 @@ verify_jwt = true
 verify_jwt = false
 
 [functions.admin-users]
-verify_jwt = true
-
-[functions.idealista-api]
 verify_jwt = true
 
 [functions.web-leads-admin]

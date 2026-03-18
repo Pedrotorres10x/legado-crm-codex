@@ -1,7 +1,19 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { FEED_BASE_URL, FOTOCASA_FN, fetchWithTimeout, type PortalFeed } from '@/components/portals/portal-feed-shared';
+import { FEED_BASE_URL, FOTOCASA_FN, PORTAL_CUTOVER_LAUNCH_FN, fetchWithTimeout, type PortalFeed } from '@/components/portals/portal-feed-shared';
+
+type PublicationLaunchPortalResult = {
+  display_name: string;
+  ok: boolean;
+  status: number;
+  detail?: string;
+};
+
+type PublicationLaunchSummary = {
+  launchedAt: string;
+  portals: PublicationLaunchPortalResult[];
+};
 
 const isFotocasaXmlFeed = (feed: PortalFeed) => {
   const portalName = (feed.portal_name || '').toLowerCase();
@@ -9,16 +21,30 @@ const isFotocasaXmlFeed = (feed: PortalFeed) => {
   return portalName.includes('fotocasa') || displayName.includes('fotocasa');
 };
 
+const isRetiredPortalFeed = (feed: PortalFeed) => {
+  const portalName = (feed.portal_name || '').toLowerCase();
+  const displayName = (feed.display_name || '').toLowerCase();
+  const format = (feed.format || '').toLowerCase();
+
+  return [
+    portalName,
+    displayName,
+    format,
+  ].some((value) => value.includes('idealista'));
+};
+
 export function usePortalFeedsManager() {
   const [feeds, setFeeds] = useState<PortalFeed[]>([]);
   const [loading, setLoading] = useState(true);
   const [forcingAll, setForcingAll] = useState(false);
+  const [launchingPublication, setLaunchingPublication] = useState(false);
   const [lastCronRuns, setLastCronRuns] = useState<Record<string, string>>({});
+  const [lastLaunchSummary, setLastLaunchSummary] = useState<PublicationLaunchSummary | null>(null);
 
   const fetchFeeds = async () => {
     const { data } = await supabase.from('portal_feeds').select('*').order('display_name');
     const allFeeds = (data as unknown as PortalFeed[]) || [];
-    setFeeds(allFeeds.filter((feed) => !isFotocasaXmlFeed(feed)));
+    setFeeds(allFeeds.filter((feed) => !isFotocasaXmlFeed(feed) && !isRetiredPortalFeed(feed)));
     setLoading(false);
   };
 
@@ -124,5 +150,90 @@ export function usePortalFeedsManager() {
     else toast.warning(`${ok} ok · ${fail} con error`);
   };
 
-  return { feeds, loading, forcingAll, lastCronRuns, toggleActive, copyFeedUrl, testFeed, forceFeed, forceAllFeeds };
+  const launchPublication = async () => {
+    setLaunchingPublication(true);
+
+    try {
+      const response = await fetchWithTimeout(
+        PORTAL_CUTOVER_LAUNCH_FN,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        },
+        30000,
+      );
+
+      const payload = await response.json().catch(() => null) as {
+        xml_results?: Array<{ display_name?: string; ok?: boolean; status?: number; error?: string }>;
+        fotocasa_result?: { ok?: boolean; status?: number; payload?: { error?: string; message?: string } };
+      } | null;
+
+      if (!response.ok || !payload) {
+        throw new Error('No se pudo lanzar la publicación');
+      }
+
+      const xmlOk = payload.xml_results?.filter((item) => item.ok).length ?? 0;
+      const xmlFail = payload.xml_results?.filter((item) => !item.ok).length ?? 0;
+      const fotocasaOk = payload.fotocasa_result?.ok === true;
+      const fotocasaError = payload.fotocasa_result?.payload?.error;
+      const summaryPortals: PublicationLaunchPortalResult[] = [
+        ...(payload.xml_results ?? []).map((item) => ({
+          display_name: item.display_name || 'Feed XML',
+          ok: item.ok === true,
+          status: item.status ?? 0,
+          detail: item.error,
+        })),
+        {
+          display_name: 'Fotocasa',
+          ok: fotocasaOk,
+          status: payload.fotocasa_result?.status ?? 0,
+          detail: fotocasaError || payload.fotocasa_result?.payload?.message,
+        },
+      ];
+
+      setLastLaunchSummary({
+        launchedAt: new Date().toISOString(),
+        portals: summaryPortals,
+      });
+
+      await Promise.all([fetchFeeds(), fetchLastCronRuns()]);
+
+      if (fotocasaError === 'FOTOCASA_API_KEY not configured') {
+        toast.warning(`XML listos: ${xmlOk} ok${xmlFail ? ` · ${xmlFail} con error` : ''}. Fotocasa pendiente de API key.`);
+        return;
+      }
+
+      if (xmlFail === 0 && fotocasaOk) {
+        toast.success('Publicacion lanzada en portales correctamente');
+        return;
+      }
+
+      if (xmlOk > 0 || fotocasaOk) {
+        toast.warning(`Publicacion parcial: XML ${xmlOk} ok${xmlFail ? ` · ${xmlFail} error` : ''}${fotocasaOk ? ' · Fotocasa ok' : ''}`);
+        return;
+      }
+
+      toast.error('No se pudo lanzar la publicacion en portales');
+    } catch (error) {
+      const timedOut = error instanceof Error && error.message === 'timeout';
+      toast.error(timedOut ? 'La publicacion tardo demasiado en responder' : 'Error al lanzar la publicacion');
+    } finally {
+      setLaunchingPublication(false);
+    }
+  };
+
+  return {
+    feeds,
+    loading,
+    forcingAll,
+    launchingPublication,
+    lastLaunchSummary,
+    lastCronRuns,
+    toggleActive,
+    copyFeedUrl,
+    testFeed,
+    forceFeed,
+    forceAllFeeds,
+    launchPublication,
+  };
 }

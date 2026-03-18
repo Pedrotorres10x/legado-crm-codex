@@ -28,7 +28,7 @@ const PORTAL_COLORS: Record<string, string> = {
 };
 
 const PORTAL_LABELS: Record<string, string> = {
-  idealista: 'Idealista',
+  idealista: 'Portal legacy',
   fotocasa: 'Fotocasa',
   todopisos: 'TodoPisos',
   'pisos.com': 'Pisos.com',

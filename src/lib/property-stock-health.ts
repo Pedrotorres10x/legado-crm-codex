@@ -5,7 +5,6 @@ type PropertyStockRow = {
   agent_id?: string | null;
   mandate_type?: string | null;
   mandate_end?: string | null;
-  send_to_idealista?: boolean | null;
   xml_id?: string | null;
   source?: string | null;
   price?: number | null;
@@ -43,7 +42,7 @@ export const hasPublishBasics = (property: PropertyStockRow) =>
   Boolean(property.description && property.description.trim().length >= 20);
 
 export const hasDistributionReady = (property: PropertyStockRow) =>
-  Boolean(property.send_to_idealista || property.xml_id || property.source === 'habihub');
+  Boolean(property.xml_id || property.source === 'habihub');
 
 export const isMandateExpired = (property: PropertyStockRow) =>
   Boolean(property.mandate_end) && new Date(`${property.mandate_end}T00:00:00`) < new Date(new Date().toISOString().split('T')[0] + 'T00:00:00');
@@ -54,7 +53,6 @@ export const getPropertyStockSummary = (properties: PropertyStockRow[]) => {
   const shared = available.filter((property) => property.mandate_type === 'compartida');
   const noMandate = available.filter((property) => !property.mandate_type || property.mandate_type === 'sin_mandato');
   const expiredMandate = available.filter(isMandateExpired);
-  const idealistaReady = available.filter((property) => property.send_to_idealista);
   const feedReady = available.filter((property) => Boolean(property.xml_id || property.source === 'habihub'));
   const missingPublishBasics = available.filter((property) => !hasPublishBasics(property));
   const distributionGap = available.filter((property) => hasPublishBasics(property) && !hasDistributionReady(property));
@@ -65,7 +63,6 @@ export const getPropertyStockSummary = (properties: PropertyStockRow[]) => {
     sharedCount: shared.length,
     noMandateCount: noMandate.length,
     expiredMandateCount: expiredMandate.length,
-    idealistaReadyCount: idealistaReady.length,
     feedReadyCount: feedReady.length,
     missingPublishBasicsCount: missingPublishBasics.length,
     distributionGapCount: distributionGap.length,

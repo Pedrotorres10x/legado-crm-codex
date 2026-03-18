@@ -121,4 +121,23 @@ describe('getCoverImage', () => {
     const result = getCoverImage(IMAGES, order, 'prop-x');
     expect(result).toContain('/storage/v1/object/public/property-media/prop-x/portada.jpg');
   });
+
+  it('ignora videos al principio de image_order y usa la primera foto valida', () => {
+    const order = [
+      { name: 'tour.mp4', source: 'storage' },
+      { name: 'xml_1', source: 'xml' },
+    ];
+    expect(getCoverImage(IMAGES, order, 'prop-x')).toBe(IMAGES[1]);
+  });
+
+  it('ignora xmlurl_ que apunta a un video y hace fallback a images[0]', () => {
+    const order = ['xmlurl_https://cdn.example.com/video.mp4'];
+    expect(getCoverImage(IMAGES, order)).toBe(IMAGES[0]);
+  });
+
+  it('acepta URLs absolutas heredadas en image_order cuando son imagenes', () => {
+    const legacyUrl = 'https://legacy.example.com/media/portada.jpg';
+    const order = [{ name: legacyUrl, source: 'xml' }];
+    expect(getCoverImage(IMAGES, order)).toBe(legacyUrl);
+  });
 });

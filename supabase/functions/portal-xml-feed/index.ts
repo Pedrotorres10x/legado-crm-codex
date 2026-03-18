@@ -445,121 +445,6 @@ function toKyeroXml(properties: any[], portalName: string, supabaseUrl: string, 
   xml += `</root>`;
   return xml;
 }
-// ── Idealista V6 JSON format ────────────────────────────────────────────────
-
-const idealistaTypeMap: Record<string, string> = {
-  piso: 'flat', casa: 'house', chalet: 'chalet', adosado: 'semidetachedHouse',
-  atico: 'penthouse', duplex: 'duplex', estudio: 'studio', local: 'premises',
-  oficina: 'office', nave: 'industrialBuilding', terreno: 'land',
-  garaje: 'garage', trastero: 'storageRoom', otro: 'house',
-};
-
-const idealistaOperationMap: Record<string, string> = {
-  venta: 'sale', alquiler: 'rent', alquiler_vacacional: 'rent',
-  traspaso: 'sale',
-};
-
-function toIdealistaJson(properties: any[], supabaseUrl: string): string {
-  const ads = properties.map(p => {
-    const pf = parseFeatures(p.features);
-    const imgs = orderImages(p.images, p.image_order).map(u => proxyImageUrl(u, supabaseUrl));
-    const cert = resolveCert(p);
-
-    const ad: Record<string, any> = {
-      propertyCode: p.crm_reference || p.id,
-      operation: idealistaOperationMap[p.operation] || 'sale',
-      propertyType: idealistaTypeMap[p.property_type] || 'house',
-      newDevelopment: false,
-      propertyAddress: {
-        address: p.address || '',
-        postalCode: p.zip_code || '',
-        town: p.city || '',
-        province: p.province || '',
-        country: 'es',
-      },
-      price: p.price || 0,
-      description: p.description || '',
-      size: p.surface_area || 0,
-      rooms: p.bedrooms || 0,
-      bathrooms: p.bathrooms || 0,
-      status: 'good',
-    };
-
-    // ── Optional fields ──────────────────────────────────────
-    if (p.latitude && p.longitude) {
-      ad.latitude = p.latitude;
-      ad.longitude = p.longitude;
-    }
-    if (p.built_area) ad.constructedArea = p.built_area;
-    if (pf.plotSize) ad.plotSize = pf.plotSize;
-    if (p.floor_number) {
-      const floorNum = parseInt(p.floor_number);
-      if (!isNaN(floorNum)) ad.floor = floorNum;
-    }
-    if (p.year_built) ad.builtYear = p.year_built;
-    if (p.zone) ad.district = p.zone;
-
-    // ── Condition ────────────────────────────────────────────
-    if (pf.condition === 'move_in') ad.status = 'renew';
-    else if (pf.condition === 'good') ad.status = 'good';
-
-    // ── Energy certificate ───────────────────────────────────
-    if (cert && cert !== 'exempt') {
-      ad.energyCertificateRating = cert;
-      if (p.energy_consumption_value) ad.energyCertificateEnergyConsumption = p.energy_consumption_value;
-      if (p.energy_emissions_value) ad.energyCertificateEmissions = p.energy_emissions_value;
-    }
-    if (cert === 'exempt') ad.energyCertificateType = 'exempt';
-
-    // ── Features ─────────────────────────────────────────────
-    ad.hasLift = !!p.has_elevator;
-    ad.hasParking = !!(p.has_garage || pf.privateGarage > 0);
-    if (pf.privateGarage > 0) ad.parkingSpaces = pf.privateGarage;
-    ad.hasSwimmingPool = !!(p.has_pool || pf.communityPool);
-    ad.hasTerrace = !!p.has_terrace;
-    ad.hasGarden = !!(p.has_garden || pf.communityGarden);
-    ad.hasAirConditioning = !!pf.airConditioning;
-    ad.hasHeating = !!pf.heating;
-    ad.hasBoxroom = !!pf.storageRoom;
-    ad.hasBuiltinWardrobes = !!pf.builtInWardrobes;
-    if (pf.furnished) ad.isFurnished = true;
-    if (pf.exterior) ad.isExterior = true;
-    if (pf.orientation) {
-      const orientMap: Record<string, string> = { north: 'N', south: 'S', east: 'E', west: 'W' };
-      ad.orientation = orientMap[pf.orientation] || pf.orientation.toUpperCase();
-    }
-
-    // ── Images ───────────────────────────────────────────────
-    if (imgs.length > 0) {
-      ad.images = imgs.map((url, i) => ({
-        url,
-        order: i + 1,
-        ...(i === 0 ? { tag: 'main' } : {}),
-      }));
-    }
-
-    // ── Floor plans ──────────────────────────────────────────
-    const plans = (p.floor_plans || []).map((u: string) => proxyImageUrl(u, supabaseUrl));
-    if (plans.length > 0) {
-      ad.floorPlan = plans[0];
-    }
-
-    // ── Virtual tour ─────────────────────────────────────────
-    if (p.virtual_tour_url) {
-      ad.virtualTourUrl = p.virtual_tour_url;
-    }
-
-    // ── Videos ───────────────────────────────────────────────
-    if (p.videos?.length) {
-      ad.videoUrl = p.videos[0];
-    }
-
-    return ad;
-  });
-
-  return JSON.stringify(ads, null, 2);
-}
-
 // ── Fotocasa format ─────────────────────────────────────────────────────────
 function toFotocasaXml(properties: any[], supabaseUrl: string): string {
   let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
@@ -1011,11 +896,7 @@ Deno.serve(async (req) => {
       (!p.country || p.country === 'España')
     );
 
-    // Idealista only gets own stock (exclude XML/HabiHub imports)
     const format = feed.format || 'kyero';
-    if (format === 'idealista') {
-      filtered = filtered.filter((p: any) => p.send_to_idealista === true);
-    }
 
     // ── Apply feed-level filters ────────────────────────────────────────────
     const filters = feed.filters as Record<string, any> | null;
@@ -1106,10 +987,7 @@ Deno.serve(async (req) => {
     const sUrl = Deno.env.get('SUPABASE_URL')!;
     const deletedRefList = deletedIds.map(id => deletedRefs[id] || id);
 
-    if (format === 'idealista') {
-      output = toIdealistaJson(filtered, sUrl);
-      contentType = 'application/json; charset=utf-8';
-    } else if (format === 'fotocasa') {
+    if (format === 'fotocasa') {
       output = toFotocasaXml(filtered, sUrl);
       if (deletedRefList.length > 0) {
         const deletedXml = deletedRefList.map(ref =>

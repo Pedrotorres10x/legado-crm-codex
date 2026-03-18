@@ -234,7 +234,7 @@ const ContactOverviewCards = ({
                 )}
                 {contact.source_ref && (
                   <div>
-                    <span className="text-xs text-muted-foreground">Ref. Idealista</span>
+                    <span className="text-xs text-muted-foreground">Ref. portal</span>
                     <p className="font-mono text-xs">{contact.source_ref}</p>
                   </div>
                 )}
