@@ -11,6 +11,10 @@ import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { FOTOCASA_FN, fetchWithTimeout, resolvePropertyId, type FotocasaSyncResult } from './portal-feed-shared';
 
+function hasAuthorizationDenied(results: Array<{ message?: string }> | undefined): boolean {
+  return (results || []).some((item) => (item.message || '').toLowerCase().includes('authorization has been denied'));
+}
+
 export function FotocasaApiCard() {
   const [syncing, setSyncing] = useState(false);
   const [lastResult, setLastResult] = useState<FotocasaSyncResult | null>(null);
@@ -96,6 +100,9 @@ export function FotocasaApiCard() {
         if (data.has_more) toast.success(`Fotocasa: lote ${data.succeeded}/${data.total_available} enviado, sincronizando el resto automáticamente…`);
         else if (data.succeeded > 0) {
           toast.success(`Fotocasa: ${data.succeeded} sincronizados, ${data.failed} errores`);
+          setSyncing(false);
+        } else if (hasAuthorizationDenied(data.results)) {
+          toast.error('Fotocasa ha rechazado la credencial API');
           setSyncing(false);
         } else if (data.failed > 0) {
           toast.error(`Fotocasa: ${data.failed} errores de ${data.total}`);

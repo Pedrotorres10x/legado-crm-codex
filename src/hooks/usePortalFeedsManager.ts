@@ -15,6 +15,19 @@ type PublicationLaunchSummary = {
   portals: PublicationLaunchPortalResult[];
 };
 
+function isFotocasaAuthorizationError(detail?: string): boolean {
+  const normalized = (detail || '').toLowerCase();
+  return normalized.includes('authorization has been denied');
+}
+
+function getPortalErrorLabel(portalName: string, detail?: string, status?: number): string {
+  if (portalName === 'Fotocasa' && isFotocasaAuthorizationError(detail)) {
+    return 'Credencial de Fotocasa rechazada';
+  }
+
+  return detail || `Estado ${status ?? 0}`;
+}
+
 const isFotocasaXmlFeed = (feed: PortalFeed) => {
   const portalName = (feed.portal_name || '').toLowerCase();
   const displayName = (feed.display_name || '').toLowerCase();
@@ -187,7 +200,7 @@ export function usePortalFeedsManager() {
           display_name: 'Fotocasa',
           ok: fotocasaOk,
           status: payload.fotocasa_result?.status ?? 0,
-          detail: fotocasaError || payload.fotocasa_result?.payload?.message,
+          detail: getPortalErrorLabel('Fotocasa', fotocasaError || payload.fotocasa_result?.payload?.message, payload.fotocasa_result?.status),
         },
       ];
 
@@ -200,6 +213,11 @@ export function usePortalFeedsManager() {
 
       if (fotocasaError === 'FOTOCASA_API_KEY not configured') {
         toast.warning(`XML listos: ${xmlOk} ok${xmlFail ? ` · ${xmlFail} con error` : ''}. Fotocasa pendiente de API key.`);
+        return;
+      }
+
+      if (isFotocasaAuthorizationError(fotocasaError)) {
+        toast.warning(`XML listos: ${xmlOk} ok${xmlFail ? ` · ${xmlFail} con error` : ''}. Fotocasa ha rechazado la credencial.`);
         return;
       }
 
