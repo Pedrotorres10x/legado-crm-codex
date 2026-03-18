@@ -12,7 +12,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Accordion } from '@/components/ui/accordion';
+import * as AccordionUI from '@/components/ui/accordion';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -933,7 +933,7 @@ const PropertyDetail = () => {
       )}
 
       <Card className="animate-fade-in-up">
-        <Accordion type="multiple" defaultValue={['activity']} className="w-full">
+        <AccordionUI.Accordion type="multiple" defaultValue={['activity']} className="w-full">
           <PropertyExtendedMediaPanel
             videos={videos}
             virtualTour={virtualTour}
@@ -971,7 +971,7 @@ const PropertyDetail = () => {
               />
             </div>
           )}
-        </Accordion>
+        </AccordionUI.Accordion>
       </Card>
 
       {/* Image Lightbox */}
