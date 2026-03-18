@@ -15,6 +15,32 @@ function hasAuthorizationDenied(results: Array<{ message?: string }> | undefined
   return (results || []).some((item) => (item.message || '').toLowerCase().includes('authorization has been denied'));
 }
 
+function getFotocasaErrorMessage(data: unknown): string {
+  const payload = (data || {}) as {
+    error?: string;
+    message?: string;
+    results?: Array<{ message?: string }>;
+  };
+
+  if (payload.error === 'Unauthorized') {
+    return 'Llamada no autorizada a la pasarela de Fotocasa';
+  }
+
+  if (typeof payload.error === 'string' && payload.error.trim()) {
+    return payload.error;
+  }
+
+  if (typeof payload.message === 'string' && payload.message.trim()) {
+    return payload.message;
+  }
+
+  if (hasAuthorizationDenied(payload.results)) {
+    return 'Fotocasa ha rechazado la credencial API';
+  }
+
+  return 'Error al sincronizar con Fotocasa';
+}
+
 export function FotocasaApiCard() {
   const [syncing, setSyncing] = useState(false);
   const [lastResult, setLastResult] = useState<FotocasaSyncResult | null>(null);
@@ -95,6 +121,12 @@ export function FotocasaApiCard() {
       );
       const data = await response.json();
 
+      if (!response.ok) {
+        toast.error(getFotocasaErrorMessage(data));
+        setSyncing(false);
+        return;
+      }
+
       if (action === 'sync_all') {
         setLastResult(data);
         if (data.has_more) toast.success(`Fotocasa: lote ${data.succeeded}/${data.total_available} enviado, sincronizando el resto automáticamente…`);
@@ -142,8 +174,13 @@ export function FotocasaApiCard() {
         body: JSON.stringify({ action, property_id: propertyId }),
       });
       const data = await response.json();
-      if (data.ok || data.success) toast.success(action === 'delete' ? `Eliminado de Fotocasa: ${singleRef}` : `Enviado a Fotocasa: ${singleRef}`);
-      else toast.error(`Error Fotocasa: ${data.error || data.message || JSON.stringify(data)}`);
+      if (!response.ok) {
+        toast.error(getFotocasaErrorMessage(data));
+      } else if (data.ok || data.success) {
+        toast.success(action === 'delete' ? `Eliminado de Fotocasa: ${singleRef}` : `Enviado a Fotocasa: ${singleRef}`);
+      } else {
+        toast.error(`Error Fotocasa: ${getFotocasaErrorMessage(data)}`);
+      }
     } catch {
       toast.error('Error al conectar con Fotocasa');
     } finally {
