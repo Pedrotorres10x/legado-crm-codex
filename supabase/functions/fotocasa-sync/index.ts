@@ -289,6 +289,66 @@ const FOTOCASA_X_SOURCE = '2ded6138-34f6-4bd1-86ec-6ee74f185b77';
 const FOTOCASA_REQUEST_TIMEOUT_MS = 25000;
 const FOTOCASA_DEFAULT_BATCH_SIZE = 20;
 const FOTOCASA_CONCURRENCY = 4;
+const FOTOCASA_BULK_LOCK_KEY = 'fotocasa_bulk_sync';
+const FOTOCASA_BULK_LOCK_TTL_MS = 30 * 60 * 1000;
+
+async function acquireBulkSyncLock(supabase: ReturnType<typeof createClient>, action: string) {
+  const nowIso = new Date().toISOString();
+  const expiresIso = new Date(Date.now() + FOTOCASA_BULK_LOCK_TTL_MS).toISOString();
+
+  const { data: current, error: readError } = await supabase
+    .from('portal_sync_state')
+    .select('sync_key, status, started_at, expires_at')
+    .eq('sync_key', FOTOCASA_BULK_LOCK_KEY)
+    .maybeSingle();
+
+  if (readError) throw readError;
+
+  const expired = !current?.expires_at || new Date(current.expires_at).getTime() <= Date.now();
+  if (current?.status === 'running' && !expired) {
+    return { acquired: false, current };
+  }
+
+  const { error: upsertError } = await supabase
+    .from('portal_sync_state')
+    .upsert({
+      sync_key: FOTOCASA_BULK_LOCK_KEY,
+      status: 'running',
+      started_at: current?.status === 'running' && !expired ? current.started_at : nowIso,
+      heartbeat_at: nowIso,
+      expires_at: expiresIso,
+      metadata: { action },
+      finished_at: null,
+    });
+
+  if (upsertError) throw upsertError;
+
+  return { acquired: true };
+}
+
+async function touchBulkSyncLock(supabase: ReturnType<typeof createClient>, action: string) {
+  await supabase
+    .from('portal_sync_state')
+    .update({
+      heartbeat_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + FOTOCASA_BULK_LOCK_TTL_MS).toISOString(),
+      metadata: { action },
+    })
+    .eq('sync_key', FOTOCASA_BULK_LOCK_KEY);
+}
+
+async function releaseBulkSyncLock(supabase: ReturnType<typeof createClient>, action: string) {
+  await supabase
+    .from('portal_sync_state')
+    .update({
+      status: 'idle',
+      heartbeat_at: new Date().toISOString(),
+      finished_at: new Date().toISOString(),
+      expires_at: null,
+      metadata: { action },
+    })
+    .eq('sync_key', FOTOCASA_BULK_LOCK_KEY);
+}
 
 async function fotocasaRequest(method: string, path: string, apiKey: string, body?: any) {
   const url = `${FOTOCASA_BASE}/${path}`;
@@ -339,6 +399,10 @@ Deno.serve(async (req) => {
   const cors = handleCors(req);
   if (cors) return cors;
 
+  let supabase: ReturnType<typeof createClient> | null = null;
+  let bulkLockAcquired = false;
+  let currentAction = 'sync_all';
+
   try {
     // Auth: require service role key or valid JWT
     const authHeader = req.headers.get('Authorization');
@@ -374,13 +438,28 @@ Deno.serve(async (req) => {
       return json({ error: 'FOTOCASA_API_KEY not configured' }, 500);
     }
 
-    const supabase = createClient(
+    supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
     const body = await req.json().catch(() => ({}));
     const action = body.action || 'sync_all';
+    currentAction = action;
+    const isBulkAction = action === 'sync_all' || action === 'delete_stale';
+
+    if (isBulkAction) {
+      const lock = await acquireBulkSyncLock(supabase, action);
+      if (!lock.acquired) {
+        return json({
+          ok: true,
+          skipped: true,
+          reason: 'bulk_sync_already_running',
+          action,
+        });
+      }
+      bulkLockAcquired = true;
+    }
 
     // ── List published ads ──────────────────────────────────────────────
     if (action === 'list_ads') {
@@ -482,6 +561,7 @@ Deno.serve(async (req) => {
 
     // ── Delete stale ads (standalone action) ───────────────────────────
     if (action === 'delete_stale') {
+      await touchBulkSyncLock(supabase, action);
       // Fetch existing ads from Fotocasa
       const { ok: staleListOk, data: staleExistingAds } = await fotocasaRequest('GET', 'api/property', apiKey);
       const staleExistingIds = new Set<string>();
@@ -507,6 +587,7 @@ Deno.serve(async (req) => {
       let allIds: string[] = [];
       let pgOffset = 0;
       while (true) {
+        await touchBulkSyncLock(supabase, action);
         const { data: idBatch } = await supabase
           .from('properties')
           .select('id, crm_reference, reference, secondary_property_type, property_type')
@@ -529,6 +610,7 @@ Deno.serve(async (req) => {
 
       const staleDeleteResults: any[] = [];
       for (const existingId of staleExistingIds) {
+        await touchBulkSyncLock(supabase, action);
         if (!syncedExternalIds.has(existingId)) {
           const base64Id = btoa(String(existingId));
           console.log(`[fotocasa] AUTO-DELETE externalId="${existingId}" (no longer disponible)`);
@@ -556,7 +638,7 @@ Deno.serve(async (req) => {
       const deletedCount = staleDeleteResults.filter(r => r.ok).length;
       console.log(`[fotocasa] delete_stale: ${deletedCount} stale ads removed`);
 
-      return json({
+      const result = json({
         ok: true,
         action: 'delete_stale',
         total_on_fotocasa: staleExistingIds.size,
@@ -564,6 +646,9 @@ Deno.serve(async (req) => {
         deleted: deletedCount,
         results: staleDeleteResults,
       });
+      await releaseBulkSyncLock(supabase, action);
+      bulkLockAcquired = false;
+      return result;
     }
 
     // ── Sync one or all ─────────────────────────────────────────────────
@@ -661,6 +746,9 @@ Deno.serve(async (req) => {
 
     // Process properties in parallel chunks of 5 for speed
     for (let i = 0; i < (properties || []).length; i += FOTOCASA_CONCURRENCY) {
+      if (isBulkAction) {
+        await touchBulkSyncLock(supabase, action);
+      }
       const chunk = properties.slice(i, i + FOTOCASA_CONCURRENCY);
       const chunkResults = await Promise.all(chunk.map(async (prop: any) => {
         const agent = profileMap[prop.agent_id] || null;
@@ -738,7 +826,7 @@ Deno.serve(async (req) => {
       },
     });
 
-    return json({
+    const result = json({
       ok: true,
       action,
       total: results.length,
@@ -753,8 +841,16 @@ Deno.serve(async (req) => {
       delete_results: deleteResults,
       results,
     });
+    if (bulkLockAcquired) {
+      await releaseBulkSyncLock(supabase, action);
+      bulkLockAcquired = false;
+    }
+    return result;
   } catch (err) {
     console.error('[fotocasa-sync] error:', err);
+    if (bulkLockAcquired && supabase) {
+      await releaseBulkSyncLock(supabase, currentAction);
+    }
     return json({ error: String(err) }, 500);
   }
 });
