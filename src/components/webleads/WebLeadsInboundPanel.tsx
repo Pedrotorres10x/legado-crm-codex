@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-type LeadFilter = 'all' | 'needs_follow_up' | 'missing_property' | 'with_offer' | 'with_visit' | 'with_open_task' | 'discarded';
+type LeadFilter = 'all' | 'needs_follow_up' | 'missing_property' | 'general_inquiry' | 'with_offer' | 'with_visit' | 'with_open_task' | 'discarded';
 type LeadSourceFilter = 'all' | 'web' | 'portal' | 'fb';
 
 type ChannelFunnelItem = {
@@ -53,6 +53,7 @@ type LeadRow = {
   created_at: string;
   open_task_count: number;
   linked_property?: LinkedProperty | null;
+  is_general_inquiry?: boolean;
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -82,6 +83,7 @@ type WebLeadsInboundPanelProps = {
   leadsWithVisits: number;
   leadsWithOffers: number;
   leadsWithoutProperty: number;
+  generalInquiryCount: number;
   discardedLeads: number;
   topLossReasons: Array<[string, number]>;
   channelFunnel: ChannelFunnelItem[];
@@ -114,6 +116,7 @@ export function WebLeadsInboundPanel({
   leadsWithVisits,
   leadsWithOffers,
   leadsWithoutProperty,
+  generalInquiryCount,
   discardedLeads,
   topLossReasons,
   channelFunnel,
@@ -137,6 +140,7 @@ export function WebLeadsInboundPanel({
           { label: 'Con tarea abierta', value: leadsWithOpenTasks, tone: 'text-primary' },
           { label: 'Con visita', value: leadsWithVisits, tone: 'text-primary' },
           { label: 'Con oferta', value: leadsWithOffers, tone: 'text-primary' },
+          { label: 'Consulta general', value: generalInquiryCount, tone: 'text-amber-600' },
           { label: 'Sin propiedad', value: leadsWithoutProperty, tone: 'text-destructive' },
           { label: 'Descartados', value: discardedLeads, tone: 'text-muted-foreground' },
         ].map((item) => (
@@ -254,6 +258,7 @@ export function WebLeadsInboundPanel({
                 {[
                   { id: 'all' as const, label: `Todos (${filteredLeadsCount})` },
                   { id: 'needs_follow_up' as const, label: `Sin seguimiento (${leadsWithoutFollowUp})` },
+                  { id: 'general_inquiry' as const, label: `Consulta general (${generalInquiryCount})` },
                   { id: 'missing_property' as const, label: `Sin propiedad (${leadsWithoutProperty})` },
                   { id: 'with_offer' as const, label: `Con oferta (${leadsWithOffers})` },
                   { id: 'with_visit' as const, label: `Con visita (${leadsWithVisits})` },
@@ -328,10 +333,28 @@ export function WebLeadsInboundPanel({
               {visibleLeads.map((lead) => (
                 <div
                   key={lead.id}
-                  className={`flex items-center gap-4 px-5 py-3.5 hover:bg-muted/30 transition-colors ${!lead.linked_property || lead.needs_follow_up ? 'bg-destructive/5' : ''}`}
+                  className={`flex items-center gap-4 px-5 py-3.5 hover:bg-muted/30 transition-colors ${
+                    !lead.linked_property && !lead.is_general_inquiry
+                      ? 'bg-destructive/5'
+                      : lead.needs_follow_up
+                        ? 'bg-amber-500/5'
+                        : ''
+                  }`}
                 >
-                  <div className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 ${lead.linked_property ? 'bg-primary/10' : 'bg-destructive/10'}`}>
-                    <span className={`text-sm font-semibold ${lead.linked_property ? 'text-primary' : 'text-destructive'}`}>
+                  <div className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 ${
+                    lead.linked_property
+                      ? 'bg-primary/10'
+                      : lead.is_general_inquiry
+                        ? 'bg-amber-500/10'
+                        : 'bg-destructive/10'
+                  }`}>
+                    <span className={`text-sm font-semibold ${
+                      lead.linked_property
+                        ? 'text-primary'
+                        : lead.is_general_inquiry
+                          ? 'text-amber-700 dark:text-amber-400'
+                          : 'text-destructive'
+                    }`}>
                       {lead.full_name.charAt(0).toUpperCase()}
                     </span>
                   </div>
@@ -367,6 +390,11 @@ export function WebLeadsInboundPanel({
                           Sin seguimiento
                         </span>
                       )}
+                      {lead.is_general_inquiry && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 font-medium">
+                          Consulta general
+                        </span>
+                      )}
                       {lead.visit_count > 0 && (
                         <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
                           {lead.visit_count} visita{lead.visit_count > 1 ? 's' : ''}
@@ -398,6 +426,11 @@ export function WebLeadsInboundPanel({
                         {lead.linked_property.reference && <span className="font-mono">{lead.linked_property.reference} · </span>}
                         {lead.linked_property.title}
                       </Link>
+                    ) : lead.is_general_inquiry ? (
+                      <span className="mt-1 inline-flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-400 font-medium">
+                        <AlertCircle className="h-3 w-3" />
+                        Consulta general sin propiedad asociada
+                      </span>
                     ) : (
                       <span className="mt-1 inline-flex items-center gap-1 text-[11px] text-destructive font-medium">
                         <AlertCircle className="h-3 w-3" />

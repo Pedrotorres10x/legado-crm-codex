@@ -166,7 +166,7 @@ export default function WebLeads() {
   const [tab, setTab] = useState<'resumen' | 'sesiones' | 'paginas' | 'trafico' | 'campanas' | 'horario' | 'paises' | 'leads' | 'exclusiones'>('resumen');
   const [copied, setCopied] = useState(false);
   const [showSnippet, setShowSnippet] = useState(false);
-  const [leadFilter, setLeadFilter] = useState<'all' | 'needs_follow_up' | 'missing_property' | 'with_offer' | 'with_visit' | 'with_open_task' | 'discarded'>('all');
+  const [leadFilter, setLeadFilter] = useState<'all' | 'needs_follow_up' | 'missing_property' | 'general_inquiry' | 'with_offer' | 'with_visit' | 'with_open_task' | 'discarded'>('all');
   const [leadSourceFilter, setLeadSourceFilter] = useState<'all' | 'web' | 'portal' | 'fb'>('all');
 
   // Exclusions panel state
@@ -206,6 +206,7 @@ export default function WebLeads() {
     leadsWithOpenTasks,
     leadsWithVisits,
     discardedLeads,
+    generalInquiryCount,
     leadsWithoutFollowUp,
     leadsWithoutProperty,
     newVisitors,
@@ -243,15 +244,16 @@ export default function WebLeads() {
     let nextLeads = filteredLeads;
 
     if (leadSourceFilter !== 'all') {
-      nextLeads = nextLeads.filter((lead: any) => lead.lead_source === leadSourceFilter);
+      nextLeads = nextLeads.filter((lead) => lead.lead_source === leadSourceFilter);
     }
 
-    if (leadFilter === 'needs_follow_up') return nextLeads.filter((lead: any) => lead.needs_follow_up);
-    if (leadFilter === 'missing_property') return nextLeads.filter((lead: any) => !lead.linked_property);
-    if (leadFilter === 'with_offer') return nextLeads.filter((lead: any) => lead.offer_count > 0);
-    if (leadFilter === 'with_visit') return nextLeads.filter((lead: any) => lead.visit_count > 0);
-    if (leadFilter === 'with_open_task') return nextLeads.filter((lead: any) => lead.open_task_count > 0);
-    if (leadFilter === 'discarded') return nextLeads.filter((lead: any) => lead.is_discarded);
+    if (leadFilter === 'needs_follow_up') return nextLeads.filter((lead) => lead.needs_follow_up);
+    if (leadFilter === 'general_inquiry') return nextLeads.filter((lead) => lead.is_general_inquiry);
+    if (leadFilter === 'missing_property') return nextLeads.filter((lead) => !lead.linked_property);
+    if (leadFilter === 'with_offer') return nextLeads.filter((lead) => lead.offer_count > 0);
+    if (leadFilter === 'with_visit') return nextLeads.filter((lead) => lead.visit_count > 0);
+    if (leadFilter === 'with_open_task') return nextLeads.filter((lead) => lead.open_task_count > 0);
+    if (leadFilter === 'discarded') return nextLeads.filter((lead) => lead.is_discarded);
     return nextLeads;
   }, [filteredLeads, leadFilter, leadSourceFilter]);
 
@@ -623,6 +625,7 @@ export default function WebLeads() {
               leadsWithVisits={leadsWithVisits}
               leadsWithOffers={leadsWithOffers}
               leadsWithoutProperty={leadsWithoutProperty}
+              generalInquiryCount={generalInquiryCount}
               discardedLeads={discardedLeads}
               topLossReasons={topLossReasons}
               channelFunnel={channelFunnel}

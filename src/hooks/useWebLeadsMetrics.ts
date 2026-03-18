@@ -255,6 +255,7 @@ export function useWebLeadsMetrics({
     const webLeadsCount = filteredLeads.filter((lead) => lead.lead_source === 'web').length;
     const portalLeadsCount = filteredLeads.filter((lead) => lead.lead_source === 'portal').length;
     const fbLeadsCount = filteredLeads.filter((lead) => lead.lead_source === 'fb').length;
+    const generalInquiryCount = filteredLeads.filter((lead) => lead.is_general_inquiry).length;
     const leadsWithoutProperty = filteredLeads.filter((lead) => !lead.linked_property).length;
     const leadsWithoutFollowUp = filteredLeads.filter((lead) => lead.needs_follow_up).length;
     const leadsWithVisits = filteredLeads.filter((lead) => lead.visit_count > 0).length;
@@ -355,6 +356,7 @@ export function useWebLeadsMetrics({
       deviceCounts,
       dowData,
       fbLeadsCount,
+      generalInquiryCount,
       filteredLeads,
       hasData: totalPV > 0,
       hourlyData,

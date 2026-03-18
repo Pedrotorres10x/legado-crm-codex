@@ -55,6 +55,7 @@ export type WebLead = {
   needs_follow_up: boolean;
   is_discarded: boolean;
   loss_reason: string | null;
+  is_general_inquiry: boolean;
 };
 
 export type AnalyticsExclusion = {
@@ -63,6 +64,45 @@ export type AnalyticsExclusion = {
   value: string;
   label: string;
   created_at: string;
+};
+
+type ContactTask = {
+  id: string;
+  contact_id: string;
+  completed: boolean | null;
+};
+
+type ContactVisit = {
+  id: string;
+  contact_id: string;
+};
+
+type ContactOffer = {
+  id: string;
+  contact_id: string;
+};
+
+type ContactInteraction = {
+  property_id: string | null;
+  created_at: string | null;
+  properties?: {
+    id: string;
+    title: string | null;
+    reference: string | null;
+  } | null;
+};
+
+type ContactRow = {
+  id: string;
+  full_name: string;
+  email: string | null;
+  phone: string | null;
+  agent_id: string | null;
+  status: string;
+  pipeline_stage: string | null;
+  created_at: string;
+  tags: string[] | null;
+  interactions?: ContactInteraction[] | null;
 };
 
 function madridNow(): Date {
@@ -225,8 +265,8 @@ export function useWebLeads() {
 
       if (error) throw error;
 
-      const contacts = data ?? [];
-      const contactIds = contacts.map((contact: any) => contact.id);
+      const contacts = (data ?? []) as ContactRow[];
+      const contactIds = contacts.map((contact) => contact.id);
 
       let tasksByContact = new Map<string, Array<{ completed: boolean | null }>>();
       let visitsByContact = new Map<string, Array<{ id: string }>>();
@@ -252,21 +292,21 @@ export function useWebLeads() {
         if (visitsResult.error) throw visitsResult.error;
         if (offersResult.error) throw offersResult.error;
 
-        tasksByContact = (tasksResult.data ?? []).reduce((map, task: any) => {
+        tasksByContact = ((tasksResult.data ?? []) as ContactTask[]).reduce((map, task) => {
           const list = map.get(task.contact_id) ?? [];
           list.push(task);
           map.set(task.contact_id, list);
           return map;
         }, new Map<string, Array<{ completed: boolean | null }>>());
 
-        visitsByContact = (visitsResult.data ?? []).reduce((map, visit: any) => {
+        visitsByContact = ((visitsResult.data ?? []) as ContactVisit[]).reduce((map, visit) => {
           const list = map.get(visit.contact_id) ?? [];
           list.push(visit);
           map.set(visit.contact_id, list);
           return map;
         }, new Map<string, Array<{ id: string }>>());
 
-        offersByContact = (offersResult.data ?? []).reduce((map, offer: any) => {
+        offersByContact = ((offersResult.data ?? []) as ContactOffer[]).reduce((map, offer) => {
           const list = map.get(offer.contact_id) ?? [];
           list.push(offer);
           map.set(offer.contact_id, list);
@@ -274,16 +314,17 @@ export function useWebLeads() {
         }, new Map<string, Array<{ id: string }>>());
       }
 
-      return contacts.map((contact: any) => {
-        const propertyInteraction = contact.interactions?.find((interaction: any) => interaction.property_id && interaction.properties);
+      return contacts.map((contact) => {
+        const propertyInteraction = contact.interactions?.find((interaction) => interaction.property_id && interaction.properties);
         const tags: string[] = contact.tags ?? [];
         const isPortalLead = tags.includes('portal-lead');
         const isFbLead = tags.includes('fb-lead-ads');
+        const isGeneralInquiry = tags.includes('general-web-lead');
         const portalTag = tags.find((tag: string) => tag.startsWith('portal:'));
         const portalName = portalTag ? portalTag.split(':')[1] : null;
         const interactions = contact.interactions ?? [];
         const lastInteractionAt = interactions
-          .map((interaction: any) => interaction.created_at)
+          .map((interaction) => interaction.created_at)
           .filter(Boolean)
           .sort()
           .at(-1) ?? null;
@@ -321,6 +362,7 @@ export function useWebLeads() {
           needs_follow_up: needsFollowUp,
           is_discarded: isDiscarded,
           loss_reason: lossReason,
+          is_general_inquiry: isGeneralInquiry,
         } satisfies WebLead;
       });
     },
@@ -331,8 +373,8 @@ export function useExclusions() {
   return useQuery({
     queryKey: ['analytics-exclusions'],
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from('analytics_exclusions')
+      const { data, error } = await supabase
+        .from('analytics_exclusions' as never)
         .select('id, type, value, label, created_at')
         .order('created_at', { ascending: false });
       if (error) throw error;
