@@ -19,7 +19,7 @@ const typeMap: Record<string, { kyero: string; fotocasa: string }> = {
   oficina:  { kyero: 'commercial', fotocasa: 'office' },
   nave:     { kyero: 'commercial', fotocasa: 'industrial' },
   terreno:  { kyero: 'land',      fotocasa: 'land' },
-  garaje:   { kyero: 'commercial', fotocasa: 'garage' },
+  garaje:   { kyero: 'garage',    fotocasa: 'garage' },
   trastero: { kyero: 'commercial', fotocasa: 'storage_room' },
   otro:     { kyero: 'house',     fotocasa: 'house' },
 };
@@ -59,6 +59,29 @@ function normalizePropertyTypeKey(value: unknown): string {
     aparcamiento: 'garaje',
     plaza_garaje: 'garaje',
     'plaza de garaje': 'garaje',
+  };
+
+  return aliases[normalized] || normalized;
+}
+
+function normalizeOperationKey(value: unknown): string {
+  const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  const normalized = raw
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  const aliases: Record<string, string> = {
+    sale: 'venta',
+    sell: 'venta',
+    rent: 'alquiler',
+    rental: 'alquiler',
+    let: 'alquiler',
+    alquiler_temporal: 'alquiler',
+    holiday_rental: 'alquiler_vacacional',
+    'holiday-rental': 'alquiler_vacacional',
+    vacation_rental: 'alquiler_vacacional',
+    'vacation-rental': 'alquiler_vacacional',
+    transfer: 'traspaso',
   };
 
   return aliases[normalized] || normalized;
@@ -312,7 +335,7 @@ function toKyeroXml(properties: any[], portalName: string, supabaseUrl: string, 
   for (const p of properties) {
     const imgs = orderImages(p.images, p.image_order).map(u => proxyImageUrl(u, supabaseUrl));
     const mapped = typeMap[normalizePropertyTypeKey(p.property_type)] || typeMap.otro;
-    const op = operationMap[p.operation] || 'sale';
+    const op = operationMap[normalizeOperationKey(p.operation)] || 'sale';
     const pf = parseFeatures(p.features);
 
     xml += `  <property>\n`;
@@ -487,7 +510,7 @@ function toFotocasaXml(properties: any[], supabaseUrl: string): string {
   for (const p of properties) {
     const imgs = orderImages(p.images, p.image_order).map(u => proxyImageUrl(u, supabaseUrl));
     const mapped = typeMap[normalizePropertyTypeKey(p.property_type)] || typeMap.otro;
-    const op = operationMap[p.operation] || 'sale';
+    const op = operationMap[normalizeOperationKey(p.operation)] || 'sale';
     const pf = parseFeatures(p.features);
 
     xml += `  <ad>\n`;
@@ -642,7 +665,7 @@ function toPisosXml(properties: any[], supabaseUrl: string): string {
   for (const p of properties) {
     const imgs = orderImages(p.images, p.image_order).map(u => proxyImageUrl(u, supabaseUrl));
     const pf = parseFeatures(p.features);
-    const op = (p.operation || 'venta').toLowerCase();
+    const op = normalizeOperationKey(p.operation || 'venta');
     const cert = resolveCert(p);
     const propType = normalizePropertyTypeKey(p.property_type || 'piso');
 
