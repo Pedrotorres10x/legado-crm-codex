@@ -1078,10 +1078,11 @@ Deno.serve(async (req) => {
       }
     }
 
+    let requestBody: Record<string, unknown> = {}
     let feedId: string | null = null
     try {
-      const body = await req.json()
-      feedId = body?.feed_id || null
+      requestBody = await req.json()
+      feedId = typeof requestBody?.feed_id === 'string' ? requestBody.feed_id : null
     } catch { /* no body */ }
 
     let query = supabase.from('xml_feeds').select('*').eq('is_active', true)
@@ -1113,12 +1114,24 @@ Deno.serve(async (req) => {
         console.log(`Found ${blocks.length} property blocks`)
 
         // Parse properties from blocks
-        const properties: any[] = []
+        const parsedProperties: any[] = []
         for (const block of blocks) {
           const prop = parseProperty(block)
-          if (prop) properties.push(prop)
+          if (prop) parsedProperties.push(prop)
         }
-        console.log(`Parsed ${properties.length} valid properties`)
+        console.log(`Parsed ${parsedProperties.length} valid properties`)
+
+        // Feed snapshots should be deterministic by xml_id. If the provider repeats
+        // the same listing in one run, keep the latest parsed version only.
+        const propertyByXmlId = new Map<string, any>()
+        for (const prop of parsedProperties) {
+          if (prop?.xml_id) propertyByXmlId.set(prop.xml_id, prop)
+        }
+        const properties = Array.from(propertyByXmlId.values())
+        const duplicateCount = parsedProperties.length - properties.length
+        if (duplicateCount > 0) {
+          console.log(`Collapsed ${duplicateCount} duplicate rows by xml_id for feed "${feed.name}"`)
+        }
 
         // Translate non-Spanish descriptions
         const toTranslate: { idx: number; text: string }[] = []
@@ -1144,6 +1157,8 @@ Deno.serve(async (req) => {
         }
         // Fetch existing media data to avoid overwriting with empty values
         const xmlIds = properties.map(p => p.xml_id).filter(Boolean)
+        const previousSyncCount = Number(feed.last_sync_count || 0)
+        const allowSnapshotShrinkCleanup = requestBody?.allow_snapshot_shrink_cleanup === true
         const { data: existingProps } = await supabase
           .from('properties')
           .select('xml_id, images, videos, virtual_tour_url, floor_plans, source_metadata')
@@ -1269,9 +1284,27 @@ Deno.serve(async (req) => {
           }
         }
 
-        // ── Cleanup: DELETE properties no longer in the feed ──
+        // ── Cleanup: last snapshot wins, but skip suspiciously empty/collapsed runs ──
         let staleDeleted = 0
-          if (xmlIds.length > 0) {
+        let snapshotCleanupSkippedReason: string | null = null
+        const snapshotLooksEmpty = xmlIds.length === 0
+        const snapshotLooksSuspiciouslySmall =
+          previousSyncCount >= 20 &&
+          xmlIds.length > 0 &&
+          xmlIds.length < Math.ceil(previousSyncCount * 0.5) &&
+          !allowSnapshotShrinkCleanup
+
+        if (snapshotLooksEmpty && previousSyncCount > 0) {
+          snapshotCleanupSkippedReason = 'empty_snapshot'
+          console.warn(`Skipping stale cleanup for feed "${feed.name}" because the snapshot arrived empty`)
+        } else if (snapshotLooksSuspiciouslySmall) {
+          snapshotCleanupSkippedReason = 'suspicious_snapshot_shrink'
+          console.warn(
+            `Skipping stale cleanup for feed "${feed.name}" because snapshot shrank from ${previousSyncCount} to ${xmlIds.length}`,
+          )
+        }
+
+        if (xmlIds.length > 0 && !snapshotCleanupSkippedReason) {
             // Fetch only properties previously imported from this exact feed.
             const { data: existingAll } = await supabase
               .from('properties')
@@ -1302,10 +1335,17 @@ Deno.serve(async (req) => {
 
         await supabase.from('xml_feeds').update({
           last_sync_at: new Date().toISOString(),
-          last_sync_count: upserted,
+          last_sync_count: xmlIds.length,
         }).eq('id', feed.id)
 
-        results.push({ feed: feed.name, properties_found: properties.length, upserted, stale_deleted: staleDeleted })
+        results.push({
+          feed: feed.name,
+          properties_found: properties.length,
+          upserted,
+          stale_deleted: staleDeleted,
+          snapshot_cleanup_skipped_reason: snapshotCleanupSkippedReason,
+          duplicate_rows_collapsed: duplicateCount,
+        })
       } catch (err) {
         console.error(`Error processing feed ${feed.name}:`, err)
         results.push({ feed: feed.name, error: String(err) })
