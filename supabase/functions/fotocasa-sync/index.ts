@@ -292,20 +292,26 @@ const FOTOCASA_CONCURRENCY = 4;
 const FOTOCASA_BULK_LOCK_KEY = 'fotocasa_bulk_sync';
 const FOTOCASA_BULK_LOCK_TTL_MS = 30 * 60 * 1000;
 
-async function acquireBulkSyncLock(supabase: ReturnType<typeof createClient>, action: string) {
+async function acquireBulkSyncLock(
+  supabase: ReturnType<typeof createClient>,
+  action: string,
+  syncRunId: string,
+) {
   const nowIso = new Date().toISOString();
   const expiresIso = new Date(Date.now() + FOTOCASA_BULK_LOCK_TTL_MS).toISOString();
 
   const { data: current, error: readError } = await supabase
     .from('portal_sync_state')
-    .select('sync_key, status, started_at, expires_at')
+    .select('sync_key, status, started_at, expires_at, metadata')
     .eq('sync_key', FOTOCASA_BULK_LOCK_KEY)
     .maybeSingle();
 
   if (readError) throw readError;
 
   const expired = !current?.expires_at || new Date(current.expires_at).getTime() <= Date.now();
-  if (current?.status === 'running' && !expired) {
+  const currentRunId = current?.metadata?.sync_run_id;
+  const isSameRunContinuation = current?.status === 'running' && !expired && currentRunId === syncRunId;
+  if (current?.status === 'running' && !expired && !isSameRunContinuation) {
     return { acquired: false, current };
   }
 
@@ -317,7 +323,7 @@ async function acquireBulkSyncLock(supabase: ReturnType<typeof createClient>, ac
       started_at: current?.status === 'running' && !expired ? current.started_at : nowIso,
       heartbeat_at: nowIso,
       expires_at: expiresIso,
-      metadata: { action },
+      metadata: { action, sync_run_id: syncRunId },
       finished_at: null,
     });
 
@@ -326,18 +332,26 @@ async function acquireBulkSyncLock(supabase: ReturnType<typeof createClient>, ac
   return { acquired: true };
 }
 
-async function touchBulkSyncLock(supabase: ReturnType<typeof createClient>, action: string) {
+async function touchBulkSyncLock(
+  supabase: ReturnType<typeof createClient>,
+  action: string,
+  syncRunId: string,
+) {
   await supabase
     .from('portal_sync_state')
     .update({
       heartbeat_at: new Date().toISOString(),
       expires_at: new Date(Date.now() + FOTOCASA_BULK_LOCK_TTL_MS).toISOString(),
-      metadata: { action },
+      metadata: { action, sync_run_id: syncRunId },
     })
     .eq('sync_key', FOTOCASA_BULK_LOCK_KEY);
 }
 
-async function releaseBulkSyncLock(supabase: ReturnType<typeof createClient>, action: string) {
+async function releaseBulkSyncLock(
+  supabase: ReturnType<typeof createClient>,
+  action: string,
+  syncRunId: string,
+) {
   await supabase
     .from('portal_sync_state')
     .update({
@@ -345,7 +359,7 @@ async function releaseBulkSyncLock(supabase: ReturnType<typeof createClient>, ac
       heartbeat_at: new Date().toISOString(),
       finished_at: new Date().toISOString(),
       expires_at: null,
-      metadata: { action },
+      metadata: { action, sync_run_id: syncRunId },
     })
     .eq('sync_key', FOTOCASA_BULK_LOCK_KEY);
 }
@@ -402,6 +416,7 @@ Deno.serve(async (req) => {
   let supabase: ReturnType<typeof createClient> | null = null;
   let bulkLockAcquired = false;
   let currentAction = 'sync_all';
+  let currentSyncRunId = '';
 
   try {
     // Auth: require service role key or valid JWT
@@ -446,10 +461,13 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const action = body.action || 'sync_all';
     currentAction = action;
+    currentSyncRunId = typeof body.sync_run_id === 'string' && body.sync_run_id.trim()
+      ? body.sync_run_id.trim()
+      : crypto.randomUUID();
     const isBulkAction = action === 'sync_all' || action === 'delete_stale';
 
     if (isBulkAction) {
-      const lock = await acquireBulkSyncLock(supabase, action);
+      const lock = await acquireBulkSyncLock(supabase, action, currentSyncRunId);
       if (!lock.acquired) {
         return json({
           ok: true,
@@ -561,7 +579,7 @@ Deno.serve(async (req) => {
 
     // ── Delete stale ads (standalone action) ───────────────────────────
     if (action === 'delete_stale') {
-      await touchBulkSyncLock(supabase, action);
+      await touchBulkSyncLock(supabase, action, currentSyncRunId);
       // Fetch existing ads from Fotocasa
       const { ok: staleListOk, data: staleExistingAds } = await fotocasaRequest('GET', 'api/property', apiKey);
       const staleExistingIds = new Set<string>();
@@ -587,7 +605,7 @@ Deno.serve(async (req) => {
       let allIds: string[] = [];
       let pgOffset = 0;
       while (true) {
-        await touchBulkSyncLock(supabase, action);
+        await touchBulkSyncLock(supabase, action, currentSyncRunId);
         const { data: idBatch } = await supabase
           .from('properties')
           .select('id, crm_reference, reference, secondary_property_type, property_type')
@@ -610,7 +628,7 @@ Deno.serve(async (req) => {
 
       const staleDeleteResults: any[] = [];
       for (const existingId of staleExistingIds) {
-        await touchBulkSyncLock(supabase, action);
+        await touchBulkSyncLock(supabase, action, currentSyncRunId);
         if (!syncedExternalIds.has(existingId)) {
           const base64Id = btoa(String(existingId));
           console.log(`[fotocasa] AUTO-DELETE externalId="${existingId}" (no longer disponible)`);
@@ -646,13 +664,14 @@ Deno.serve(async (req) => {
         deleted: deletedCount,
         results: staleDeleteResults,
       });
-      await releaseBulkSyncLock(supabase, action);
+      await releaseBulkSyncLock(supabase, action, currentSyncRunId);
       bulkLockAcquired = false;
       return result;
     }
 
     // ── Sync one or all ─────────────────────────────────────────────────
     let properties: any[] = [];
+    let fetchedBaseCount = 0;
     const batchSize = Math.max(1, Number(body.batch_size || FOTOCASA_DEFAULT_BATCH_SIZE));
     const startOffset = Math.max(0, Number(body.offset || 0));
 
@@ -664,6 +683,7 @@ Deno.serve(async (req) => {
       if (fetchErr) return json({ error: fetchErr.message }, 500);
       // Skip international properties
       properties = (data || []).filter((p: any) => !p.country || p.country === 'España');
+      fetchedBaseCount = properties.length;
       if (properties.length === 0) {
         console.log(`[fotocasa] Skipping sync_one: property is international`);
         return json({ ok: true, skipped: true, reason: 'international_property' });
@@ -683,6 +703,7 @@ Deno.serve(async (req) => {
 
       if (fetchErr) return json({ error: fetchErr.message }, 500);
       properties = batch || [];
+      fetchedBaseCount = properties.length;
     }
 
     // Duplicate properties with secondary_property_type (same logic as XML feeds)
@@ -747,7 +768,7 @@ Deno.serve(async (req) => {
     // Process properties in parallel chunks of 5 for speed
     for (let i = 0; i < (properties || []).length; i += FOTOCASA_CONCURRENCY) {
       if (isBulkAction) {
-        await touchBulkSyncLock(supabase, action);
+        await touchBulkSyncLock(supabase, action, currentSyncRunId);
       }
       const chunk = properties.slice(i, i + FOTOCASA_CONCURRENCY);
       const chunkResults = await Promise.all(chunk.map(async (prop: any) => {
@@ -804,7 +825,7 @@ Deno.serve(async (req) => {
     const succeeded = results.filter(r => r.ok).length;
     const failed = results.filter(r => !r.ok).length;
     const deleted = deleteResults.filter(r => r.ok).length;
-    const hasMore = action === 'sync_all' && properties.length === batchSize;
+    const hasMore = action === 'sync_all' && fetchedBaseCount === batchSize;
     const nextOffset = hasMore ? startOffset + batchSize : null;
 
     // Chaining is handled by DB trigger (chain_fotocasa_sync) via pg_net
@@ -823,6 +844,7 @@ Deno.serve(async (req) => {
         failed,
         total_available: totalCount,
         has_more: hasMore,
+        sync_run_id: currentSyncRunId,
       },
     });
 
@@ -838,18 +860,19 @@ Deno.serve(async (req) => {
       batch_size: batchSize,
       has_more: hasMore,
       next_offset: nextOffset,
+      sync_run_id: currentSyncRunId,
       delete_results: deleteResults,
       results,
     });
     if (bulkLockAcquired) {
-      await releaseBulkSyncLock(supabase, action);
+      await releaseBulkSyncLock(supabase, action, currentSyncRunId);
       bulkLockAcquired = false;
     }
     return result;
   } catch (err) {
     console.error('[fotocasa-sync] error:', err);
     if (bulkLockAcquired && supabase) {
-      await releaseBulkSyncLock(supabase, currentAction);
+      await releaseBulkSyncLock(supabase, currentAction, currentSyncRunId);
     }
     return json({ error: String(err) }, 500);
   }
