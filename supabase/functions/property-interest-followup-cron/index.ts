@@ -43,10 +43,67 @@ Deno.serve(async (req) => {
 
     if (logsError) throw logsError;
 
+    const validLogs = (logsToReview || []) as OpenerLog[];
+    const allContactIds = [...new Set(validLogs.map((l) => l.contact_id).filter(Boolean) as string[])];
+    const allPropertyIds = [...new Set(validLogs.map((l) => l.property_id).filter(Boolean) as string[])];
+
+    // Batch 1: existing follow-up logs (deduplication check)
+    const { data: followUpData } = allContactIds.length > 0
+      ? await supabase
+          .from("communication_logs")
+          .select("contact_id, property_id, source")
+          .eq("channel", "whatsapp")
+          .eq("direction", "outbound")
+          .in("source", ["cruces_followup", "cruces_reminder", "cruces_last_reminder"])
+          .in("contact_id", allContactIds)
+          .in("property_id", allPropertyIds)
+      : { data: [] };
+
+    const existingFollowUpKeys = new Set<string>(
+      (followUpData ?? []).map((r) => `${r.contact_id}:${r.property_id}:${r.source}`)
+    );
+
+    // Batch 2: inbound replies per contact (to check if contact already responded)
+    const { data: inboundData } = allContactIds.length > 0
+      ? await supabase
+          .from("communication_logs")
+          .select("contact_id, created_at")
+          .eq("channel", "whatsapp")
+          .eq("direction", "inbound")
+          .in("contact_id", allContactIds)
+      : { data: [] };
+
+    const inboundByContact = new Map<string, string[]>();
+    for (const row of (inboundData ?? [])) {
+      const arr = inboundByContact.get(row.contact_id) ?? [];
+      arr.push(row.created_at);
+      inboundByContact.set(row.contact_id, arr);
+    }
+
+    // Batch 3: contacts
+    const { data: contactsData } = allContactIds.length > 0
+      ? await supabase
+          .from("contacts")
+          .select("id, full_name, phone, phone2, agent_id, gdpr_consent, opt_out, preferred_language")
+          .in("id", allContactIds)
+      : { data: [] };
+
+    const contactsById = new Map((contactsData ?? []).map((c) => [c.id, c]));
+
+    // Batch 4: properties
+    const { data: propertiesData } = allPropertyIds.length > 0
+      ? await supabase
+          .from("properties")
+          .select("id, title, city, province")
+          .in("id", allPropertyIds)
+      : { data: [] };
+
+    const propertiesById = new Map((propertiesData ?? []).map((p) => [p.id, p]));
+
     let sent = 0;
     let examined = 0;
 
-    for (const openerLog of (logsToReview || []) as OpenerLog[]) {
+    for (const openerLog of validLogs) {
       examined += 1;
 
       if (!openerLog.contact_id || !openerLog.property_id) continue;
@@ -57,44 +114,14 @@ Deno.serve(async (req) => {
       const nextStage = isInitialOpener ? "reminder" : "final_reminder";
       const reminderAttempt = isInitialOpener ? 1 : 2;
 
-      const { data: existingFollowUp } = await supabase
-        .from("communication_logs")
-        .select("id, source")
-        .eq("contact_id", openerLog.contact_id)
-        .eq("channel", "whatsapp")
-        .eq("direction", "outbound")
-        .in("source", ["cruces_followup", "cruces_reminder", "cruces_last_reminder"])
-        .eq("property_id", openerLog.property_id)
-        .eq("source", nextSource)
-        .limit(1)
-        .maybeSingle();
+      const followUpKey = `${openerLog.contact_id}:${openerLog.property_id}:${nextSource}`;
+      if (existingFollowUpKeys.has(followUpKey)) continue;
 
-      if (existingFollowUp) continue;
+      const replies = inboundByContact.get(openerLog.contact_id) ?? [];
+      if (replies.some((ts) => ts > openerLog.created_at)) continue;
 
-      const { data: inboundReply } = await supabase
-        .from("communication_logs")
-        .select("id")
-        .eq("contact_id", openerLog.contact_id)
-        .eq("channel", "whatsapp")
-        .eq("direction", "inbound")
-        .gt("created_at", openerLog.created_at)
-        .limit(1)
-        .maybeSingle();
-
-      if (inboundReply) continue;
-
-      const [{ data: contact }, { data: property }] = await Promise.all([
-        supabase
-          .from("contacts")
-          .select("id, full_name, phone, phone2, agent_id, gdpr_consent, opt_out, preferred_language")
-          .eq("id", openerLog.contact_id)
-          .maybeSingle(),
-        supabase
-          .from("properties")
-          .select("id, title, city, province")
-          .eq("id", openerLog.property_id)
-          .maybeSingle(),
-      ]);
+      const contact = contactsById.get(openerLog.contact_id) ?? null;
+      const property = propertiesById.get(openerLog.property_id) ?? null;
 
       if (!contact || !property) continue;
       if (contact.opt_out) continue;

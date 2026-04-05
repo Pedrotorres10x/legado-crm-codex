@@ -368,15 +368,6 @@ Deno.serve(async (req) => {
   const authHeader = req.headers.get('authorization') || '';
   const bearerToken = authHeader.toLowerCase().startsWith('bearer ') ? authHeader.slice(7).trim() : '';
 
-  if (!apiKey && !bearerToken && looksLikeStatefoxTestPayload(payload)) {
-    return json({
-      ok: true,
-      test: true,
-      received: true,
-      message: 'Statefox test payload received without auth header; no contact created.',
-    });
-  }
-
   if (!expectedSecret || (apiKey !== expectedSecret && bearerToken !== expectedSecret)) {
     return json({ ok: false, error: 'unauthorized' }, 401);
   }

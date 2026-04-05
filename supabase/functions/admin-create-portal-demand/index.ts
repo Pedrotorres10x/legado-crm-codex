@@ -36,6 +36,22 @@ Deno.serve(async (req) => {
   if (corsResponse) return corsResponse;
 
   try {
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+
+    // Verify JWT and admin/coordinadora role
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) return json({ ok: false, error: "No autorizado" }, 401);
+    const { data: { user }, error: authErr } = await supabase.auth.getUser(authHeader.replace("Bearer ", ""));
+    if (authErr || !user) return json({ ok: false, error: "Token inválido" }, 401);
+    const [{ data: isAdmin }, { data: isCoord }] = await Promise.all([
+      supabase.rpc("has_role", { _user_id: user.id, _role: "admin" }),
+      supabase.rpc("has_role", { _user_id: user.id, _role: "coordinadora" }),
+    ]);
+    if (!isAdmin && !isCoord) return json({ ok: false, error: "Acceso restringido" }, 403);
+
     const body = (await req.json()) as Payload;
     const portal = (body.portal || "todopisos").trim().toLowerCase();
     const fullName = body.full_name?.trim() || "Lead portal";
@@ -62,11 +78,6 @@ Deno.serve(async (req) => {
     if (!email && !phone) {
       return json({ ok: false, error: "missing_identity" }, 400);
     }
-
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    );
 
     let contactId: string | null = null;
     let propertyAgentId: string | null = null;

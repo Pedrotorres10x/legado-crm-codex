@@ -41,19 +41,26 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
+    const DEMAND_LIMIT = 500;
+    const PROPERTY_LIMIT = 2000;
+    const MATCH_LIMIT = 10000;
+
     const [{ data: demands, error: demandsError }, { data: properties, error: propertiesError }, { data: matches, error: matchesError }] = await Promise.all([
       supabase
         .from("demands")
         .select("id, contact_id, is_active, auto_match, operation, property_type, property_types, cities, zones, min_price, max_price, min_surface, min_bedrooms, contacts(full_name, email, phone)")
         .eq("is_active", true)
-        .order("created_at", { ascending: false }),
+        .order("created_at", { ascending: false })
+        .limit(DEMAND_LIMIT),
       supabase
         .from("properties")
         .select("id, title, city, province, price, bedrooms, surface_area, property_type, operation, status, auto_match")
-        .eq("status", "disponible"),
+        .eq("status", "disponible")
+        .limit(PROPERTY_LIMIT),
       supabase
         .from("matches")
-        .select("id, demand_id, property_id, compatibility, status"),
+        .select("id, demand_id, property_id, compatibility, status")
+        .limit(MATCH_LIMIT),
     ]);
 
     if (demandsError) throw new Error(`demands: ${demandsError.message}`);
@@ -203,7 +210,13 @@ Deno.serve(async (req) => {
       total_existing_matches: (matches ?? []).length,
     };
 
-    return new Response(JSON.stringify({ summary, report }), { headers: jsonHeaders });
+    const truncated = {
+      demands: (demands ?? []).length >= DEMAND_LIMIT,
+      properties: (properties ?? []).length >= PROPERTY_LIMIT,
+      matches: (matches ?? []).length >= MATCH_LIMIT,
+    };
+
+    return new Response(JSON.stringify({ summary, report, truncated }), { headers: jsonHeaders });
   } catch (error) {
     const message = error instanceof Error ? error.message : "matching audit failed";
     return new Response(JSON.stringify({ error: message }), {

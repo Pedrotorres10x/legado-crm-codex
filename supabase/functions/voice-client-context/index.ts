@@ -30,11 +30,12 @@ Deno.serve(async (req) => {
 
   try {
     const expectedSecret = Deno.env.get('VOICE_CLIENT_CONTEXT_SECRET');
-    if (expectedSecret) {
-      const provided = req.headers.get('x-webhook-secret') ?? req.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? '';
-      if (provided !== expectedSecret) {
-        return json({ error: 'Unauthorized' }, 401);
-      }
+    if (!expectedSecret) {
+      return json({ error: 'VOICE_CLIENT_CONTEXT_SECRET is not configured' }, 500);
+    }
+    const provided = req.headers.get('x-webhook-secret') ?? req.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? '';
+    if (provided !== expectedSecret) {
+      return json({ error: 'Unauthorized' }, 401);
     }
 
     const url = new URL(req.url);

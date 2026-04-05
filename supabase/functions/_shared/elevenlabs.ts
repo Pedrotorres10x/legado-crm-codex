@@ -103,7 +103,7 @@ export async function dispatchOutboundCall(input: ElevenLabsDispatchInput): Prom
 export async function verifyWebhookEvent(payload: string, signature: string | null): Promise<ElevenLabsWebhookEvent> {
   const secret = Deno.env.get('ELEVENLABS_WEBHOOK_SECRET');
   if (!secret) {
-    return JSON.parse(payload) as ElevenLabsWebhookEvent;
+    throw new Error('ELEVENLABS_WEBHOOK_SECRET is not configured');
   }
 
   if (!signature) {

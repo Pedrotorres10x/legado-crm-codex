@@ -200,14 +200,17 @@ Deno.serve(async (req) => {
         continue;
       }
 
+      const sanitize = (s: string | null | undefined, maxLen = 100) =>
+        (s ?? '').replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, maxLen);
+
       const dynamicVariables = {
         campaign_id: campaign.id,
         campaign_contact_id: row.id,
         contact_id: row.contact_id ?? '',
         purpose_code: campaign.purpose_code,
-        contact_name: row.display_name,
-        city: row.city ?? '',
-        source_ref: row.source_ref ?? '',
+        contact_name: sanitize(row.display_name, 80),
+        city: sanitize(row.city, 60),
+        source_ref: sanitize(row.source_ref, 60),
       };
 
       if (body.dry_run) {

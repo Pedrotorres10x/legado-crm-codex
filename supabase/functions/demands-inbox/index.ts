@@ -75,6 +75,17 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
+    // Verify JWT and admin/coordinadora role
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) return new Response(JSON.stringify({ error: "No autorizado" }), { status: 401, headers: jsonHeaders });
+    const { data: { user }, error: authErr } = await supabase.auth.getUser(authHeader.replace("Bearer ", ""));
+    if (authErr || !user) return new Response(JSON.stringify({ error: "Token inválido" }), { status: 401, headers: jsonHeaders });
+    const [{ data: isAdmin }, { data: isCoord }] = await Promise.all([
+      supabase.rpc("has_role", { _user_id: user.id, _role: "admin" }),
+      supabase.rpc("has_role", { _user_id: user.id, _role: "coordinadora" }),
+    ]);
+    if (!isAdmin && !isCoord) return new Response(JSON.stringify({ error: "Acceso restringido" }), { status: 403, headers: jsonHeaders });
+
     const demands = await fetchAllRows<InboxDemandRow>(async (from, to) =>
       supabase
         .from("demands")

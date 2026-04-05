@@ -13,6 +13,22 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+
+    // Verify JWT and admin/coordinadora role
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) return new Response(JSON.stringify({ ok: false, error: "No autorizado" }), { status: 401, headers: jsonHeaders });
+    const { data: { user }, error: authErr } = await supabase.auth.getUser(authHeader.replace("Bearer ", ""));
+    if (authErr || !user) return new Response(JSON.stringify({ ok: false, error: "Token inválido" }), { status: 401, headers: jsonHeaders });
+    const [{ data: isAdmin }, { data: isCoord }] = await Promise.all([
+      supabase.rpc("has_role", { _user_id: user.id, _role: "admin" }),
+      supabase.rpc("has_role", { _user_id: user.id, _role: "coordinadora" }),
+    ]);
+    if (!isAdmin && !isCoord) return new Response(JSON.stringify({ ok: false, error: "Acceso restringido" }), { status: 403, headers: jsonHeaders });
+
     const { demand_id } = await req.json();
     if (!demand_id) {
       return new Response(JSON.stringify({ ok: false, error: "missing demand_id" }), {
@@ -20,11 +36,6 @@ Deno.serve(async (req) => {
         headers: jsonHeaders,
       });
     }
-
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    );
 
     const { error: emailsError } = await supabase.from("match_emails").delete().eq("demand_id", demand_id);
     if (emailsError) throw new Error(`match_emails: ${emailsError.message}`);

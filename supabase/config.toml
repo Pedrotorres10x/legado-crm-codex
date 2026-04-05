@@ -177,3 +177,15 @@ verify_jwt = false
 
 [functions.voice-client-context]
 verify_jwt = false
+
+[functions.admin-create-portal-demand]
+verify_jwt = true
+
+[functions.admin-demand-delete]
+verify_jwt = true
+
+[functions.demands-inbox]
+verify_jwt = true
+
+[functions.statefox-prospecting]
+verify_jwt = true
