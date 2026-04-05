@@ -141,3 +141,6 @@ verify_jwt = true
 
 [functions.web-leads-admin]
 verify_jwt = false
+
+[functions.ai-reengagement]
+verify_jwt = true
