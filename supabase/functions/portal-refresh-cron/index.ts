@@ -7,7 +7,7 @@ import { corsHeaders, json, handleCors } from '../_shared/cors.ts';
  * Touches `updated_at` on ALL available properties so every portal
  * (Fotocasa, Kyero, Pisos.com, etc.) shows "Actualizado hoy".
  *
- * Runs daily at 06:00 UTC (08:00 Spain) via pg_cron.
+ * Runs every 12 hours (00:00 and 12:00 UTC) via pg_cron.
  */
 
 Deno.serve(async (req) => {
@@ -34,16 +34,6 @@ Deno.serve(async (req) => {
     const ids = (props || []).map((p: { id: string }) => p.id);
     console.log(`[portal-refresh] ${ids.length} available properties to refresh`);
 
-    if (ids.length === 0) {
-      await supabase.from('erp_sync_logs').insert({
-        target: 'portal-refresh',
-        event: 'refresh_cron',
-        status: 'ok',
-        payload: { refreshed: 0 },
-      });
-      return json({ ok: true, refreshed: 0 });
-    }
-
     // 2. Touch updated_at in batches of 100
     let refreshed = 0;
     const now = new Date().toISOString();
@@ -63,8 +53,61 @@ Deno.serve(async (req) => {
 
     console.log(`[portal-refresh] ${refreshed} properties refreshed`);
 
-    // 3. Trigger Fotocasa full re-sync
+    // 3. Regenerate active XML feeds so portals like 1001 Portales and TodoPisos
+    // always have a fresh payload even if they have not re-polled the URL yet.
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const { data: xmlFeeds, error: xmlFeedsError } = await supabase
+      .from('portal_feeds')
+      .select('id, portal_name, display_name, feed_token')
+      .neq('portal_name', 'fotocasa')
+      .eq('is_active', true);
+
+    if (xmlFeedsError) {
+      console.error('[portal-refresh] xml feeds query error:', xmlFeedsError.message);
+    }
+
+    const xmlResults: Array<Record<string, unknown>> = [];
+    for (const feed of xmlFeeds || []) {
+      const feedUrl = `${supabaseUrl}/functions/v1/portal-xml-feed?token=${encodeURIComponent(feed.feed_token)}`;
+      try {
+        const response = await fetch(feedUrl);
+        const body = await response.text();
+        xmlResults.push({
+          portal_name: feed.portal_name,
+          display_name: feed.display_name,
+          ok: response.ok,
+          status: response.status,
+          bytes: body.length,
+        });
+      } catch (xmlError) {
+        console.error(`[portal-refresh] xml feed refresh failed for ${feed.portal_name}:`, xmlError);
+        xmlResults.push({
+          portal_name: feed.portal_name,
+          display_name: feed.display_name,
+          ok: false,
+          status: 0,
+          error: String(xmlError),
+        });
+      }
+    }
+
+    // 4. Recover any stale Fotocasa run before starting another batch sequence.
+    try {
+      const watchdogRes = await fetch(`${supabaseUrl}/functions/v1/fotocasa-sync`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!}`,
+        },
+        body: JSON.stringify({ action: 'watchdog', batch_size: 10 }),
+      });
+      console.log(`[portal-refresh] fotocasa watchdog triggered, status: ${watchdogRes.status}`);
+      await watchdogRes.text();
+    } catch (fcErr) {
+      console.error('[portal-refresh] fotocasa watchdog call failed:', fcErr);
+    }
+
+    // 4b. Trigger Fotocasa full re-sync
     try {
       const fcRes = await fetch(`${supabaseUrl}/functions/v1/fotocasa-sync`, {
         method: 'POST',
@@ -72,7 +115,7 @@ Deno.serve(async (req) => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!}`,
         },
-        body: JSON.stringify({ action: 'sync_all', batch_size: 20, offset: 0 }),
+        body: JSON.stringify({ action: 'sync_all', batch_size: 10, offset: 0 }),
       });
       console.log(`[portal-refresh] fotocasa-sync triggered, status: ${fcRes.status}`);
       await fcRes.text();
@@ -80,7 +123,7 @@ Deno.serve(async (req) => {
       console.error('[portal-refresh] fotocasa-sync call failed:', fcErr);
     }
 
-    // 3b. Purge stale/orphaned ads from Fotocasa (properties no longer available)
+    // 4c. Purge stale/orphaned ads from Fotocasa (properties no longer available)
     try {
       const staleRes = await fetch(`${supabaseUrl}/functions/v1/fotocasa-sync`, {
         method: 'POST',
@@ -96,15 +139,26 @@ Deno.serve(async (req) => {
       console.error('[portal-refresh] delete_stale call failed:', staleErr);
     }
 
-    // 4. Log summary
+    // 5. Log summary
     await supabase.from('erp_sync_logs').insert({
       target: 'portal-refresh',
       event: 'refresh_cron',
       status: 'ok',
-      payload: { refreshed, total: ids.length },
+      payload: {
+        refreshed,
+        total: ids.length,
+        xml_feeds_regenerated: xmlResults.filter((item) => item.ok).length,
+        xml_results: xmlResults,
+      },
     });
 
-    return json({ ok: true, refreshed, total: ids.length });
+    return json({
+      ok: true,
+      refreshed,
+      total: ids.length,
+      xml_feeds_regenerated: xmlResults.filter((item) => item.ok).length,
+      xml_results: xmlResults,
+    });
   } catch (err) {
     console.error('[portal-refresh] error:', err);
     return json({ error: String(err) }, 500);

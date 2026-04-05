@@ -1,7 +1,14 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { format, subMonths } from 'date-fns';
-import { normalizeHorusWeights, sumBuyerVisitPoints, sumHorusInteractionPoints } from '@/lib/horus-model';
+import {
+  normalizeHorusWeights,
+  sumBuyerVisitPoints,
+  sumHorusInteractionPoints,
+  type HorusInteractionLike,
+  type HorusOfferLike,
+  type HorusVisitLike,
+} from '@/lib/horus-model';
 
 export interface HorusStatus {
   horusActive: boolean;
@@ -38,27 +45,27 @@ export function useAgentHorusStatus(agentId: string | undefined): HorusStatus {
 
       const w = normalizeHorusWeights(settingsRes.data?.value);
 
-      const interactions = interactionsRes.data || [];
+      const interactions: HorusInteractionLike[] = interactionsRes.data || [];
       const properties = propertiesRes.data || [];
-      const visits = visitsRes.data || [];
-      const offers = offersRes.data || [];
+      const visits: HorusVisitLike[] = visitsRes.data || [];
+      const offers: HorusOfferLike[] = offersRes.data || [];
 
       const monthKeys = Array.from({ length: 3 }).map((_, index) => format(subMonths(now, index), 'yyyy-MM'));
       const monthlyPoints = new Map(monthKeys.map((key) => [key, 0]));
 
       for (const key of monthKeys) {
-        const monthInteractions = interactions.filter((interaction: any) => interaction.interaction_date?.slice(0, 7) === key);
-        const monthVisits = visits.filter((visit: any) => visit.visit_date?.slice(0, 7) === key);
-        const monthCaptaciones = properties.filter((property: any) => property.created_at?.slice(0, 7) === key).length;
-        const monthFacturaciones = properties.filter((property: any) =>
+        const monthInteractions = interactions.filter((interaction) => interaction.interaction_date?.slice(0, 7) === key);
+        const monthVisits = visits.filter((visit) => visit.visit_date?.slice(0, 7) === key);
+        const monthCaptaciones = properties.filter((property) => property.created_at?.slice(0, 7) === key).length;
+        const monthFacturaciones = properties.filter((property) =>
           property.arras_status === 'firmado' &&
           property.arras_date &&
           property.arras_date.slice(0, 7) === key
         ).length;
 
         const pointsForMonth =
-          sumHorusInteractionPoints(monthInteractions as any, w) +
-          sumBuyerVisitPoints(monthVisits as any, offers as any, w, now) +
+          sumHorusInteractionPoints(monthInteractions, w) +
+          sumBuyerVisitPoints(monthVisits, offers, w, now) +
           monthCaptaciones * w.captacion +
           monthFacturaciones * w.facturacion;
 

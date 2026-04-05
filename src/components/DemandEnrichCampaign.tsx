@@ -31,10 +31,25 @@ interface ActiveConversation {
   missing: string[];
 }
 
+type CommunicationLogRow = {
+  direction: string;
+  body_preview?: string | null;
+  created_at: string;
+  metadata?: {
+    still_missing?: string[];
+  } | null;
+};
+
 const DemandEnrichCampaign = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const [previewData, setPreviewData] = useState<any>(null);
+  const [previewData, setPreviewData] = useState<{
+    contact_name?: string;
+    channel?: string;
+    remaining?: number;
+    missing?: { budget?: boolean; zone?: boolean };
+    message?: { subject?: string; html?: string; text?: string };
+  } | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
   const { data: stats, isLoading: statsLoading } = useQuery({
@@ -119,7 +134,7 @@ const DemandEnrichCampaign = () => {
           .order('created_at', { ascending: false })
           .limit(1);
 
-        const stillMissing = (systemLogs?.[0]?.metadata as any)?.still_missing || [];
+        const stillMissing = ((systemLogs?.[0]?.metadata as CommunicationLogRow['metadata'])?.still_missing) || [];
 
         conversations.push({
           contact_id: contact.id,
@@ -151,7 +166,10 @@ const DemandEnrichCampaign = () => {
       queryClient.invalidateQueries({ queryKey: ['demand-enrich-stats'] });
       queryClient.invalidateQueries({ queryKey: ['demand-enrich-conversations'] });
     },
-    onError: (error: any) => toast.error(`Error: ${error.message}`),
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : 'Error desconocido';
+      toast.error(`Error: ${message}`);
+    },
   });
 
   const handlePreview = async () => {
@@ -162,8 +180,9 @@ const DemandEnrichCampaign = () => {
       });
       if (error) throw error;
       setPreviewData(data);
-    } catch (e: any) {
-      toast.error(`Error generando preview: ${e.message}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Error desconocido';
+      toast.error(`Error generando preview: ${message}`);
     } finally {
       setPreviewLoading(false);
     }

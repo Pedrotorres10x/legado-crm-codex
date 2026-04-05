@@ -56,6 +56,16 @@ const extractTool = {
   },
 };
 
+type DocumentExtractUserContent =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } };
+
+interface DocumentExtractToolCall {
+  function: {
+    arguments: string;
+  };
+}
+
 Deno.serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
@@ -102,13 +112,13 @@ ${file_name ? `Nombre del archivo: ${file_name}` : ''}`;
       { role: 'user', content: [
         { type: 'text', text: 'Analiza este documento y extrae todos los datos posibles:' },
         imageContent,
-      ] as any },
+      ] as DocumentExtractUserContent[] },
     ], {
       tools: [extractTool],
       tool_choice: { type: 'function', function: { name: 'extract_document_data' } },
     });
 
-    const toolCall = aiResult.tool_calls?.[0] as any;
+    const toolCall = aiResult.tool_calls?.[0] as DocumentExtractToolCall | undefined;
     if (!toolCall) throw new Error('No se pudo extraer datos del documento');
     const extracted = JSON.parse(toolCall.function.arguments);
 

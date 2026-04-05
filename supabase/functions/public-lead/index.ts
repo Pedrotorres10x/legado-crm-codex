@@ -1,4 +1,14 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { resolveAssignedAgentId } from '../_shared/agent-assignment.ts'
+import { sendPropertyInterestOpener } from '../_shared/match-whatsapp.ts'
+import { resolveContactLanguage } from '../_shared/contact-language.ts'
+import {
+  buildPublicLeadNotes,
+  buildPublicLeadTags,
+  resolvePublicLeadContactSemantics,
+  resolvePublicLeadKind,
+  resolvePublicLeadSource,
+} from '../_shared/public-lead.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -26,6 +36,23 @@ Deno.serve(async (req) => {
     const body = await req.json()
     const { full_name, email, phone, message, property_id, gdpr_consent } = body
     const rawMetadata = body?.metadata ?? null
+    const sourceKeyRaw = typeof body?.source_key === 'string' ? body.source_key.trim().toLowerCase() : ''
+    const sourceLabelRaw = typeof body?.source_label === 'string' ? body.source_label.trim() : ''
+    const leadKindRaw = typeof body?.lead_kind === 'string' ? body.lead_kind.trim().toLowerCase() : ''
+    const requestedContactType = typeof body?.contact_type === 'string' ? body.contact_type.trim().toLowerCase() : ''
+    const leadContract = body?.lead_contract && typeof body.lead_contract === 'object' && !Array.isArray(body.lead_contract)
+      ? body.lead_contract
+      : null
+    const sellerContext = body?.seller_context && typeof body.seller_context === 'object' && !Array.isArray(body.seller_context)
+      ? body.seller_context
+      : null
+
+    const leadContractSourceRaw = typeof leadContract?.source_site === 'string'
+      ? leadContract.source_site.trim().toLowerCase()
+      : ''
+    const { sourceTag, sourceLabel } = resolvePublicLeadSource(sourceKeyRaw, leadContractSourceRaw, sourceLabelRaw)
+    const leadKind = resolvePublicLeadKind(leadKindRaw, Boolean(property_id))
+    const { contactType, defaultPipelineStage } = resolvePublicLeadContactSemantics(requestedContactType, leadKind)
 
     // RGPD: require explicit consent from web leads
     if (gdpr_consent !== true) {
@@ -166,17 +193,71 @@ Deno.serve(async (req) => {
     const safeMessage = message
       ? String(message).replace(/<[^>]*>/g, '').trim().substring(0, 1000)
       : null
-    const notesParts: string[] = []
-    if (safeMessage) notesParts.push(`Mensaje: ${safeMessage}`)
-    if (prop) {
-      notesParts.push(`Propiedad de interés: ${prop.title} (${prop.id})`)
-      if (prop.price) notesParts.push(`Precio: ${prop.price.toLocaleString('es-ES')} €`)
-      if (prop.city) notesParts.push(`Ciudad: ${prop.city}`)
-    } else {
-      notesParts.push('Consulta general desde Legado Colección')
-    }
-    notesParts.push(`Origen: Legado Colección`)
-    notesParts.push(`Fecha: ${new Date().toISOString()}`)
+    const safeSellerContext = sellerContext
+      ? {
+          ownerProfile: typeof sellerContext.owner_profile === 'string' ? sellerContext.owner_profile.slice(0, 64) : null,
+          propertyLocation: typeof sellerContext.property_location === 'string' ? sellerContext.property_location.slice(0, 255) : null,
+          propertyType: typeof sellerContext.property_type === 'string' ? sellerContext.property_type.slice(0, 64) : null,
+          sourceSection: typeof sellerContext.source_section === 'string' ? sellerContext.source_section.slice(0, 64) : null,
+        }
+      : null
+    const safeLeadContract = leadContract
+      ? {
+          source_site: typeof leadContract.source_site === 'string' ? leadContract.source_site.slice(0, 64) : null,
+          source_type: typeof leadContract.source_type === 'string' ? leadContract.source_type.slice(0, 32) : null,
+          source_page: typeof leadContract.source_page === 'string' ? leadContract.source_page.slice(0, 128) : null,
+          source_url: typeof leadContract.source_url === 'string' ? leadContract.source_url.slice(0, 500) : null,
+          target_asset: typeof leadContract.target_asset === 'string' ? leadContract.target_asset.slice(0, 64) : null,
+          journey: typeof leadContract.journey === 'string' ? leadContract.journey.slice(0, 32) : null,
+          lead_intent: typeof leadContract.lead_intent === 'string' ? leadContract.lead_intent.slice(0, 32) : null,
+          persona: typeof leadContract.persona === 'string' ? leadContract.persona.slice(0, 32) : null,
+          language: typeof leadContract.language === 'string' ? leadContract.language.slice(0, 8) : null,
+          municipality: typeof leadContract.municipality === 'string' ? leadContract.municipality.slice(0, 64) : null,
+          region: typeof leadContract.region === 'string' ? leadContract.region.slice(0, 64) : null,
+          referrer: typeof leadContract.referrer === 'string' ? leadContract.referrer.slice(0, 500) : null,
+          utm_source: typeof leadContract.utm_source === 'string' ? leadContract.utm_source.slice(0, 128) : null,
+          utm_medium: typeof leadContract.utm_medium === 'string' ? leadContract.utm_medium.slice(0, 128) : null,
+          utm_campaign: typeof leadContract.utm_campaign === 'string' ? leadContract.utm_campaign.slice(0, 128) : null,
+          utm_content: typeof leadContract.utm_content === 'string' ? leadContract.utm_content.slice(0, 128) : null,
+          utm_term: typeof leadContract.utm_term === 'string' ? leadContract.utm_term.slice(0, 128) : null,
+          content_cluster: typeof leadContract.content_cluster === 'string' ? leadContract.content_cluster.slice(0, 128) : null,
+          entry_topic: typeof leadContract.entry_topic === 'string' ? leadContract.entry_topic.slice(0, 128) : null,
+          cross_interest: typeof leadContract.cross_interest === 'string' ? leadContract.cross_interest.slice(0, 128) : null,
+        }
+      : null
+    const notesParts = buildPublicLeadNotes({
+      safeMessage,
+      property: prop
+        ? {
+            id: prop.id,
+            title: prop.title,
+            price: prop.price,
+            city: prop.city,
+          }
+        : null,
+      leadKind,
+      sourceLabel,
+      leadContract: safeLeadContract,
+      sellerContext: safeSellerContext,
+      nowIso: new Date().toISOString(),
+    })
+    const preferredLanguage = resolveContactLanguage(
+      safeLeadContract?.language || null,
+      safeMessage,
+      sourceLabel,
+      prop?.title || null,
+      notesParts.join(' ')
+    )
+
+    const baseTags = buildPublicLeadTags({
+      sourceTag,
+      leadKind,
+      leadContract: safeLeadContract,
+      sellerContext: safeSellerContext,
+      hasProperty: Boolean(prop),
+    })
+
+    const assignedAgentId = await resolveAssignedAgentId(supabase, prop?.agent_id || null)
 
     // Create contact with GDPR consent data
     const { data: contact, error: contactError } = await supabase
@@ -185,12 +266,14 @@ Deno.serve(async (req) => {
         full_name: full_name.trim().substring(0, 100),
         email: email ? email.trim().substring(0, 255) : null,
         phone: phone ? String(phone).trim().substring(0, 20) : null,
-        contact_type: 'comprador',
+        contact_type: contactType,
         status: 'nuevo',
-        pipeline_stage: 'nuevo',
+        pipeline_stage: defaultPipelineStage,
+        city: safeLeadContract?.municipality || null,
+        preferred_language: preferredLanguage,
         notes: notesParts.join('\n'),
-        tags: prop ? ['web-lead', 'legadocoleccion'] : ['web-lead', 'legadocoleccion', 'general-web-lead'],
-        agent_id: prop?.agent_id || null,
+        tags: baseTags,
+        agent_id: assignedAgentId,
         // Buyer intent metadata (optional)
         buyer_intent: safeMetadata,
         intent_score: safeMetadata?.score ?? null,
@@ -202,8 +285,10 @@ Deno.serve(async (req) => {
         gdpr_consent_at: new Date().toISOString(),
         gdpr_consent_ip: visitorIP,
         gdpr_legal_basis: 'explicit_consent',
+        source_ref: safeLeadContract?.source_page || safeSellerContext?.sourceSection || sourceLabel,
+        source_url: safeLeadContract?.source_url || null,
       })
-      .select('id')
+      .select('id, full_name, phone')
       .single()
 
     if (contactError) {
@@ -215,6 +300,10 @@ Deno.serve(async (req) => {
       ? safeMessage
         ? `Interesado en: ${prop.title}. Mensaje: ${safeMessage.substring(0, 500)}`
         : `Interesado en: ${prop.title}`
+      : leadKind === 'seller-inquiry'
+        ? safeMessage
+          ? `Captación de propietario desde web. Mensaje: ${safeMessage.substring(0, 500)}`
+          : 'Captación de propietario desde web'
       : safeMessage
         ? `Lead general desde web. Mensaje: ${safeMessage.substring(0, 500)}`
         : 'Lead general desde web'
@@ -222,18 +311,20 @@ Deno.serve(async (req) => {
     await supabase.from('interactions').insert({
       contact_id: contact.id,
       property_id: prop?.id || null,
-      agent_id: prop?.agent_id || null,
+      agent_id: assignedAgentId,
       interaction_type: 'nota',
-      subject: prop ? 'Lead desde web' : 'Lead general desde web',
+      subject: prop ? 'Lead desde web' : leadKind === 'seller-inquiry' ? 'Captación vendedor desde web' : 'Lead general desde web',
       description: interactionDescription,
     })
+
+    let demandId: string | null = null
 
     if (prop) {
       const minPrice = prop.price ? Math.round(prop.price * 0.75) : null
       const maxPrice = prop.price ? Math.round(prop.price * 1.25) : null
       const cities = prop.city ? [prop.city] : []
 
-      await supabase.from('demands').insert({
+      const { data: insertedDemand, error: demandError } = await supabase.from('demands').insert({
         contact_id: contact.id,
         property_type: prop.property_type || null,
         operation: prop.operation || 'venta',
@@ -243,9 +334,27 @@ Deno.serve(async (req) => {
         min_bedrooms: prop.bedrooms && prop.bedrooms > 0 ? Math.max(prop.bedrooms - 1, 1) : null,
         min_bathrooms: prop.bathrooms && prop.bathrooms > 0 ? prop.bathrooms : null,
         min_surface: prop.surface_area ? Math.round(prop.surface_area * 0.8) : null,
-        notes: `Demanda auto-generada desde lead web (legadocoleccion). Interesado en: ${prop.title}, ${prop.city || 'zona no especificada'}, ${prop.price ? prop.price.toLocaleString('es-ES') + ' €' : 'precio no indicado'}`,
+        notes: `Demanda auto-generada desde lead web (${sourceTag}). Interesado en: ${prop.title}, ${prop.city || 'zona no especificada'}, ${prop.price ? prop.price.toLocaleString('es-ES') + ' €' : 'precio no indicado'}`,
         auto_match: true,
         is_active: true,
+      }).select('id').single()
+      if (demandError) throw demandError
+      demandId = insertedDemand.id
+
+      await sendPropertyInterestOpener({
+        supabase,
+        contact: {
+          id: contact.id,
+          full_name: contact.full_name,
+          phone: contact.phone,
+          agent_id: assignedAgentId,
+          gdpr_consent: true,
+        },
+        property: prop,
+        demandId,
+        source: 'public-lead',
+        preferredLanguage: safeLeadContract?.language || null,
+        languageSamples: [safeMessage, sourceLabel, prop.title, notesParts.join(' ')],
       })
     }
 
@@ -256,7 +365,7 @@ Deno.serve(async (req) => {
     )
 
     // Send push notification to the assigned agent
-    if (prop?.agent_id) {
+    if (assignedAgentId) {
       try {
         await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/send-push-notification`, {
           method: 'POST',
@@ -265,7 +374,7 @@ Deno.serve(async (req) => {
             'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
           },
           body: JSON.stringify({
-            agent_id: prop.agent_id,
+            agent_id: assignedAgentId,
             title: '🔔 Nuevo lead desde web',
             body: `${full_name.trim()} está interesado en ${prop.title}`,
             data: { table: 'contacts', id: contact.id, property_id: prop.id },
@@ -280,6 +389,7 @@ Deno.serve(async (req) => {
       success: true,
       message: 'Gracias por tu interés. Te contactaremos pronto.',
       contact_id: contact?.id,
+      demand_id: demandId,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })

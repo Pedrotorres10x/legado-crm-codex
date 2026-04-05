@@ -21,6 +21,18 @@ export type AgentKpiSummary = {
   targets: AgentKpiTargets;
 };
 
+type OfferCoverageRow = {
+  property_id: string | null;
+  contact_id: string | null;
+  created_at: string;
+};
+
+type RealizedVisitRow = {
+  property_id: string | null;
+  contact_id: string | null;
+  visit_date: string;
+};
+
 const DEFAULT_KPI_TARGETS: AgentKpiTargets = {
   ventas_ano: 10,
   captaciones_mes: 2,
@@ -113,15 +125,15 @@ export const getAgentKpiSummary = async (
   ]);
 
   const offerCoverage = new Set(
-    (offerCoverageRes.data || [])
-      .filter((offer: any) => offer.property_id && offer.contact_id)
-      .map((offer: any) => `${offer.property_id}:${offer.contact_id}`),
+    ((offerCoverageRes.data || []) as OfferCoverageRow[])
+      .filter((offer) => offer.property_id && offer.contact_id)
+      .map((offer) => `${offer.property_id}:${offer.contact_id}`),
   );
 
   const visitsWithoutOffer = new Set(
-    (realizedVisitsRes.data || [])
-      .filter((visit: any) => visit.property_id && visit.contact_id)
-      .map((visit: any) => `${visit.property_id}:${visit.contact_id}`)
+    ((realizedVisitsRes.data || []) as RealizedVisitRow[])
+      .filter((visit) => visit.property_id && visit.contact_id)
+      .map((visit) => `${visit.property_id}:${visit.contact_id}`)
       .filter((key: string) => !offerCoverage.has(key)),
   ).size;
 

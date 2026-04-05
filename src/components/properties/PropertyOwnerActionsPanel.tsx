@@ -15,9 +15,17 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import type { TablesUpdate } from '@/integrations/supabase/types';
+
+type PropertyOwnerPanelProperty = {
+  id: string;
+  owner_id: string | null;
+  xml_id: string | null;
+  portal_token: string | null;
+};
 
 type PropertyOwnerActionsPanelProps = {
-  property: any;
+  property: PropertyOwnerPanelProperty;
   propertyId: string;
   isAdmin: boolean;
   compact?: boolean;
@@ -36,12 +44,13 @@ const PropertyOwnerActionsPanel = ({
   const { toast } = useToast();
 
   const handleCopyPortalLink = async () => {
-    let portalToken = (property as any).portal_token;
+    let portalToken = property.portal_token;
     if (!portalToken) {
       const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
       portalToken = '';
       for (let i = 0; i < 32; i += 1) portalToken += chars.charAt(Math.floor(Math.random() * chars.length));
-      await supabase.from('properties').update({ portal_token: portalToken } as any).eq('id', propertyId);
+      const payload: TablesUpdate<'properties'> = { portal_token: portalToken };
+      await supabase.from('properties').update(payload).eq('id', propertyId);
       await onRefreshProperty();
     }
 
@@ -67,8 +76,9 @@ const PropertyOwnerActionsPanel = ({
           variant: 'destructive',
         });
       }
-    } catch (error: any) {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'No se pudo enviar el informe';
+      toast({ title: 'Error', description: message, variant: 'destructive' });
     }
   };
 

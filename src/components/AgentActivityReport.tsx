@@ -25,6 +25,20 @@ interface ToqueDia {
   counts: Record<string, number>;
 }
 
+type ProfileRow = {
+  user_id: string;
+  full_name: string | null;
+};
+
+type AgentCountRow = {
+  agent_id?: string | null;
+};
+
+type TouchRow = {
+  agent_id?: string | null;
+  interaction_date?: string | null;
+};
+
 const MINIMO_HORUS = 2;
 const DIAS_SEMANA = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 
@@ -88,34 +102,36 @@ const AgentActivityReport = () => {
       ]);
 
       // Count by agent
-      const countBy = (data: any[] | null, key = 'agent_id') => {
+      const countBy = (data: AgentCountRow[] | null, key: keyof AgentCountRow = 'agent_id') => {
         const map: Record<string, number> = {};
-        (data || []).forEach(r => {
-          const id = r[key];
+        (data || []).forEach((row) => {
+          const id = row[key];
           if (id) map[id] = (map[id] || 0) + 1;
         });
         return map;
       };
 
-      const callCounts = countBy(callsRes.data);
-      const visitCounts = countBy(visitsRes.data);
-      const offerCounts = countBy(offersRes.data);
+      const callCounts = countBy((callsRes.data || []) as AgentCountRow[]);
+      const visitCounts = countBy((visitsRes.data || []) as AgentCountRow[]);
+      const offerCounts = countBy((offersRes.data || []) as AgentCountRow[]);
 
-      const rows: AgentRow[] = profiles
-        .map(p => {
-          const calls = callCounts[p.user_id] || 0;
-          const visits = visitCounts[p.user_id] || 0;
-          const offers = offerCounts[p.user_id] || 0;
+      const profileRows = profiles as ProfileRow[];
+
+      const rows: AgentRow[] = profileRows
+        .map((profile) => {
+          const calls = callCounts[profile.user_id] || 0;
+          const visits = visitCounts[profile.user_id] || 0;
+          const offers = offerCounts[profile.user_id] || 0;
           return {
-            userId: p.user_id,
-            name: p.full_name || 'Sin nombre',
+            userId: profile.user_id,
+            name: profile.full_name || 'Sin nombre',
             calls,
             visits,
             offers,
             total: calls + visits + offers,
           };
         })
-        .filter(r => r.total > 0 || profiles.length <= 10)
+        .filter(r => r.total > 0 || profileRows.length <= 10)
         .sort((a, b) => b.total - a.total);
 
       setAgents(rows);
@@ -123,14 +139,15 @@ const AgentActivityReport = () => {
       // ── Histórico Toques Horus por día ───────────────────────────────────
       if (viewMode === 'week') {
         const days = eachDayOfInterval({ start: weekStart, end: weekEnd });
-        const toquesData = toquesRes.data || [];
+        const toquesData = (toquesRes.data || []) as TouchRow[];
 
         const diasConToques: ToqueDia[] = days.map(day => {
           const counts: Record<string, number> = {};
-          toquesData.forEach((t: any) => {
-            const tDate = new Date(t.interaction_date);
-            if (tDate >= startOfDay(day) && tDate <= endOfDay(day) && t.agent_id) {
-              counts[t.agent_id] = (counts[t.agent_id] || 0) + 1;
+          toquesData.forEach((touch) => {
+            if (!touch.interaction_date || !touch.agent_id) return;
+            const touchDate = new Date(touch.interaction_date);
+            if (touchDate >= startOfDay(day) && touchDate <= endOfDay(day)) {
+              counts[touch.agent_id] = (counts[touch.agent_id] || 0) + 1;
             }
           });
           return { date: day, counts };
@@ -144,7 +161,7 @@ const AgentActivityReport = () => {
       setLoading(false);
     };
     fetchData();
-  }, [weekOffset, viewMode]);
+  }, [rangeEnd, rangeStart, viewMode, weekEnd, weekOffset, weekStart]);
 
   const totals = agents.reduce(
     (acc, a) => ({

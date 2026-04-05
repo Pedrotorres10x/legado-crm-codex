@@ -35,7 +35,7 @@ export const useContactEdit = ({
   onReload: () => void;
 }) => {
   const [editOpen, setEditOpen] = useState(false);
-  const [editForm, setEditForm] = useState<Record<string, any>>({});
+  const [editForm, setEditForm] = useState<Partial<ContactLike>>({});
   const [saving, setSaving] = useState(false);
   const [tagInput, setTagInput] = useState('');
 
@@ -58,7 +58,7 @@ export const useContactEdit = ({
       city: editForm.city || null,
       contact_type: editForm.contact_type,
       status: editForm.status,
-      pipeline_stage: (editForm.pipeline_stage || 'nuevo') as any,
+      pipeline_stage: editForm.pipeline_stage || 'nuevo',
       notes: editForm.notes || null,
       tags: editForm.tags || [],
       id_number: editForm.id_number || null,
@@ -66,7 +66,7 @@ export const useContactEdit = ({
       birth_date: editForm.birth_date || null,
       purchase_date: editForm.purchase_date || null,
       sale_date: editForm.sale_date || null,
-    } as any).eq('id', contactId);
+    }).eq('id', contactId);
     setSaving(false);
 
     if (error) {

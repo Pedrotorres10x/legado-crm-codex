@@ -11,6 +11,50 @@ import { sendMessage } from '../_shared/send-message.ts';
  * POST body: { batch_size?, preview? }
  */
 
+type SupabaseClient = ReturnType<typeof createClient>;
+
+interface CampaignDemandEnrichBody {
+  batch_size?: number;
+  preview?: boolean;
+}
+
+interface EnrichDemand {
+  id: string;
+  contact_id: string;
+  operation: string | null;
+  property_type: string | null;
+  max_price: number | null;
+  min_price: number | null;
+  cities: string[] | null;
+  zones: string[] | null;
+}
+
+interface EnrichContact {
+  id: string;
+  full_name: string | null;
+  phone: string | null;
+  phone2: string | null;
+  email: string | null;
+  city: string | null;
+  nationality: string | null;
+  notes: string | null;
+  preferred_language: string | null;
+  tags: string[] | null;
+  opt_out: boolean | null;
+}
+
+interface EnrichCandidate extends EnrichContact {
+  _demand: EnrichDemand;
+}
+
+interface AiMessageResponse {
+  ok?: boolean;
+  error?: string;
+  text?: string;
+  subject?: string;
+  html?: string;
+}
+
 Deno.serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
@@ -55,7 +99,7 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: "Campaña de enriquecimiento desactivada" });
     }
 
-    const body = await req.json();
+    const body = await req.json() as CampaignDemandEnrichBody;
     const batchSize = Math.min(body.batch_size || 200, 500);
     const preview = body.preview === true;
 
@@ -156,20 +200,22 @@ Deno.serve(async (req) => {
         if (sent < candidates.length) {
           await new Promise(r => setTimeout(r, 2000));
         }
-      } catch (e: any) {
-        errors.push(`${contact.full_name}: ${e.message}`);
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : String(e);
+        errors.push(`${contact.full_name}: ${message}`);
       }
     }
 
     return json({ ok: true, sent, errors: errors.length ? errors : undefined, remaining: candidates.length - sent });
-  } catch (e: any) {
-    console.error("campaign-demand-enrich error:", e.message);
-    return json({ ok: false, error: e.message }, 500);
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+    console.error("campaign-demand-enrich error:", message);
+    return json({ ok: false, error: message }, 500);
   }
 });
 
 // ─── Find incomplete demands without enrichment tags ─────────────────
-async function findCandidates(supabase: any, limit: number) {
+async function findCandidates(supabase: SupabaseClient, limit: number): Promise<EnrichCandidate[]> {
   const { data: demands, error } = await supabase
     .from("demands")
     .select("id, contact_id, operation, property_type, max_price, min_price, cities, zones")
@@ -178,21 +224,21 @@ async function findCandidates(supabase: any, limit: number) {
 
   if (error) throw new Error(`Query error: ${error.message}`);
 
-  const incomplete = (demands || []).filter((d: any) =>
+  const incomplete = ((demands ?? []) as EnrichDemand[]).filter((d) =>
     d.max_price == null || !d.cities?.length
   );
   if (!incomplete.length) return [];
 
-  const contactIds = [...new Set(incomplete.map((d: any) => d.contact_id))];
+  const contactIds = [...new Set(incomplete.map((d) => d.contact_id))];
 
   const { data: contacts } = await supabase
     .from("contacts")
-    .select("id, full_name, phone, phone2, email, city, nationality, notes, tags, opt_out")
+    .select("id, full_name, phone, phone2, email, city, nationality, notes, preferred_language, tags, opt_out")
     .in("id", contactIds);
 
   if (!contacts?.length) return [];
 
-  const valid = (contacts || []).filter((c: any) => {
+  const valid = ((contacts ?? []) as EnrichContact[]).filter((c) => {
     const tags = c.tags || [];
     return !tags.includes("demanda-enriquecida") &&
            !tags.includes("nevera") &&
@@ -200,9 +246,9 @@ async function findCandidates(supabase: any, limit: number) {
            (c.phone || c.email);
   });
 
-  const results: any[] = [];
+  const results: EnrichCandidate[] = [];
   for (const contact of valid) {
-    const contactDemands = incomplete.filter((d: any) => d.contact_id === contact.id);
+    const contactDemands = incomplete.filter((d) => d.contact_id === contact.id);
     if (contactDemands.length > 0) {
       results.push({ ...contact, _demand: contactDemands[0] });
       if (results.length >= limit) break;

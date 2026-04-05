@@ -23,6 +23,17 @@ const BUSINESS_KEYWORDS = [
   'gestión', 'gestion', 'advisors', 'partners', 'holding',
 ];
 
+type BasicContactRow = { id: string; full_name: string; agent_id: string | null; email?: string | null; tags?: string[] | null };
+type ProtectedContactRow = { id: string; name: string; agent_id: string | null; reason: string };
+type DuplicateSummaryRow = { id1: string; id2: string; name1: string; name2: string; field: string; value: string };
+type CleanupResults = {
+  actually_deleted: { id: string; name: string; agent_id: string | null }[];
+  protected_contacts: ProtectedContactRow[];
+  reclassified_business: { id: string; name: string; agent_id: string | null }[];
+  duplicates_found: DuplicateSummaryRow[];
+  dry_run: boolean;
+};
+
 Deno.serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
@@ -38,7 +49,7 @@ Deno.serve(async (req) => {
       dryRun = body.dry_run === true;
     } catch { /* no body = run for real */ }
 
-    const results = {
+    const results: CleanupResults = {
       actually_deleted: [] as { id: string; name: string; agent_id: string | null }[],
       protected_contacts: [] as { id: string; name: string; agent_id: string | null; reason: string }[],
       reclassified_business: [] as { id: string; name: string; agent_id: string | null }[],
@@ -60,7 +71,7 @@ Deno.serve(async (req) => {
       .not("contact_type", "eq", "colaborador")
       .limit(1000);
 
-    const businessContacts = (allContacts || []).filter((c: any) => {
+    const businessContacts = ((allContacts || []) as BasicContactRow[]).filter((c) => {
       const nameLower = (c.full_name || "").toLowerCase();
       const emailLower = (c.email || "").toLowerCase();
       return BUSINESS_KEYWORDS.some(kw =>
@@ -68,13 +79,13 @@ Deno.serve(async (req) => {
       );
     });
 
-    results.reclassified_business = businessContacts.map((c: any) => ({
+    results.reclassified_business = businessContacts.map((c) => ({
       id: c.id, name: c.full_name, agent_id: c.agent_id,
     }));
 
     // ── 3. Find duplicates ─────────────────────────────────────────────────
     const { data: dupes } = await supabase.rpc("find_duplicate_contacts");
-    results.duplicates_found = (dupes || []).map((d: any) => ({
+    results.duplicates_found = ((dupes || []) as Array<{ contact_id_1: string; contact_id_2: string; name_1: string; name_2: string; match_field: string; match_value: string }>).map((d) => ({
       id1: d.contact_id_1, id2: d.contact_id_2,
       name1: d.name_1, name2: d.name_2,
       field: d.match_field, value: d.match_value,
@@ -102,7 +113,7 @@ Deno.serve(async (req) => {
       await tagDuplicates(supabase, results.duplicates_found);
     } else {
       // In dry run, report all deletable as "would be deleted"
-      results.actually_deleted = deletable.map((c: any) => ({
+      results.actually_deleted = deletable.map((c: BasicContactRow) => ({
         id: c.id, name: c.full_name, agent_id: c.agent_id,
       }));
     }
@@ -128,14 +139,15 @@ Deno.serve(async (req) => {
       reclassified: results.reclassified_business.length,
       duplicates: results.duplicates_found.length,
     });
-  } catch (e: any) {
-    console.error("db-cleanup error:", e.message);
-    return json({ ok: false, error: e.message }, 500);
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : "unexpected_error";
+    console.error("db-cleanup error:", message);
+    return json({ ok: false, error: message }, 500);
   }
 });
 
 // ── Helper: find contacts without phone AND email ──────────────────────────
-async function findContactsWithoutInfo(supabase: any) {
+async function findContactsWithoutInfo(supabase: ReturnType<typeof createClient>) {
   const queries = [
     supabase.from("contacts").select("id, full_name, agent_id").is("phone", null).is("email", null).limit(500),
     supabase.from("contacts").select("id, full_name, agent_id").eq("phone", "").is("email", null).limit(500),
@@ -147,10 +159,10 @@ async function findContactsWithoutInfo(supabase: any) {
 }
 
 // ── Helper: partition contacts into deletable vs FK-protected ──────────────
-async function partitionByFkRefs(supabase: any, contacts: any[]) {
+async function partitionByFkRefs(supabase: ReturnType<typeof createClient>, contacts: BasicContactRow[]) {
   if (contacts.length === 0) return { deletable: [], protected: [] };
 
-  const ids = contacts.map((c: any) => c.id);
+  const ids = contacts.map((c) => c.id);
   const protectedIds = new Map<string, string>(); // id → reason
 
   // Check properties.owner_id
@@ -181,10 +193,10 @@ async function partitionByFkRefs(supabase: any, contacts: any[]) {
     protectedIds.set(s.contact_id, "firmante de contrato");
   }
 
-  const deletable = contacts.filter((c: any) => !protectedIds.has(c.id));
+  const deletable = contacts.filter((c) => !protectedIds.has(c.id));
   const protectedList = contacts
-    .filter((c: any) => protectedIds.has(c.id))
-    .map((c: any) => ({
+    .filter((c) => protectedIds.has(c.id))
+    .map((c) => ({
       id: c.id,
       name: c.full_name,
       agent_id: c.agent_id,
@@ -196,9 +208,9 @@ async function partitionByFkRefs(supabase: any, contacts: any[]) {
 
 // ── Helper: delete with error handling and fallback ────────────────────────
 async function deleteWithErrorHandling(
-  supabase: any,
-  deletable: any[],
-  protectedList: any[],
+  supabase: ReturnType<typeof createClient>,
+  deletable: BasicContactRow[],
+  protectedList: ProtectedContactRow[],
 ) {
   const actuallyDeleted: { id: string; name: string; agent_id: string | null }[] = [];
 
@@ -207,7 +219,7 @@ async function deleteWithErrorHandling(
     const { error } = await supabase
       .from("contacts")
       .delete()
-      .in("id", chunk.map((c: any) => c.id));
+      .in("id", chunk.map((c) => c.id));
 
     if (error) {
       // Fallback: delete one by one
@@ -233,7 +245,7 @@ async function deleteWithErrorHandling(
 }
 
 // ── Helper: tag duplicates ─────────────────────────────────────────────────
-async function tagDuplicates(supabase: any, duplicates: any[]) {
+async function tagDuplicates(supabase: ReturnType<typeof createClient>, duplicates: DuplicateSummaryRow[]) {
   const dupeIds = new Set<string>();
   for (const d of duplicates) {
     dupeIds.add(d.id1);
@@ -258,7 +270,7 @@ async function tagDuplicates(supabase: any, duplicates: any[]) {
 }
 
 // ── Helper: notify agents ──────────────────────────────────────────────────
-async function notifyAgents(supabase: any, results: any) {
+async function notifyAgents(supabase: ReturnType<typeof createClient>, results: CleanupResults) {
   const agentMap = new Map<string, { deleted: string[]; reclassified: string[]; protected: string[] }>();
 
   for (const c of results.actually_deleted) {
@@ -296,15 +308,15 @@ async function notifyAgents(supabase: any, results: any) {
 
 // ── Helper: send team summary ──────────────────────────────────────────────
 async function sendTeamSummary(
-  supabase: any, supabaseUrl: string, serviceKey: string,
-  results: any,
+  supabase: ReturnType<typeof createClient>, supabaseUrl: string, serviceKey: string,
+  results: CleanupResults,
 ) {
   const { data: coordAdmin } = await supabase
     .from("user_roles")
     .select("user_id")
     .in("role", ["admin", "coordinadora"]);
 
-  const userIds = (coordAdmin || []).map((r: any) => r.user_id);
+  const userIds = ((coordAdmin || []) as Array<{ user_id: string }>).map((r) => r.user_id);
   if (userIds.length === 0) return;
 
   const summaryLines = [
@@ -389,25 +401,25 @@ async function sendTeamSummary(
   }
 }
 
-function buildCleanupEmailHtml(results: any): string {
+function buildCleanupEmailHtml(results: CleanupResults): string {
   const deletedRows = results.actually_deleted
     .slice(0, 30)
-    .map((c: any) => `<tr><td style="padding:4px 8px;border-bottom:1px solid #eee;">${c.name}</td><td style="padding:4px 8px;border-bottom:1px solid #eee;color:#999;">Eliminado</td></tr>`)
+    .map((c) => `<tr><td style="padding:4px 8px;border-bottom:1px solid #eee;">${c.name}</td><td style="padding:4px 8px;border-bottom:1px solid #eee;color:#999;">Eliminado</td></tr>`)
     .join("");
 
   const protectedRows = results.protected_contacts
     .slice(0, 15)
-    .map((c: any) => `<tr><td style="padding:4px 8px;border-bottom:1px solid #eee;">${c.name}</td><td style="padding:4px 8px;border-bottom:1px solid #eee;color:#999;">🛡️ ${c.reason}</td></tr>`)
+    .map((c) => `<tr><td style="padding:4px 8px;border-bottom:1px solid #eee;">${c.name}</td><td style="padding:4px 8px;border-bottom:1px solid #eee;color:#999;">🛡️ ${c.reason}</td></tr>`)
     .join("");
 
   const reclassifiedRows = results.reclassified_business
     .slice(0, 30)
-    .map((c: any) => `<tr><td style="padding:4px 8px;border-bottom:1px solid #eee;">${c.name}</td><td style="padding:4px 8px;border-bottom:1px solid #eee;color:#999;">→ Colaborador</td></tr>`)
+    .map((c) => `<tr><td style="padding:4px 8px;border-bottom:1px solid #eee;">${c.name}</td><td style="padding:4px 8px;border-bottom:1px solid #eee;color:#999;">→ Colaborador</td></tr>`)
     .join("");
 
   const dupeRows = results.duplicates_found
     .slice(0, 20)
-    .map((d: any) => `<tr><td style="padding:4px 8px;border-bottom:1px solid #eee;">${d.name1} ↔ ${d.name2}</td><td style="padding:4px 8px;border-bottom:1px solid #eee;color:#999;">${d.field}: ${d.value}</td></tr>`)
+    .map((d) => `<tr><td style="padding:4px 8px;border-bottom:1px solid #eee;">${d.name1} ↔ ${d.name2}</td><td style="padding:4px 8px;border-bottom:1px solid #eee;color:#999;">${d.field}: ${d.value}</td></tr>`)
     .join("");
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"/></head>
@@ -452,9 +464,9 @@ function buildCleanupEmailHtml(results: any): string {
 </table></td></tr></table></body></html>`;
 }
 
-function dedupeById(arr: any[]): any[] {
+function dedupeById(arr: BasicContactRow[]): BasicContactRow[] {
   const seen = new Set<string>();
-  return arr.filter((c: any) => {
+  return arr.filter((c) => {
     if (seen.has(c.id)) return false;
     seen.add(c.id);
     return true;

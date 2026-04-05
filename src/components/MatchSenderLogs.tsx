@@ -10,10 +10,25 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
+type MatchSenderLogRow = {
+  id: string;
+  run_at: string;
+  demands_total: number;
+  contacts_processed: number;
+  contacts_skipped: number;
+  emails_sent: number;
+  emails_failed: number;
+  whatsapp_sent?: number | null;
+  matches_created: number;
+  matches_skipped_already_sent?: number | null;
+  duration_ms?: number | null;
+  errors?: string[] | null;
+};
+
 const MatchSenderLogs = () => {
-  const [logs, setLogs] = useState<any[]>([]);
+  const [logs, setLogs] = useState<MatchSenderLogRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedLog, setSelectedLog] = useState<any>(null);
+  const [selectedLog, setSelectedLog] = useState<MatchSenderLogRow | null>(null);
 
   useEffect(() => {
     const fetch = async () => {
@@ -22,7 +37,7 @@ const MatchSenderLogs = () => {
         .select('*')
         .order('run_at', { ascending: false })
         .limit(50);
-      setLogs(data || []);
+      setLogs((data || []) as MatchSenderLogRow[]);
       setLoading(false);
     };
     fetch();

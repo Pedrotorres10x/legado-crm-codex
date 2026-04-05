@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Bot, Sparkles, Users, PenTool, Brain, ShieldCheck } from 'lucide-react';
+import { Bot, Sparkles, Users, PenTool, Brain, ShieldCheck, Mic } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useIsMobile } from '@/hooks/use-mobile';
 import AIAssistant from '@/pages/AIAssistant';
@@ -10,12 +10,13 @@ import DuplicateContacts from '@/components/DuplicateContacts';
 import FreeSignature from '@/components/FreeSignature';
 import AdminAILearning from '@/components/AdminAILearning';
 import ContactBackup from '@/components/ContactBackup';
+import VoiceCampaigns from '@/components/VoiceCampaigns';
 
 const Tools = () => {
   const [searchParams] = useSearchParams();
   const initialTab = searchParams.get('tab') || 'ai';
   const [tab, setTab] = useState(initialTab);
-  const { isAdmin } = useAuth();
+  const { isAdmin, canViewAll } = useAuth();
   const isMobile = useIsMobile();
 
   useEffect(() => {
@@ -58,6 +59,11 @@ const Tools = () => {
           <TabsTrigger value="firma" className="gap-1.5 text-xs md:text-sm shrink-0">
             <PenTool className="h-4 w-4" />Firma
           </TabsTrigger>
+          {canViewAll && (
+            <TabsTrigger value="voice-campaigns" className="gap-1.5 text-xs md:text-sm shrink-0">
+              <Mic className="h-4 w-4" />Voice Campaigns
+            </TabsTrigger>
+          )}
           {isAdmin && (
             <TabsTrigger value="ia-learning" className="gap-1.5 text-xs md:text-sm shrink-0">
               <Brain className="h-4 w-4" />IA Learning
@@ -86,6 +92,12 @@ const Tools = () => {
         <TabsContent value="firma">
           <FreeSignature />
         </TabsContent>
+
+        {canViewAll && (
+          <TabsContent value="voice-campaigns">
+            <VoiceCampaigns />
+          </TabsContent>
+        )}
 
         {isAdmin && (
           <TabsContent value="ia-learning">

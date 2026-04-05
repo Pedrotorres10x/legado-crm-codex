@@ -14,14 +14,17 @@
       "Bash(mv *)",
       "Bash(touch *)",
       "Bash(curl *)",
+      "Bash(*codex.exe*)",
       "Write(*)",
       "Read(*)"
     ],
     "deny": [
       "Bash(rm *)",
       "Bash(sudo *)",
+      "Read(.env)",
       "Read(**/.env)",
-      "Read(**/.env.*)"
+      "Read(**/.env.*)",
+      "Read(.env.*)"
     ]
   }
 }

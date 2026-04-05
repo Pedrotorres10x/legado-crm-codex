@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -7,6 +7,29 @@ const corsHeaders = {
 };
 
 const MAX_OTP_ATTEMPTS = 5;
+
+interface ContractSummary {
+  id: string;
+  content: string;
+  content_hash?: string | null;
+}
+
+interface SignerSummary {
+  signer_label: string | null;
+  signer_name: string | null;
+  signer_id_number: string | null;
+  signer_email?: string | null;
+  signed_at: string | null;
+}
+
+interface AdminRole {
+  user_id: string;
+}
+
+interface AdminProfile {
+  email: string | null;
+  full_name: string | null;
+}
 
 async function sha256(text: string): Promise<string> {
   const encoder = new TextEncoder();
@@ -25,7 +48,7 @@ function getClientIp(req: Request): string {
   return req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("cf-connecting-ip") || "unknown";
 }
 
-async function auditLog(supabase: any, action: string, recordId: string, details: Record<string, string>) {
+async function auditLog(supabase: SupabaseClient, action: string, recordId: string, details: Record<string, string>) {
   const fieldsToLog = Object.entries(details);
   for (const [fieldName, newValue] of fieldsToLog) {
     await supabase.from("audit_log").insert({
@@ -36,6 +59,28 @@ async function auditLog(supabase: any, action: string, recordId: string, details
       new_value: newValue,
     });
   }
+}
+
+async function syncVisitWithSignedDocument(
+  supabase: SupabaseClient,
+  contractId: string,
+  signerName: string,
+  signerIdNumber: string,
+  clientIp: string,
+  clientUA: string,
+) {
+  await supabase
+    .from("visits")
+    .update({
+      confirmation_status: "confirmado",
+      confirmed_at: new Date().toISOString(),
+      confirmation_ip: clientIp,
+      confirmation_user_agent: clientUA,
+      visitor_declared_name: signerName,
+      visitor_declared_dni: signerIdNumber,
+      visitor_declaration_acknowledged_at: new Date().toISOString(),
+    })
+    .eq("signature_contract_id", contractId);
 }
 
 async function sendOtpEmail(email: string, code: string, signerLabel: string) {
@@ -80,13 +125,18 @@ function jsonResponse(body: Record<string, unknown>, status = 200) {
   });
 }
 
-async function sendCompletionEmails(supabase: any, contract: any, signers: any[], documentHash: string) {
+async function sendCompletionEmails(
+  supabase: SupabaseClient,
+  contract: ContractSummary,
+  signers: SignerSummary[],
+  documentHash: string,
+) {
   const BREVO_API_KEY = Deno.env.get("BREVO_API_KEY");
   if (!BREVO_API_KEY) return;
 
   const signDate = new Date().toLocaleDateString("es-ES", { day: "2-digit", month: "long", year: "numeric" });
 
-  const signersSummaryHtml = signers.map((s: any) => `
+  const signersSummaryHtml = signers.map((s) => `
     <tr>
       <td style="padding:6px 12px;border-bottom:1px solid #eee;">${s.signer_label || 'Firmante'}</td>
       <td style="padding:6px 12px;border-bottom:1px solid #eee;">${s.signer_name || '—'}</td>
@@ -154,7 +204,7 @@ async function sendCompletionEmails(supabase: any, contract: any, signers: any[]
     const { data: adminProfiles } = await supabase
       .from("profiles")
       .select("email, full_name")
-      .in("user_id", adminRoles.map((r: any) => r.user_id));
+      .in("user_id", (adminRoles as AdminRole[]).map((r) => r.user_id));
 
     for (const admin of (adminProfiles || [])) {
       if (!admin.email) continue;
@@ -180,7 +230,7 @@ async function sendCompletionEmails(supabase: any, contract: any, signers: any[]
                   <th style="padding:8px 12px;text-align:left;">Fecha firma</th>
                 </tr>
               </thead>
-              <tbody>${signers.map((s: any) => `
+              <tbody>${signers.map((s) => `
                 <tr>
                   <td style="padding:6px 12px;border-bottom:1px solid #eee;">${s.signer_label || 'Firmante'}</td>
                   <td style="padding:6px 12px;border-bottom:1px solid #eee;">${s.signer_name || '—'}</td>
@@ -546,6 +596,14 @@ Deno.serve(async (req) => {
           } catch (emailErr) {
             console.error("Error sending completion emails:", emailErr);
           }
+          await syncVisitWithSignedDocument(
+            supabase,
+            contract.id,
+            signer_name.trim(),
+            cleanId,
+            clientIp,
+            clientUA,
+          );
         }
 
         return jsonResponse({
@@ -596,6 +654,15 @@ Deno.serve(async (req) => {
       }).eq("id", contract.id);
 
       if (updateError) return jsonResponse({ error: "Error al actualizar contrato: " + updateError.message }, 500);
+
+      await syncVisitWithSignedDocument(
+        supabase,
+        contract.id,
+        signer_name.trim(),
+        cleanId,
+        clientIp,
+        clientUA,
+      );
 
       return jsonResponse({
         success: true,

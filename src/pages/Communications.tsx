@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { MessageCircle, Phone, ArrowLeft, CalendarClock, AlertTriangle, CheckCircle2, ChevronRight } from 'lucide-react';
+import { MessageCircle, ArrowLeft, CalendarClock, AlertTriangle, CheckCircle2, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -17,10 +17,6 @@ import ChannelList from '@/components/chat/ChannelList';
 import MessageArea from '@/components/chat/MessageArea';
 import FollowUpTaskDialog from '@/components/communications/FollowUpTaskDialog';
 import { useFollowUpTaskDraft } from '@/hooks/useFollowUpTaskDraft';
-
-// Calls components
-import TwilioDialer from '@/components/TwilioDialer';
-import CallHistory from '@/components/CallHistory';
 
 type FollowUpItem = {
   id: string;
@@ -35,13 +31,69 @@ type FollowUpItem = {
   propertyId?: string | null;
 };
 
+type ContactFollowUpRow = {
+  id: string;
+  full_name: string;
+  status: string | null;
+  city: string | null;
+  updated_at: string;
+};
+
+type InteractionFollowUpRow = {
+  contact_id: string | null;
+  interaction_date: string;
+  interaction_type: string;
+};
+
+type TaskFollowUpRow = {
+  id: string;
+  title: string;
+  due_date: string;
+  task_type: string;
+  contact_id: string | null;
+  property_id: string | null;
+  source: string | null;
+  contacts?: { full_name: string } | null;
+  properties?: { title: string } | null;
+};
+
+type MatchFollowUpRow = {
+  id: string;
+  notes: string | null;
+  property_id: string | null;
+  demand_id: string | null;
+  properties?: { title: string } | null;
+  demands?: {
+    contact_id: string | null;
+    contacts?: { full_name: string } | null;
+  } | null;
+};
+
+type InboundLeadRow = {
+  id: string;
+  full_name: string;
+  status: string | null;
+  city: string | null;
+  pipeline_stage: string | null;
+  created_at: string;
+  tags: string[] | null;
+};
+
+type ContactIdAggregateRow = {
+  contact_id: string | null;
+};
+
+type LeadTaskAggregateRow = ContactIdAggregateRow & {
+  completed: boolean | null;
+};
+
 const Communications = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
-  const initialTab = tabParam === 'calls' || tabParam === 'followup' ? tabParam : 'chat';
+  const initialTab = tabParam === 'followup' ? tabParam : 'chat';
   const [activeTab, setActiveTab] = useState(initialTab);
   const [followUpItems, setFollowUpItems] = useState<FollowUpItem[]>([]);
   const [followUpLoading, setFollowUpLoading] = useState(true);
@@ -152,7 +204,7 @@ const Communications = () => {
       ]);
 
       const latestInteractionByContact = new Map<string, { interaction_date: string; interaction_type: string }>();
-      ((interactions as any[]) || []).forEach((interaction) => {
+      ((interactions || []) as InteractionFollowUpRow[]).forEach((interaction) => {
         if (interaction.contact_id && !latestInteractionByContact.has(interaction.contact_id)) {
           latestInteractionByContact.set(interaction.contact_id, {
             interaction_date: interaction.interaction_date,
@@ -161,7 +213,7 @@ const Communications = () => {
         }
       });
 
-      const staleContacts: FollowUpItem[] = (((contacts as any[]) || [])
+      const staleContacts: FollowUpItem[] = (((contacts || []) as ContactFollowUpRow[])
         .filter((contact) => {
           const latest = latestInteractionByContact.get(contact.id);
           return !latest || latest.interaction_date < sevenDaysAgoIso;
@@ -184,7 +236,7 @@ const Communications = () => {
           };
         }));
 
-      const overdueTasks: FollowUpItem[] = (((tasks as any[]) || [])
+      const overdueTasks: FollowUpItem[] = (((tasks || []) as TaskFollowUpRow[])
         .filter((task) => isPast(new Date(task.due_date)))
         .slice(0, 6)
         .map((task) => ({
@@ -200,7 +252,7 @@ const Communications = () => {
           propertyId: task.property_id,
         })));
 
-      const pendingWhatsapps: FollowUpItem[] = (((matches as any[]) || [])
+      const pendingWhatsapps: FollowUpItem[] = (((matches || []) as MatchFollowUpRow[])
         .slice(0, 6)
         .map((match) => ({
           id: `match-${match.id}`,
@@ -215,7 +267,8 @@ const Communications = () => {
           propertyId: match.property_id,
         })));
 
-      const inboundLeadIds = ((inboundLeads as any[]) || []).map((lead) => lead.id);
+      const inboundLeadRows = (inboundLeads || []) as InboundLeadRow[];
+      const inboundLeadIds = inboundLeadRows.map((lead) => lead.id);
       let leadTasksMap = new Map<string, number>();
       let leadVisitsMap = new Map<string, number>();
       let leadOffersMap = new Map<string, number>();
@@ -227,23 +280,23 @@ const Communications = () => {
           supabase.from('offers').select('contact_id').in('contact_id', inboundLeadIds),
         ]);
 
-        leadTasksMap = ((leadTasks as any[]) || []).reduce((map, task) => {
-          if (!task.completed) map.set(task.contact_id, (map.get(task.contact_id) || 0) + 1);
+        leadTasksMap = ((leadTasks || []) as LeadTaskAggregateRow[]).reduce((map, task) => {
+          if (task.contact_id && !task.completed) map.set(task.contact_id, (map.get(task.contact_id) || 0) + 1);
           return map;
         }, new Map<string, number>());
 
-        leadVisitsMap = ((leadVisits as any[]) || []).reduce((map, visit) => {
-          map.set(visit.contact_id, (map.get(visit.contact_id) || 0) + 1);
+        leadVisitsMap = ((leadVisits || []) as ContactIdAggregateRow[]).reduce((map, visit) => {
+          if (visit.contact_id) map.set(visit.contact_id, (map.get(visit.contact_id) || 0) + 1);
           return map;
         }, new Map<string, number>());
 
-        leadOffersMap = ((leadOffers as any[]) || []).reduce((map, offer) => {
-          map.set(offer.contact_id, (map.get(offer.contact_id) || 0) + 1);
+        leadOffersMap = ((leadOffers || []) as ContactIdAggregateRow[]).reduce((map, offer) => {
+          if (offer.contact_id) map.set(offer.contact_id, (map.get(offer.contact_id) || 0) + 1);
           return map;
         }, new Map<string, number>());
       }
 
-      const inboundFollowUp: FollowUpItem[] = (((inboundLeads as any[]) || [])
+      const inboundFollowUp: FollowUpItem[] = (inboundLeadRows
         .filter((lead) => {
           const openTasks = leadTasksMap.get(lead.id) || 0;
           const visits = leadVisitsMap.get(lead.id) || 0;
@@ -310,9 +363,6 @@ const Communications = () => {
           </TabsTrigger>
           <TabsTrigger value="chat" className="flex-1 gap-1.5">
             <MessageCircle className="h-4 w-4" />Chat
-          </TabsTrigger>
-          <TabsTrigger value="calls" className="flex-1 gap-1.5">
-            <Phone className="h-4 w-4" />Llamadas
           </TabsTrigger>
         </TabsList>
 
@@ -472,23 +522,6 @@ const Communications = () => {
           )}
         </TabsContent>
 
-        {/* ─── Calls Tab ─── */}
-        <TabsContent value="calls" className="mt-4">
-          <div className="max-w-2xl mx-auto space-y-4">
-            <Tabs defaultValue="dialer">
-              <TabsList className="w-full">
-                <TabsTrigger value="dialer" className="flex-1">Marcador</TabsTrigger>
-                <TabsTrigger value="history" className="flex-1">Historial</TabsTrigger>
-              </TabsList>
-              <TabsContent value="dialer" className="mt-4">
-                <TwilioDialer />
-              </TabsContent>
-              <TabsContent value="history" className="mt-4">
-                <CallHistory />
-              </TabsContent>
-            </Tabs>
-          </div>
-        </TabsContent>
       </Tabs>
 
       <FollowUpTaskDialog

@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { AgentRecordRichnessSummary, getAgentRecordRichness } from '@/lib/agent-record-richness';
 
 type AgentRecordRichnessState = AgentRecordRichnessSummary | null;
+type PropertyRichnessRow = Parameters<typeof getAgentRecordRichness>[0][number];
 
 export const useAgentRecordRichness = (userId?: string) => {
   const [summary, setSummary] = useState<AgentRecordRichnessState>(null);
@@ -26,7 +27,7 @@ export const useAgentRecordRichness = (userId?: string) => {
         .eq('agent_id', userId);
 
       if (!cancelled) {
-        setSummary(getAgentRecordRichness((data as any[]) || []));
+        setSummary(getAgentRecordRichness(((data || []) as PropertyRichnessRow[])));
         setLoading(false);
       }
     };

@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Building2, Users,
   LogOut, ChevronLeft, ChevronRight, ChevronDown,
   Wrench, TrendingUp, MessageCircle,
-  UserCircle, Shield, Globe, BarChart3, Receipt, ExternalLink, MessageSquare, Rss, CheckSquare, Radar
+  UserCircle, Shield, Globe, BarChart3, Receipt, ExternalLink, MessageSquare, Rss, CheckSquare, Radar, Search, UserRoundSearch
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,7 @@ import { useState, useEffect } from 'react';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useToast } from '@/hooks/use-toast';
 import { useWorkspacePersona } from '@/hooks/useWorkspacePersona';
+import { FAKTURA_PUBLIC_URL } from '@/lib/publicUrls';
 
 interface NavItem {
   to: string;
@@ -41,7 +42,10 @@ const dailyNavEntries: NavEntry[] = [
 const crmNavEntries: NavEntry[] = [
   { to: '/properties', icon: Building2, label: 'Inmuebles' },
   { to: '/contacts', icon: Users, label: 'Personas' },
+  { to: '/demands', icon: Search, label: 'Demandas' },
+  { to: '/buyers-without-demand', icon: UserRoundSearch, label: 'Compradores sin demanda' },
   { to: '/matches', icon: TrendingUp, label: 'Compradores y cruces' },
+  { to: '/whatsapp-pending', icon: MessageSquare, label: 'Pendientes WhatsApp' },
   { to: '/guide/advisors', icon: Receipt, label: 'Guía asesores' },
   { to: '/tools', icon: Wrench, label: 'Herramientas' },
 ];
@@ -97,7 +101,7 @@ const AppSidebar = () => {
   const crmEntries = isAgentMode
     ? crmNavEntries.filter((entry) =>
         'to' in entry &&
-        ['/properties', '/contacts', '/matches', '/guide/advisors'].includes(entry.to),
+        ['/properties', '/contacts', '/demands', '/buyers-without-demand', '/matches', '/whatsapp-pending', '/guide/advisors'].includes(entry.to),
       )
     : crmNavEntries;
 
@@ -352,7 +356,7 @@ const AppSidebar = () => {
                 {canViewAll && renderNavLink({ to: '/web-leads', icon: Globe, label: 'Legado Colección' }, true)}
                 {canViewAll && (
                   <a
-                    href="https://fakturalegado.lovable.app"
+                    href={FAKTURA_PUBLIC_URL}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-3 rounded-xl px-3 py-2.5 pl-12 text-sm font-medium transition-all duration-300 text-sidebar-foreground/55 hover:text-sidebar-foreground hover:bg-sidebar-accent/60"

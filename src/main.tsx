@@ -6,25 +6,28 @@ import AppErrorBoundary from "./components/AppErrorBoundary.tsx";
 
 const root = createRoot(document.getElementById("root")!);
 
-const clearLocalServiceWorkers = () => {
+const clearResidualServiceWorkers = async () => {
   if (typeof window === "undefined") return;
-  const isLocalhost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
-  if (!isLocalhost || !("serviceWorker" in navigator)) return;
+  if (!("serviceWorker" in navigator)) return;
 
-  navigator.serviceWorker.getRegistrations()
-    .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
-    .catch(() => undefined);
+  try {
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(registrations.map((registration) => registration.unregister()));
+  } catch {
+    // Ignore cleanup failures and continue booting the app.
+  }
 
   if ("caches" in window) {
-    caches.keys()
-      .then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
-      .catch(() => undefined);
+    try {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((key) => caches.delete(key)));
+    } catch {
+      // CacheStorage can fail in some embedded browsers; do not block startup.
+    }
   }
 };
 
-clearLocalServiceWorkers();
-
-if (shouldBlockLocalProdBackend) {
+const renderSafetyLock = () => {
   root.render(
     <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: "24px", background: "#f7f5ef", color: "#1f2937", fontFamily: "system-ui, sans-serif" }}>
       <div style={{ maxWidth: "720px", background: "#fff", border: "1px solid #e5e7eb", borderRadius: "16px", padding: "24px", boxShadow: "0 20px 50px rgba(0,0,0,0.08)" }}>
@@ -49,10 +52,25 @@ if (shouldBlockLocalProdBackend) {
       </div>
     </div>,
   );
-} else {
+};
+
+const renderApp = () => {
   root.render(
     <AppErrorBoundary>
       <App />
     </AppErrorBoundary>,
   );
-}
+};
+
+const bootstrap = async () => {
+  await clearResidualServiceWorkers();
+
+  if (shouldBlockLocalProdBackend) {
+    renderSafetyLock();
+    return;
+  }
+
+  renderApp();
+};
+
+void bootstrap();

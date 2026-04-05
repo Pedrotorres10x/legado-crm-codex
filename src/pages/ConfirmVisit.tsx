@@ -5,6 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import { CheckCircle, Calendar as CalendarIcon, MapPin, Loader2, AlertCircle, Home, XCircle, CalendarClock } from 'lucide-react';
 import { format, setHours, setMinutes } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -23,9 +26,20 @@ import {
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
+type VisitConfirmationPayload = {
+  contact_name: string;
+  property_title: string;
+  property_address: string | null;
+  visit_date: string;
+  notes: string | null;
+  confirmation_status: 'pendiente' | 'confirmado' | 'cancelado' | 'reprogramado' | null;
+  visitor_declared_name?: string | null;
+  visitor_declared_dni?: string | null;
+};
+
 const ConfirmVisit = () => {
   const { token } = useParams<{ token: string }>();
-  const [visit, setVisit] = useState<any>(null);
+  const [visit, setVisit] = useState<VisitConfirmationPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [confirming, setConfirming] = useState(false);
@@ -38,6 +52,9 @@ const ConfirmVisit = () => {
   const [newDate, setNewDate] = useState<Date | undefined>();
   const [newHour, setNewHour] = useState('10');
   const [newMinute, setNewMinute] = useState('00');
+  const [declaredName, setDeclaredName] = useState('');
+  const [declaredDni, setDeclaredDni] = useState('');
+  const [acknowledged, setAcknowledged] = useState(false);
 
   useEffect(() => {
     const fetchVisit = async () => {
@@ -48,6 +65,8 @@ const ConfirmVisit = () => {
           setError(data.error || 'Error al cargar la visita');
         } else {
           setVisit(data);
+          setDeclaredName(data.visitor_declared_name || data.contact_name || '');
+          setDeclaredDni(data.visitor_declared_dni || '');
           if (data.confirmation_status === 'confirmado') setConfirmed(true);
           if (data.confirmation_status === 'cancelado') setCancelled(true);
           if (data.confirmation_status === 'reprogramado') setRescheduled(true);
@@ -61,7 +80,7 @@ const ConfirmVisit = () => {
     if (token) fetchVisit();
   }, [token]);
 
-  const postAction = async (action: string, extra?: Record<string, any>) => {
+  const postAction = async (action: string, extra?: Record<string, unknown>) => {
     const res = await fetch(`${SUPABASE_URL}/functions/v1/confirm-visit`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -76,10 +95,23 @@ const ConfirmVisit = () => {
     setConfirming(true);
     setError('');
     try {
-      await postAction('confirm');
+      await postAction('confirm', {
+        declared_name: declaredName,
+        declared_dni: declaredDni,
+        declaration_acknowledged: acknowledged,
+      });
+      setVisit((currentVisit) =>
+        currentVisit
+          ? {
+              ...currentVisit,
+              visitor_declared_name: declaredName.trim(),
+              visitor_declared_dni: declaredDni.trim().toUpperCase(),
+            }
+          : currentVisit,
+      );
       setConfirmed(true);
-    } catch (e: any) {
-      setError(e.message);
+    } catch (error: unknown) {
+      setError(error instanceof Error ? error.message : 'Error al confirmar la visita');
     } finally {
       setConfirming(false);
     }
@@ -91,8 +123,8 @@ const ConfirmVisit = () => {
     try {
       await postAction('cancel');
       setCancelled(true);
-    } catch (e: any) {
-      setError(e.message);
+    } catch (error: unknown) {
+      setError(error instanceof Error ? error.message : 'Error al cancelar la visita');
     } finally {
       setCancelling(false);
     }
@@ -106,9 +138,11 @@ const ConfirmVisit = () => {
       const dateWithTime = setMinutes(setHours(newDate, parseInt(newHour)), parseInt(newMinute));
       await postAction('reschedule', { new_date: dateWithTime.toISOString() });
       setRescheduled(true);
-      setVisit((v: any) => ({ ...v, visit_date: dateWithTime.toISOString() }));
-    } catch (e: any) {
-      setError(e.message);
+      setVisit((currentVisit) =>
+        currentVisit ? { ...currentVisit, visit_date: dateWithTime.toISOString() } : currentVisit,
+      );
+    } catch (error: unknown) {
+      setError(error instanceof Error ? error.message : 'Error al reprogramar la visita');
     } finally {
       setRescheduling(false);
     }
@@ -143,12 +177,12 @@ const ConfirmVisit = () => {
       : rescheduled
         ? <CalendarClock className="h-16 w-16 mx-auto text-orange-500" />
         : <CheckCircle className="h-16 w-16 mx-auto text-green-600" />;
-    const title = cancelled ? '❌ Visita cancelada' : rescheduled ? '📅 Visita reprogramada' : '✅ ¡Visita confirmada!';
+    const title = cancelled ? '❌ Visita cancelada' : rescheduled ? '📅 Visita reprogramada' : '✅ Hoja de visita registrada';
     const subtitle = cancelled
       ? 'La visita ha sido cancelada. El agente será notificado.'
       : rescheduled
         ? 'Has solicitado una nueva fecha. El agente será notificado.'
-        : `Gracias ${visit?.contact_name}. Tu asistencia ha quedado registrada.`;
+        : `Gracias ${visit?.visitor_declared_name || declaredName || visit?.contact_name}. Tu asistencia ha quedado registrada con los datos declarados.`;
 
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
@@ -157,6 +191,11 @@ const ConfirmVisit = () => {
             {icon}
             <h2 className="text-2xl font-bold">{title}</h2>
             <p className="text-muted-foreground">{subtitle}</p>
+            {confirmed && visit?.visitor_declared_dni && (
+              <p className="text-sm text-muted-foreground">
+                Documento declarado: <span className="font-medium text-foreground">{visit.visitor_declared_dni}</span>
+              </p>
+            )}
             {visit && (
               <div className="mt-4 p-4 bg-muted rounded-lg text-left space-y-2">
                 <div className="flex items-center gap-2">
@@ -191,8 +230,8 @@ const ConfirmVisit = () => {
         <CardContent className="py-8 space-y-6">
           <div className="text-center">
             <CalendarIcon className="h-10 w-10 mx-auto mb-2 text-primary" />
-            <h1 className="text-2xl font-bold">Confirmar Visita</h1>
-            <p className="text-muted-foreground mt-1">Hola {visit.contact_name}, confirma tu asistencia a la visita</p>
+            <h1 className="text-2xl font-bold">Hoja de visita</h1>
+            <p className="text-muted-foreground mt-1">Hola {visit.contact_name}, registra tu asistencia a la visita</p>
           </div>
 
           <div className="p-4 bg-muted rounded-lg space-y-3">
@@ -215,6 +254,41 @@ const ConfirmVisit = () => {
             {visit.notes && (
               <p className="text-sm text-muted-foreground border-t pt-2">{visit.notes}</p>
             )}
+          </div>
+
+          <div className="rounded-xl border border-amber-300/60 bg-amber-50 p-4 space-y-3">
+            <p className="text-sm font-semibold text-amber-950">Antes de confirmar</p>
+            <p className="text-sm text-amber-900">
+              Para dejar constancia de la visita te pedimos que escribas correctamente tu nombre completo y tu DNI o NIE.
+              No hace falta adjuntar foto del documento.
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="declared-name">Nombre completo</Label>
+              <Input
+                id="declared-name"
+                value={declaredName}
+                onChange={(event) => setDeclaredName(event.target.value)}
+                placeholder="Escribe tu nombre y apellidos"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="declared-dni">DNI o NIE</Label>
+              <Input
+                id="declared-dni"
+                value={declaredDni}
+                onChange={(event) => setDeclaredDni(event.target.value.toUpperCase())}
+                placeholder="Ej: 12345678Z o X1234567A"
+              />
+            </div>
+            <label className="flex items-start gap-3 rounded-lg border p-3 cursor-pointer">
+              <Checkbox checked={acknowledged} onCheckedChange={(checked) => setAcknowledged(checked === true)} />
+              <span className="text-sm text-muted-foreground">
+                Confirmo que he escrito correctamente mi nombre completo y mi DNI o NIE para dejar constancia de la visita.
+              </span>
+            </label>
           </div>
 
           {error && <p className="text-sm text-destructive text-center">{error}</p>}
@@ -270,8 +344,13 @@ const ConfirmVisit = () => {
 
           {!showReschedule && (
             <div className="space-y-3">
-              <Button className="w-full" size="lg" onClick={handleConfirm} disabled={confirming}>
-                {confirming ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Confirmando...</> : '✅ Confirmo mi asistencia'}
+              <Button
+                className="w-full"
+                size="lg"
+                onClick={handleConfirm}
+                disabled={confirming || declaredName.trim().length < 5 || declaredDni.trim().length < 5 || !acknowledged}
+              >
+                {confirming ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Registrando...</> : '✅ Registrar hoja de visita'}
               </Button>
 
               <div className="flex gap-2">
@@ -305,7 +384,7 @@ const ConfirmVisit = () => {
           )}
 
           <p className="text-xs text-center text-muted-foreground">
-            Al confirmar, cancelar o reprogramar, se registrará la fecha, hora e IP como evidencia.
+            Al confirmar, cancelar o reprogramar, se registrará la fecha, hora, IP y navegador como evidencia.
           </p>
         </CardContent>
       </Card>

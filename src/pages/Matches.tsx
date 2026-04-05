@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -17,6 +18,8 @@ import { VISIT_RESULT_OPTIONS } from '@/lib/horus-model';
 import { useAuth } from '@/contexts/AuthContext';
 import AgentFilter from '@/components/AgentFilter';
 import { lazy, Suspense } from 'react';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
 import ClassificationCampaign from '@/components/ClassificationCampaign';
 import AISectionGuide from '@/components/ai/AISectionGuide';
 import { useWorkspacePersona } from '@/hooks/useWorkspacePersona';
@@ -54,11 +57,67 @@ const offerStatuses = [
   { value: 'expirada', label: 'Expirada' },
 ];
 
+type MatchStatus = Database['public']['Tables']['matches']['Row']['status'];
+type MatchUpdate = Database['public']['Tables']['matches']['Update'];
+type MatchProperty = Pick<
+  Database['public']['Tables']['properties']['Row'],
+  'title' | 'city' | 'province' | 'price' | 'bedrooms' | 'surface_area' | 'property_type' | 'operation'
+>;
+type MatchDemandContact = Pick<
+  Database['public']['Tables']['contacts']['Row'],
+  'id' | 'full_name' | 'phone' | 'email' | 'agent_id'
+>;
+type MatchDemand = Pick<
+  Database['public']['Tables']['demands']['Row'],
+  'id' | 'contact_id' | 'agent_id' | 'is_active' | 'auto_match' | 'operation' | 'property_type' | 'property_types' | 'cities' | 'zones' | 'min_price' | 'max_price' | 'min_bedrooms'
+> & {
+  contacts: MatchDemandContact | null;
+};
+type MatchRow = Pick<
+  Database['public']['Tables']['matches']['Row'],
+  'id' | 'agent_id' | 'demand_id' | 'property_id' | 'compatibility' | 'status' | 'notes'
+> & {
+  demands: MatchDemand | null;
+  properties: MatchProperty | null;
+};
+type VisitRow = Pick<
+  Database['public']['Tables']['visits']['Row'],
+  'id' | 'agent_id' | 'visit_date' | 'result' | 'confirmation_status' | 'confirmation_token'
+> & {
+  properties: Pick<Database['public']['Tables']['properties']['Row'], 'title'> | null;
+  contacts: Pick<Database['public']['Tables']['contacts']['Row'], 'full_name' | 'phone' | 'email'> | null;
+};
+type OfferRow = Pick<
+  Database['public']['Tables']['offers']['Row'],
+  'id' | 'agent_id' | 'status' | 'notes' | 'amount'
+> & {
+  properties: Pick<Database['public']['Tables']['properties']['Row'], 'title'> | null;
+  contacts: Pick<Database['public']['Tables']['contacts']['Row'], 'full_name'> | null;
+};
+type SimpleProperty = Pick<Database['public']['Tables']['properties']['Row'], 'id' | 'title'>;
+type SimpleContact = Pick<Database['public']['Tables']['contacts']['Row'], 'id' | 'full_name' | 'phone' | 'email'>;
+type AiScoringResult = {
+  score?: number;
+  error?: string;
+  [key: string]: unknown;
+};
+type MatchGroup = {
+  id: string;
+  contactId: string | null;
+  contactName: string;
+  contactPhone: string | null;
+  contactEmail: string | null;
+  demandId: string | null;
+  demand: MatchDemand | null;
+  matches: MatchRow[];
+};
+
 const Matches = () => {
   const { toast } = useToast();
   const { user, canViewAll } = useAuth();
   const { isAgentMode } = useWorkspacePersona(canViewAll);
-  const [matches, setMatches] = useState<any[]>([]);
+  const [matches, setMatches] = useState<MatchRow[]>([]);
+  const [demandsList, setDemandsList] = useState<MatchDemand[]>([]);
   const [matchesCount, setMatchesCount] = useState(0);
   const [matchesPage, setMatchesPage] = useState(0);
   const MATCHES_PER_PAGE = 50;
@@ -70,37 +129,51 @@ const Matches = () => {
   const [matchDiscardReason, setMatchDiscardReason] = useState('');
 
   // Visits & Offers state
-  const [visits, setVisits] = useState<any[]>([]);
-  const [offers, setOffers] = useState<any[]>([]);
-  const [properties, setProperties] = useState<any[]>([]);
-  const [contactsList, setContactsList] = useState<any[]>([]);
-  const fetchMatches = async (page = matchesPage) => {
-    const from = page * MATCHES_PER_PAGE;
-    const to = from + MATCHES_PER_PAGE - 1;
+  const [visits, setVisits] = useState<VisitRow[]>([]);
+  const [offers, setOffers] = useState<OfferRow[]>([]);
+  const [properties, setProperties] = useState<SimpleProperty[]>([]);
+  const [contactsList, setContactsList] = useState<SimpleContact[]>([]);
+  const fetchMatches = useCallback(async () => {
     const { data, count } = await supabase
       .from('matches')
-      .select('*, demands(*, contacts(full_name, phone, email)), properties(title, city, province, price, bedrooms, surface_area, property_type, operation)', { count: 'exact' })
-      .order('compatibility', { ascending: false })
-      .range(from, to);
-    setMatches(data || []);
+      .select('id, agent_id, demand_id, property_id, compatibility, status, notes, demands(id, contact_id, agent_id, is_active, auto_match, operation, property_type, property_types, cities, zones, min_price, max_price, min_bedrooms, contacts(id, full_name, phone, email, agent_id)), properties(title, city, province, price, bedrooms, surface_area, property_type, operation)', { count: 'exact' })
+      .order('compatibility', { ascending: false });
+    setMatches((data as MatchRow[] | null) || []);
     setMatchesCount(count || 0);
-  };
+  }, []);
 
-  const fetchSalesData = async () => {
+  const fetchDemands = useCallback(async () => {
+    const { data } = await supabase
+      .from('demands')
+      .select('id, contact_id, agent_id, is_active, auto_match, operation, property_type, property_types, cities, zones, min_price, max_price, min_bedrooms, contacts(id, full_name, phone, email, agent_id)')
+      .eq('is_active', true)
+      .order('created_at', { ascending: false });
+    setDemandsList((data as MatchDemand[] | null) || []);
+  }, []);
+
+  const fetchSalesData = useCallback(async () => {
     const [v, o, p, c] = await Promise.all([
       supabase.from('visits').select('*, properties(title), contacts(full_name, phone, email)').order('visit_date', { ascending: false }),
       supabase.from('offers').select('*, properties(title), contacts(full_name)').order('created_at', { ascending: false }),
       supabase.from('properties').select('id, title').eq('status', 'disponible'),
       supabase.from('contacts').select('id, full_name, phone, email'),
     ]);
-    setVisits(v.data || []);
-    setOffers(o.data || []);
-    setProperties(p.data || []);
-    setContactsList(c.data || []);
-  };
+    setVisits((v.data as VisitRow[] | null) || []);
+    setOffers((o.data as OfferRow[] | null) || []);
+    setProperties((p.data as SimpleProperty[] | null) || []);
+    setContactsList((c.data as SimpleContact[] | null) || []);
+  }, []);
 
-  useEffect(() => { fetchMatches(0); fetchSalesData(); }, []);
-  useEffect(() => { fetchMatches(matchesPage); }, [matchesPage]);
+  useEffect(() => {
+    void fetchMatches();
+    void fetchDemands();
+    void fetchSalesData();
+  }, [fetchDemands, fetchMatches, fetchSalesData]);
+
+  useEffect(() => {
+    void matchesPage;
+    void fetchMatches();
+  }, [fetchMatches, matchesPage]);
 
   const {
     visitDialog,
@@ -142,58 +215,67 @@ const Matches = () => {
         description: `${data.matched} coincidencias nuevas · ${data.skipped} ya existían`,
       });
       setMatchesPage(0);
-      fetchMatches(0);
-    } catch (e: any) {
-      toast({ title: 'Error', description: e.message, variant: 'destructive' });
+      void fetchMatches();
+      void fetchDemands();
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'No se pudo ejecutar el cruce',
+        variant: 'destructive',
+      });
     }
     setRunning(false);
   };
 
-  const buildMessage = (m: any) => {
-    const p = m.properties;
-    const contact = m.demands?.contacts?.full_name || 'Cliente';
-    const price = p?.price ? `${Number(p.price).toLocaleString('es-ES')} €` : '';
+  const buildMessage = (match: MatchRow) => {
+    const property = match.properties;
+    const contact = match.demands?.contacts?.full_name || 'Cliente';
+    const price = property?.price ? `${Number(property.price).toLocaleString('es-ES')} €` : '';
     const lines = [
       `Hola ${contact}! 👋`,
       `Te escribo porque tenemos una propiedad que puede interesarte:`,
       '',
-      `🏠 *${p?.title || 'Propiedad'}*`,
-      p?.city ? `📍 ${p.city}` : '',
+      `🏠 *${property?.title || 'Propiedad'}*`,
+      property?.city ? `📍 ${property.city}` : '',
       price ? `💰 ${price}` : '',
-      p?.bedrooms ? `🛏️ ${p.bedrooms} habitaciones` : '',
-      p?.surface_area ? `📐 ${Number(p.surface_area)} m²` : '',
+      property?.bedrooms ? `🛏️ ${property.bedrooms} habitaciones` : '',
+      property?.surface_area ? `📐 ${Number(property.surface_area)} m²` : '',
       '',
       `¿Te gustaría recibir más información o concertar una visita?`,
     ].filter(Boolean);
     return lines.join('\n');
   };
 
-  const sendMatchWhatsApp = async (m: any) => {
-    const contactId = m.demands?.contacts?.id || m.demands?.contact_id;
+  const sendMatchWhatsApp = async (match: MatchRow) => {
+    const contactId = match.demands?.contacts?.id || match.demands?.contact_id;
     if (!contactId) { toast({ title: 'Sin contacto', description: 'No se pudo identificar el contacto', variant: 'destructive' }); return; }
-    const msg = buildMessage(m);
+    const msg = buildMessage(match);
     try {
       const { data, error } = await supabase.functions.invoke('multichannel-send', {
         body: { channel: 'whatsapp', contact_id: contactId, text: msg, source: 'cruces', campaign: 'cruces' },
       });
       if (error || !data?.ok) throw new Error(data?.error || error?.message || 'Error enviando WhatsApp');
-      toast({ title: '✅ WhatsApp enviado', description: `Mensaje enviado a ${m.demands?.contacts?.full_name || 'contacto'}` });
-    } catch (e: any) {
-      toast({ title: 'Error WhatsApp', description: e.message, variant: 'destructive' });
+      toast({ title: '✅ WhatsApp enviado', description: `Mensaje enviado a ${match.demands?.contacts?.full_name || 'contacto'}` });
+    } catch (error) {
+      toast({
+        title: 'Error WhatsApp',
+        description: error instanceof Error ? error.message : 'No se pudo enviar el WhatsApp',
+        variant: 'destructive',
+      });
     }
-    await updateMatchStatus(m.id, 'enviado');
+    await updateMatchStatus(match.id, 'enviado');
   };
 
-  const sendMatchEmail = async (m: any) => {
-    const email = m.demands?.contacts?.email;
+  const sendMatchEmail = async (match: MatchRow) => {
+    const email = match.demands?.contacts?.email;
     if (!email) { toast({ title: 'Sin email', description: 'El contacto no tiene email registrado', variant: 'destructive' }); return; }
-    const subject = encodeURIComponent(`Propiedad que puede interesarte: ${m.properties?.title || ''}`);
-    const body = encodeURIComponent(buildMessage(m));
+    const subject = encodeURIComponent(`Propiedad que puede interesarte: ${match.properties?.title || ''}`);
+    const body = encodeURIComponent(buildMessage(match));
     window.open(`mailto:${email}?subject=${subject}&body=${body}`, '_blank');
-    await updateMatchStatus(m.id, 'enviado');
+    await updateMatchStatus(match.id, 'enviado');
   };
 
-  const requestMatchStatusChange = (match: any, status: string) => {
+  const requestMatchStatusChange = (match: MatchRow, status: string) => {
     if (status === 'descartado') {
       setMatchDiscardDialog({ id: match.id, notes: match.notes || null });
       setMatchDiscardReason('');
@@ -203,8 +285,8 @@ const Matches = () => {
     void updateMatchStatus(match.id, status);
   };
 
-  const updateMatchStatus = async (id: string, status: string, discardReason?: string) => {
-    const payload: Record<string, any> = { status: status as any };
+  const updateMatchStatus = async (id: string, status: MatchStatus | string, discardReason?: string) => {
+    const payload: MatchUpdate = { status: status as MatchStatus };
 
     if (status === 'descartado' && matchDiscardDialog?.id === id) {
       const cleanLines = (matchDiscardDialog.notes || '')
@@ -223,14 +305,14 @@ const Matches = () => {
     await supabase.from('matches').update(payload).eq('id', id);
     setMatchDiscardDialog(null);
     setMatchDiscardReason('');
-    fetchMatches();
+    await fetchMatches();
   };
 
   const [aiScoringId, setAiScoringId] = useState<string | null>(null);
-  const [aiResult, setAiResult] = useState<any>(null);
+  const [aiResult, setAiResult] = useState<AiScoringResult | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
 
-  const runAIScoring = async (match: any) => {
+  const runAIScoring = async (match: MatchRow) => {
     setAiScoringId(match.id);
     setAiLoading(true);
     setAiResult(null);
@@ -244,13 +326,13 @@ const Matches = () => {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
         body: JSON.stringify({ demand: dRes.data, property: pRes.data }),
       });
-      const data = await resp.json();
+      const data = (await resp.json()) as AiScoringResult;
       if (data.error) { toast({ title: 'Error IA', description: data.error, variant: 'destructive' }); setAiScoringId(null); }
       else {
         setAiResult(data);
         if (data.score) {
           await supabase.from('matches').update({ compatibility: data.score }).eq('id', match.id);
-          fetchMatches();
+          await fetchMatches();
         }
       }
     } catch { toast({ title: 'Error', description: 'No se pudo conectar con IA', variant: 'destructive' }); setAiScoringId(null); }
@@ -286,6 +368,10 @@ const Matches = () => {
       .map((offer) => extractOfferLossReason(offer.notes))
   );
 
+  const demandCardsBase = showAll
+    ? demandsList
+    : demandsList.filter((demand) => demand.contacts?.id === user?.id || demand.agent_id === user?.id || demand.contacts?.agent_id === user?.id);
+
   const filteredMatches = (() => {
     if (!searchText || searchText.length < 2) return baseMatches;
     const q = searchText.toLowerCase();
@@ -296,6 +382,84 @@ const Matches = () => {
       return propTitle.includes(q) || propCity.includes(q) || contactName.includes(q);
     });
   })();
+
+  const groupedMatches = useMemo(() => {
+    const groupedMatchMap = new Map<string, MatchRow[]>();
+
+    for (const match of filteredMatches) {
+      const demandId = match.demand_id || match.demands?.id || null;
+      const contactId = match.demands?.contact_id || match.demands?.contacts?.id || null;
+      const key = demandId || contactId || match.id;
+      const existing = groupedMatchMap.get(key) || [];
+      existing.push(match);
+      groupedMatchMap.set(key, existing);
+    }
+
+    const filteredDemandCards = (() => {
+      if (!searchText || searchText.length < 2) return demandCardsBase;
+      const q = searchText.toLowerCase();
+      return demandCardsBase.filter((demand) => {
+        const contactName = (demand.contacts?.full_name || '').toLowerCase();
+        const contactEmail = (demand.contacts?.email || '').toLowerCase();
+        const cities = Array.isArray(demand.cities) ? demand.cities.join(' ').toLowerCase() : '';
+        const zones = Array.isArray(demand.zones) ? demand.zones.join(' ').toLowerCase() : '';
+        return contactName.includes(q) || contactEmail.includes(q) || cities.includes(q) || zones.includes(q);
+      });
+    })();
+
+    const groups = new Map<string, MatchGroup>();
+
+    for (const match of filteredMatches) {
+      const contactId = match.demands?.contact_id || match.demands?.contacts?.id || null;
+      const demandId = match.demand_id || match.demands?.id || null;
+      const key = demandId || contactId || match.id;
+      const existingMatches = [...(groupedMatchMap.get(key) || [])].sort((a, b) => (b.compatibility || 0) - (a.compatibility || 0));
+
+      groups.set(key, {
+        id: key,
+        contactId,
+        contactName: match.demands?.contacts?.full_name || 'Contacto',
+        contactPhone: match.demands?.contacts?.phone || null,
+        contactEmail: match.demands?.contacts?.email || null,
+        demandId,
+        demand: match.demands || null,
+        matches: existingMatches,
+      });
+    }
+
+    for (const demand of filteredDemandCards) {
+      const contactId = demand.contact_id || demand.contacts?.id || null;
+      const demandId = demand.id || null;
+      const key = demandId || contactId || `demand-${demand.id}`;
+      if (groups.has(key)) {
+        const existing = groups.get(key)!;
+        existing.demand = existing.demand || demand;
+        existing.contactId = existing.contactId || contactId;
+        existing.contactName = existing.contactName || demand.contacts?.full_name || 'Contacto';
+        existing.contactPhone = existing.contactPhone || demand.contacts?.phone || null;
+        existing.contactEmail = existing.contactEmail || demand.contacts?.email || null;
+        continue;
+      }
+      groups.set(key, {
+        id: key,
+        contactId,
+        contactName: demand.contacts?.full_name || 'Contacto',
+        contactPhone: demand.contacts?.phone || null,
+        contactEmail: demand.contacts?.email || null,
+        demandId,
+        demand,
+        matches: [...(groupedMatchMap.get(key) || [])].sort((a, b) => (b.compatibility || 0) - (a.compatibility || 0)),
+      });
+    }
+
+    return Array.from(groups.values())
+      .sort((a, b) => {
+        const aScore = a.matches[0]?.compatibility || 0;
+        const bScore = b.matches[0]?.compatibility || 0;
+        if (bScore !== aScore) return bScore - aScore;
+        return a.contactName.localeCompare(b.contactName, 'es');
+      });
+  }, [filteredMatches, demandCardsBase, searchText]);
 
   const showBackofficeTabs = canViewAll && !isAgentMode;
   const defaultTab = showBackofficeTabs ? 'dashboard' : 'matches';
@@ -589,68 +753,112 @@ const Matches = () => {
             </CardContent></Card>
           ) : (
             viewMode === 'grid' ? (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {filteredMatches.map(m => (
-                <Card key={m.id}>
-                  <CardContent className="p-5 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-2xl font-bold text-primary">{m.compatibility}%</span>
-                      <Badge className={`${statusColors[m.status]} text-primary-foreground border-0`}>{statusLabels[m.status]}</Badge>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {groupedMatches.map(group => (
+                <Card key={group.id} className="border-0 shadow-[var(--shadow-card)]">
+                  <CardContent className="p-5 space-y-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-lg font-semibold">{group.contactName}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {group.contactPhone || group.contactEmail || 'Sin teléfono ni email'}
+                        </p>
+                      </div>
+                      <Badge variant="outline">
+                        {group.matches.length > 0 ? `Top ${group.matches[0]?.compatibility || 0}%` : 'Sin cruces'}
+                      </Badge>
                     </div>
-                    <div>
-                      <p className="text-sm font-medium">👤 {m.demands?.contacts?.full_name || 'Contacto'}</p>
-                      <p className="text-sm text-muted-foreground">🏠 {m.properties?.title || 'Propiedad'}</p>
-                      {m.properties?.city && <p className="text-xs text-muted-foreground">📍 {m.properties.city}{m.properties?.province ? `, ${m.properties.province}` : ''}</p>}
-                      {m.properties?.price && <p className="text-sm font-semibold">{Number(m.properties.price).toLocaleString('es-ES')} €</p>}
-                      {m.status === 'descartado' && extractMatchDiscardReason(m.notes) ? (
-                        <p className="text-xs text-rose-700 mt-2">Motivo: {extractMatchDiscardReason(m.notes)}</p>
+
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="rounded-xl border border-border/50 p-3">
+                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Cruces</p>
+                        <p className="mt-1 text-2xl font-semibold">{group.matches.length}</p>
+                      </div>
+                      <div className="rounded-xl border border-border/50 p-3">
+                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Pendientes</p>
+                        <p className="mt-1 text-2xl font-semibold">
+                          {group.matches.filter((match) => match.status === 'pendiente').length}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-border/50 p-3">
+                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Enviados</p>
+                        <p className="mt-1 text-2xl font-semibold">
+                          {group.matches.filter((match) => match.status === 'enviado').length}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl bg-muted/40 p-4">
+                      {group.matches.length > 0 ? (
+                        <>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Mejor cruce</p>
+                              <p className="mt-1 text-sm font-medium">{group.matches[0]?.properties?.title || 'Propiedad'}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {group.matches[0]?.properties?.city || 'Sin ciudad'}
+                                {group.matches[0]?.properties?.province ? `, ${group.matches[0].properties.province}` : ''}
+                              </p>
+                            </div>
+                            <Badge className={`${statusColors[group.matches[0]?.status || 'pendiente']} text-primary-foreground border-0`}>
+                              {statusLabels[group.matches[0]?.status || 'pendiente']}
+                            </Badge>
+                          </div>
+
+                          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                            {group.matches[0]?.properties?.price ? (
+                              <p className="font-semibold">{Number(group.matches[0].properties.price).toLocaleString('es-ES')} €</p>
+                            ) : null}
+                            {group.matches[0]?.properties?.bedrooms ? (
+                              <p className="text-muted-foreground">{group.matches[0].properties.bedrooms} hab.</p>
+                            ) : null}
+                            {group.matches[0]?.properties?.surface_area ? (
+                              <p className="text-muted-foreground">{Number(group.matches[0].properties.surface_area)} m²</p>
+                            ) : null}
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Estado del cruce</p>
+                          <p className="mt-1 text-sm font-medium">Sin coincidencias por ahora</p>
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            La demanda está activa, pero de momento no hay inmuebles compatibles en base de datos.
+                          </p>
+                        </>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <Badge variant="secondary">
+                        {Array.from(new Set([
+                          ...group.matches.map((match) => match.properties?.city).filter(Boolean),
+                          ...(Array.isArray(group.demand?.cities) ? group.demand.cities : []),
+                        ])).slice(0, 2).join(' · ') || 'Sin ciudad'}
+                      </Badge>
+                      <Badge variant="secondary">
+                        {Array.from(new Set([
+                          ...group.matches.map((match) => match.properties?.property_type).filter(Boolean),
+                          ...(Array.isArray(group.demand?.property_types) ? group.demand.property_types : []),
+                          ...(group.demand?.property_type ? [group.demand.property_type] : []),
+                        ])).slice(0, 2).join(' · ') || 'Sin tipología'}
+                      </Badge>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {group.contactId ? (
+                        <Button size="sm" onClick={() => { window.location.href = `/contacts/${group.contactId}`; }}>
+                          Abrir contacto
+                        </Button>
                       ) : null}
-                    </div>
-                    {m.notes && m.notes.includes('WhatsApp pendiente') && m.demands?.contacts?.phone && (
-                      <Button size="sm" className="w-full bg-green-600 hover:bg-green-700 text-white" onClick={async () => {
-                        const contactId = m.demands?.contacts?.id || m.demands?.contact_id;
-                        if (!contactId) return;
-                        const noteLines = m.notes.split('\n');
-                        const msgStart = noteLines.findIndex((l: string) => l.includes('Hola'));
-                        const whatsappText = msgStart >= 0 ? noteLines.slice(msgStart).join('\n') : buildMessage(m);
-                        try {
-                          const { data, error } = await supabase.functions.invoke('multichannel-send', {
-                            body: { channel: 'whatsapp', contact_id: contactId, text: whatsappText, source: 'matches_pending' },
-                          });
-                          if (error || !data?.ok) throw new Error(data?.error || error?.message || 'Error');
-                          toast({ title: '✅ WhatsApp enviado' });
-                        } catch (e: any) {
-                          toast({ title: 'Error', description: e.message, variant: 'destructive' });
-                        }
-                        updateMatchStatus(m.id, 'enviado');
-                      }}>
-                        <MessageCircle className="h-4 w-4 mr-2" />Enviar WhatsApp pendiente
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => group.matches[0] && runAIScoring(group.matches[0])}
+                        disabled={!group.matches[0] || (aiLoading && aiScoringId === group.matches[0]?.id)}
+                      >
+                        {aiLoading && aiScoringId === group.matches[0]?.id ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Sparkles className="h-3.5 w-3.5 mr-1" />}
+                        IA mejor cruce
                       </Button>
-                    )}
-                    <div className="flex gap-2 flex-wrap">
-                      <Button size="sm" variant="outline" onClick={() => runAIScoring(m)} disabled={aiLoading && aiScoringId === m.id}>
-                        {aiLoading && aiScoringId === m.id ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Sparkles className="h-3.5 w-3.5 mr-1" />}
-                        IA Score
-                      </Button>
-                      {m.status === 'pendiente' && (
-                        <>
-                          <Button size="sm" variant="outline" onClick={() => sendMatchWhatsApp(m)} className="text-green-600 border-green-200 hover:bg-green-50">
-                            <MessageCircle className="h-3.5 w-3.5 mr-1" />WhatsApp
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => sendMatchEmail(m)}>
-                            <Mail className="h-3.5 w-3.5 mr-1" />Email
-                          </Button>
-                          <Button size="sm" variant="ghost" onClick={() => requestMatchStatusChange(m, 'descartado')}>Descartar</Button>
-                        </>
-                      )}
-                      {m.status === 'enviado' && (
-                        <>
-                          <Button size="sm" variant="outline" onClick={() => sendMatchWhatsApp(m)} className="text-green-600 border-green-200 hover:bg-green-50">
-                            <MessageCircle className="h-3.5 w-3.5 mr-1" />Reenviar
-                          </Button>
-                          <Button size="sm" onClick={() => requestMatchStatusChange(m, 'interesado')}>Interesado</Button>
-                        </>
-                      )}
                     </div>
                   </CardContent>
                 </Card>

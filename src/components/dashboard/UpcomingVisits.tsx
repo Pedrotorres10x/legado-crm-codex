@@ -9,9 +9,19 @@ import { es } from 'date-fns/locale';
 import { Badge } from '@/components/ui/badge';
 import { differenceInHours, isToday } from 'date-fns';
 
+type VisitContact = { full_name: string | null } | null;
+type VisitProperty = { title: string | null; address: string | null } | null;
+type UpcomingVisitItem = {
+  id: string;
+  visit_date: string;
+  confirmation_status: string | null;
+  contacts: VisitContact;
+  properties: VisitProperty;
+};
+
 const UpcomingVisits = () => {
   const { user } = useAuth();
-  const [visits, setVisits] = useState<any[]>([]);
+  const [visits, setVisits] = useState<UpcomingVisitItem[]>([]);
 
   useEffect(() => {
     const fetchVisits = async () => {
@@ -23,7 +33,7 @@ const UpcomingVisits = () => {
         .limit(6);
       if (user?.id) query = query.eq('agent_id', user.id);
       const { data } = await query;
-      setVisits(data || []);
+      setVisits((data ?? []) as UpcomingVisitItem[]);
     };
     fetchVisits();
   }, [user?.id]);
@@ -72,8 +82,8 @@ const UpcomingVisits = () => {
                   <MapPin className="h-4 w-4 text-muted-foreground" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium truncate">{(v.contacts as any)?.full_name}</p>
-                  <p className="text-xs text-muted-foreground truncate">{(v.properties as any)?.title || (v.properties as any)?.address}</p>
+                  <p className="font-medium truncate">{v.contacts?.full_name}</p>
+                  <p className="text-xs text-muted-foreground truncate">{v.properties?.title || v.properties?.address}</p>
                 </div>
                 <div className="text-right shrink-0 flex items-center gap-1">
                   <div>
@@ -82,9 +92,9 @@ const UpcomingVisits = () => {
                   </div>
                   <AddToGoogleCalendarButton
                     visitDate={v.visit_date}
-                    propertyTitle={(v.properties as any)?.title}
-                    contactName={(v.contacts as any)?.full_name}
-                    propertyAddress={(v.properties as any)?.address}
+                    propertyTitle={v.properties?.title ?? undefined}
+                    contactName={v.contacts?.full_name ?? undefined}
+                    propertyAddress={v.properties?.address ?? undefined}
                   />
                 </div>
               </div>

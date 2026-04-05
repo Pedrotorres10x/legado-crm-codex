@@ -16,6 +16,19 @@ function json(data: unknown, init: ResponseInit = {}) {
   })
 }
 
+async function fetchTextWithTimeout(url: string, timeoutMs = 120000) {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const response = await fetch(url, { signal: controller.signal })
+    const body = await response.text()
+    return { response, body }
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
 type PortalFeed = {
   id: string
   portal_name: string
@@ -23,6 +36,24 @@ type PortalFeed = {
   format: string
   is_active: boolean
   feed_token: string
+}
+
+async function callFotocasaSync(supabaseUrl: string, serviceRoleKey: string, body: Record<string, unknown>) {
+  const response = await fetch(`${supabaseUrl}/functions/v1/fotocasa-sync`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${serviceRoleKey}`,
+    },
+    body: JSON.stringify(body),
+  })
+
+  const payload = await response.json().catch(() => null)
+  return {
+    ok: response.ok,
+    status: response.status,
+    payload,
+  }
 }
 
 Deno.serve(async (req) => {
@@ -45,7 +76,7 @@ Deno.serve(async (req) => {
     const { data, error } = await supabase
       .from('portal_feeds')
       .select('id, portal_name, display_name, format, is_active, feed_token')
-      .in('portal_name', ['fotocasa', 'pisos', 'todopisos', '1001portales'])
+      .in('portal_name', ['fotocasa', 'pisos', 'todopisos', '1001portales', 'kyero', 'thinkspain'])
       .order('display_name')
 
     if (error) {
@@ -53,63 +84,63 @@ Deno.serve(async (req) => {
     }
 
     const feeds = (data ?? []) as PortalFeed[]
-    const xmlResults: Array<Record<string, unknown>> = []
+    const xmlResults = await Promise.all(
+      feeds
+        .filter((item) => item.portal_name !== 'fotocasa' && item.is_active)
+        .map(async (feed) => {
+          const url = `${supabaseUrl}/functions/v1/portal-xml-feed?token=${encodeURIComponent(feed.feed_token)}`
+          try {
+            const { response, body } = await fetchTextWithTimeout(url)
+            return {
+              portal_name: feed.portal_name,
+              display_name: feed.display_name,
+              ok: response.ok,
+              status: response.status,
+              bytes: body.length,
+            }
+          } catch (err) {
+            const errorMessage = err instanceof DOMException && err.name === 'AbortError'
+              ? 'timeout'
+              : String(err)
+            return {
+              portal_name: feed.portal_name,
+              display_name: feed.display_name,
+              ok: false,
+              status: errorMessage === 'timeout' ? 504 : 0,
+              error: errorMessage,
+            }
+          }
+        }),
+    )
 
-    for (const feed of feeds.filter((item) => item.portal_name !== 'fotocasa' && item.is_active)) {
-      const url = `${supabaseUrl}/functions/v1/portal-xml-feed?token=${encodeURIComponent(feed.feed_token)}`
-      try {
-        const response = await fetch(url)
-        const body = await response.text()
-        xmlResults.push({
-          portal_name: feed.portal_name,
-          display_name: feed.display_name,
-          ok: response.ok,
-          status: response.status,
-          bytes: body.length,
-        })
-      } catch (err) {
-        xmlResults.push({
-          portal_name: feed.portal_name,
-          display_name: feed.display_name,
-          ok: false,
-          status: 0,
-          error: String(err),
-        })
-      }
-    }
-
-    let fotocasaResult: Record<string, unknown> | null = null
     const fotocasaFeed = feeds.find((item) => item.portal_name === 'fotocasa' && item.is_active)
+    const fotocasaResult = fotocasaFeed
+      ? await (async () => {
+          try {
+            const watchdog = await callFotocasaSync(supabaseUrl, serviceRoleKey, {
+              action: 'watchdog',
+              batch_size: 10,
+            })
 
-    if (fotocasaFeed) {
-      try {
-        const response = await fetch(`${supabaseUrl}/functions/v1/fotocasa-sync`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${serviceRoleKey}`,
-          },
-          body: JSON.stringify({
-            action: 'sync_all',
-            batch_size: 20,
-            offset: 0,
-          }),
-        })
+            const sync = await callFotocasaSync(supabaseUrl, serviceRoleKey, {
+              action: 'sync_all',
+              batch_size: 10,
+              offset: 0,
+            })
 
-        const payload = await response.json().catch(() => null)
-        fotocasaResult = {
-          ok: response.ok,
-          status: response.status,
-          payload,
-        }
-      } catch (err) {
-        fotocasaResult = {
-          ok: false,
-          status: 0,
-          error: String(err),
-        }
-      }
-    }
+            return {
+              watchdog,
+              sync,
+            }
+          } catch (err) {
+            return {
+              ok: false,
+              status: 0,
+              error: String(err),
+            }
+          }
+        })()
+      : null
 
     return json({
       ok: true,

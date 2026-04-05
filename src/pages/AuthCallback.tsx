@@ -64,11 +64,11 @@ const AuthCallback = () => {
             navigate('/auth', { replace: true });
           }
         }
-      } catch (err: any) {
+      } catch (error: unknown) {
         if (!cancelled) {
           toast({
             title: 'Error al completar el acceso',
-            description: err?.message || 'No se pudo completar el callback de Google.',
+            description: error instanceof Error ? error.message : 'No se pudo completar el callback de Google.',
             variant: 'destructive',
           });
           navigate('/auth', { replace: true });

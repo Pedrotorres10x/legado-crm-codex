@@ -31,6 +31,17 @@ type UsePropertyCreateFormArgs = {
   onOpenChange: (open: boolean) => void;
 };
 
+type CatastroResult = {
+  rc: string;
+  address?: string;
+  municipio?: string;
+  provincia?: string;
+};
+
+type AiPhotoTagResponse = {
+  labels?: Array<{ index: number; label: string; score?: number }>;
+};
+
 export function usePropertyCreateForm({ onCreated, onOpenChange }: UsePropertyCreateFormArgs) {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -45,7 +56,7 @@ export function usePropertyCreateForm({ onCreated, onOpenChange }: UsePropertyCr
   const [uploadingImages, setUploadingImages] = useState(false);
   const [taggingImages, setTaggingImages] = useState(false);
   const [catastroLoading, setCatastroLoading] = useState(false);
-  const [catastroResults, setCatastroResults] = useState<any[]>([]);
+  const [catastroResults, setCatastroResults] = useState<CatastroResult[]>([]);
   const [catastroDialogOpen, setCatastroDialogOpen] = useState(false);
   const [catastroTab, setCatastroTab] = useState<'rc' | 'address'>('rc');
   const [catastroAddress, setCatastroAddress] = useState({ provincia: '', municipio: '', calle: '', numero: '' });
@@ -117,10 +128,10 @@ export function usePropertyCreateForm({ onCreated, onOpenChange }: UsePropertyCr
 
     const { error } = await supabase.from('properties').insert([{
       title: form.title,
-      property_type: form.property_type as any,
-      operation: form.operation as any,
+      property_type: form.property_type,
+      operation: form.operation,
       description: form.description || null,
-      status: form.status as any,
+      status: form.status,
       country: form.country || 'España',
       city: form.city || null,
       province: form.province || null,
@@ -210,7 +221,7 @@ export function usePropertyCreateForm({ onCreated, onOpenChange }: UsePropertyCr
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
         body: JSON.stringify({ images }),
       });
-      const data = await resp.json();
+      const data = (await resp.json()) as AiPhotoTagResponse;
       if (data.labels && Array.isArray(data.labels)) {
         const updatedLabels = [...allLabels];
         const updatedScores = [...allScores];

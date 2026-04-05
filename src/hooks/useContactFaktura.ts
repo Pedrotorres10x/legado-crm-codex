@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { FAKTURA_PUBLIC_URL } from '@/lib/publicUrls';
 
 type ToastFn = (options: {
   title: string;
@@ -23,6 +24,12 @@ type ContactLike = {
   id_number?: string | null;
   email?: string | null;
   address?: string | null;
+};
+
+type CommissionWithProperty = {
+  id: string;
+  agency_commission?: number | null;
+  properties?: PropertyLike | null;
 };
 
 export const useContactFaktura = ({
@@ -54,7 +61,7 @@ export const useContactFaktura = ({
       .in('status', ['aprobado', 'pagado']);
 
     const existingIds = new Set(props.map((property) => property.id));
-    (commissions || []).forEach((commission: any) => {
+    ((commissions || []) as CommissionWithProperty[]).forEach((commission) => {
       if (commission.properties && !existingIds.has(commission.properties.id)) {
         props.push(commission.properties);
         existingIds.add(commission.properties.id);
@@ -77,11 +84,11 @@ export const useContactFaktura = ({
 
       let newStatus = '';
       let amount = 0;
-      let commissionData: any = null;
+      let commissionData: CommissionWithProperty | null = null;
 
       if (property && selectedFakturaProperty) {
         newStatus = property.operation === 'alquiler' ? 'alquilado' : 'vendido';
-        await supabase.from('properties').update({ status: newStatus } as any).eq('id', selectedFakturaProperty);
+        await supabase.from('properties').update({ status: newStatus }).eq('id', selectedFakturaProperty);
 
         const { data } = await supabase
           .from('commissions')
@@ -102,7 +109,7 @@ export const useContactFaktura = ({
           amount,
           concept: `${newStatus === 'alquilado' ? 'Alquiler' : 'Venta'} - ${property.title || property.address || 'Inmueble'}`,
           status: 'generada',
-        } as any);
+        });
       }
 
       const params = new URLSearchParams({
@@ -123,7 +130,7 @@ export const useContactFaktura = ({
         crm_contact_id: contactId,
       });
 
-      window.open(`https://fakturalegado.lovable.app/facturacion?${params.toString()}`, '_blank');
+      window.open(`${FAKTURA_PUBLIC_URL}/facturacion?${params.toString()}`, '_blank');
 
       toast({
         title: '✅ Faktura abierta',

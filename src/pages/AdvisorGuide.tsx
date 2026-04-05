@@ -140,7 +140,14 @@ const AdvisorGuide = () => {
 
   useEffect(() => {
     const firstUnlocked = ADVISOR_GUIDE_SECTIONS.find((section) => section.order <= firstPendingOrder)?.id;
-    if (firstUnlocked && !completedSections.includes(expandedSection) && firstPendingOrder !== 0 && ADVISOR_GUIDE_SECTIONS.find((section) => section.id === expandedSection)?.order! > firstPendingOrder) {
+    const expandedSectionOrder = ADVISOR_GUIDE_SECTIONS.find((section) => section.id === expandedSection)?.order;
+    if (
+      firstUnlocked &&
+      !completedSections.includes(expandedSection) &&
+      firstPendingOrder !== 0 &&
+      typeof expandedSectionOrder === 'number' &&
+      expandedSectionOrder > firstPendingOrder
+    ) {
       setExpandedSection(firstUnlocked);
     }
   }, [completedSections, expandedSection, firstPendingOrder]);

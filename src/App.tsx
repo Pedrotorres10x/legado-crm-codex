@@ -1,44 +1,48 @@
+import { Suspense, lazy } from "react";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
-import { TwilioProvider } from "@/contexts/TwilioContext";
-import AppLayout from "@/components/AppLayout";
-import Auth from "@/pages/Auth";
-import AuthCallback from "@/pages/AuthCallback";
-import Dashboard from "@/pages/Dashboard";
-import Properties from "@/pages/Properties";
-import PropertyDetail from "@/pages/PropertyDetail";
-import Contacts from "@/pages/Contacts";
-import ContactDetail from "@/pages/ContactDetail";
-import Matches from "@/pages/Matches";
-import Tasks from "@/pages/Tasks";
-import OperationsCenter from "@/pages/OperationsCenter";
-import DashboardAdmin from "@/pages/DashboardAdmin";
-import AdminActivity from "@/pages/AdminActivity";
-import AdminTeam from "@/pages/AdminTeam";
-import WebLeads from "@/pages/WebLeads";
-import Tools from "@/pages/Tools";
-import Communications from "@/pages/Communications";
-
-import SignContract from "@/pages/SignContract";
-import ConfirmVisit from "@/pages/ConfirmVisit";
-
-import Profile from "@/pages/Profile";
-import Portales from "@/pages/Portales";
-import NotFound from "./pages/NotFound";
-import AgentCard from "@/pages/AgentCard";
-import LinkInBioStats from "@/pages/LinkInBioStats";
-import BlindPropertySheet from "@/pages/BlindPropertySheet";
-import AgentPerformance from "@/pages/AgentPerformance";
-import Valoracion from "@/pages/Valoracion";
-import AdvisorGuide from "@/pages/AdvisorGuide";
-
-import AdminUsers from "@/pages/AdminUsers"; // still used by AdminTeam
 import AppSplashScreen from "@/components/AppSplashScreen";
+import Auth from "@/pages/Auth";
 
 const queryClient = new QueryClient();
+const AppLayout = lazy(() => import("@/components/AppLayout"));
+const AuthCallback = lazy(() => import("@/pages/AuthCallback"));
+const Dashboard = lazy(() => import("@/pages/Dashboard"));
+const Properties = lazy(() => import("@/pages/Properties"));
+const PropertyDetail = lazy(() => import("@/pages/PropertyDetail"));
+const Contacts = lazy(() => import("@/pages/Contacts"));
+const ContactDetail = lazy(() => import("@/pages/ContactDetail"));
+const Demands = lazy(() => import("@/pages/Demands"));
+const Matches = lazy(() => import("@/pages/Matches"));
+const BuyersWithoutDemand = lazy(() => import("@/pages/BuyersWithoutDemand"));
+const WhatsAppPending = lazy(() => import("@/pages/WhatsAppPending"));
+const Tasks = lazy(() => import("@/pages/Tasks"));
+const OperationsCenter = lazy(() => import("@/pages/OperationsCenter"));
+const DashboardAdmin = lazy(() => import("@/pages/DashboardAdmin"));
+const AdminActivity = lazy(() => import("@/pages/AdminActivity"));
+const AdminTeam = lazy(() => import("@/pages/AdminTeam"));
+const WebLeads = lazy(() => import("@/pages/WebLeads"));
+const Tools = lazy(() => import("@/pages/Tools"));
+const Communications = lazy(() => import("@/pages/Communications"));
+const SignContract = lazy(() => import("@/pages/SignContract"));
+const ConfirmVisit = lazy(() => import("@/pages/ConfirmVisit"));
+const Profile = lazy(() => import("@/pages/Profile"));
+const Portales = lazy(() => import("@/pages/Portales"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const AgentCard = lazy(() => import("@/pages/AgentCard"));
+const LinkInBioStats = lazy(() => import("@/pages/LinkInBioStats"));
+const BlindPropertySheet = lazy(() => import("@/pages/BlindPropertySheet"));
+const AgentPerformance = lazy(() => import("@/pages/AgentPerformance"));
+const Valoracion = lazy(() => import("@/pages/Valoracion"));
+const AdvisorGuide = lazy(() => import("@/pages/AdvisorGuide"));
+
+const RouteFallback = () => <AppSplashScreen />;
+const LazyPage = ({ children }: { children: React.ReactNode }) => (
+  <Suspense fallback={<RouteFallback />}>{children}</Suspense>
+);
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
@@ -69,48 +73,50 @@ const App = () => (
       <BrowserRouter>
         <AuthProvider>
           <Routes>
-            <Route path="/valoracion" element={<Valoracion />} />
-            <Route path="/agente/:slug" element={<AgentCard />} />
-            <Route path="/ficha-ciega/:id" element={<BlindPropertySheet />} />
-            <Route path="/firmar/:token" element={<SignContract />} />
-            <Route path="/visita/:token" element={<ConfirmVisit />} />
+            <Route path="/valoracion" element={<LazyPage><Valoracion /></LazyPage>} />
+            <Route path="/agente/:slug" element={<LazyPage><AgentCard /></LazyPage>} />
+            <Route path="/ficha-ciega/:id" element={<LazyPage><BlindPropertySheet /></LazyPage>} />
+            <Route path="/firmar/:token" element={<LazyPage><SignContract /></LazyPage>} />
+            <Route path="/visita/:token" element={<LazyPage><ConfirmVisit /></LazyPage>} />
             
             <Route path="/auth" element={<AuthRoute />} />
-            <Route path="/auth/callback" element={<AuthCallback />} />
-            <Route path="/" element={<ProtectedRoute><TwilioProvider><AppLayout /></TwilioProvider></ProtectedRoute>}>
-              <Route index element={<Dashboard />} />
-              <Route path="properties" element={<Properties />} />
-              <Route path="properties/:id" element={<PropertyDetail />} />
-              <Route path="contacts" element={<Contacts />} />
-              <Route path="contacts/:id" element={<ContactDetail />} />
-              <Route path="demands" element={<Navigate to="/contacts" replace />} />
-              <Route path="matches" element={<Matches />} />
-              <Route path="tasks" element={<Tasks />} />
-              <Route path="operations" element={<OperationsCenter />} />
+            <Route path="/auth/callback" element={<LazyPage><AuthCallback /></LazyPage>} />
+            <Route path="/" element={<ProtectedRoute><LazyPage><AppLayout /></LazyPage></ProtectedRoute>}>
+              <Route index element={<LazyPage><Dashboard /></LazyPage>} />
+              <Route path="properties" element={<LazyPage><Properties /></LazyPage>} />
+              <Route path="properties/:id" element={<LazyPage><PropertyDetail /></LazyPage>} />
+              <Route path="contacts" element={<LazyPage><Contacts /></LazyPage>} />
+              <Route path="contacts/:id" element={<LazyPage><ContactDetail /></LazyPage>} />
+              <Route path="demands" element={<LazyPage><Demands /></LazyPage>} />
+              <Route path="buyers-without-demand" element={<LazyPage><BuyersWithoutDemand /></LazyPage>} />
+              <Route path="matches" element={<LazyPage><Matches /></LazyPage>} />
+              <Route path="whatsapp-pending" element={<LazyPage><WhatsAppPending /></LazyPage>} />
+              <Route path="tasks" element={<LazyPage><Tasks /></LazyPage>} />
+              <Route path="operations" element={<LazyPage><OperationsCenter /></LazyPage>} />
               <Route path="captaciones" element={<Navigate to="/" replace />} />
               <Route path="sales" element={<Navigate to="/matches" replace />} />
-              <Route path="tools" element={<Tools />} />
-              <Route path="comms" element={<Communications />} />
-              <Route path="calls" element={<Navigate to="/comms?tab=calls" replace />} />
+              <Route path="tools" element={<LazyPage><Tools /></LazyPage>} />
+              <Route path="comms" element={<LazyPage><Communications /></LazyPage>} />
+              <Route path="calls" element={<Navigate to="/comms" replace />} />
               <Route path="chat" element={<Navigate to="/comms" replace />} />
               <Route path="commissions" element={<Navigate to="/profile" replace />} />
-              <Route path="profile" element={<Profile />} />
-              <Route path="guide/advisors" element={<AdvisorGuide />} />
+              <Route path="profile" element={<LazyPage><Profile /></LazyPage>} />
+              <Route path="guide/advisors" element={<LazyPage><AdvisorGuide /></LazyPage>} />
               <Route path="contracts" element={<Navigate to="/tools" replace />} />
               <Route path="ai" element={<Navigate to="/tools" replace />} />
               <Route path="import" element={<Navigate to="/" replace />} />
-              <Route path="admin" element={<AdminRoute><DashboardAdmin /></AdminRoute>} />
-              <Route path="admin/activity" element={<AdminRoute><AdminActivity /></AdminRoute>} />
-              <Route path="admin/team" element={<AdminRoute><AdminTeam /></AdminRoute>} />
+              <Route path="admin" element={<AdminRoute><LazyPage><DashboardAdmin /></LazyPage></AdminRoute>} />
+              <Route path="admin/activity" element={<AdminRoute><LazyPage><AdminActivity /></LazyPage></AdminRoute>} />
+              <Route path="admin/team" element={<AdminRoute><LazyPage><AdminTeam /></LazyPage></AdminRoute>} />
               <Route path="admin/tracking" element={<Navigate to="/admin/team?tab=tracking" replace />} />
               <Route path="admin/users" element={<Navigate to="/admin/team" replace />} />
               <Route path="team" element={<Navigate to="/" replace />} />
-              <Route path="portales" element={<AdminRoute><Portales /></AdminRoute>} />
-              <Route path="web-leads" element={<AdminRoute><WebLeads /></AdminRoute>} />
-              <Route path="linkinbio-stats" element={<LinkInBioStats />} />
-              <Route path="performance" element={<AgentPerformance />} />
+              <Route path="portales" element={<AdminRoute><LazyPage><Portales /></LazyPage></AdminRoute>} />
+              <Route path="web-leads" element={<AdminRoute><LazyPage><WebLeads /></LazyPage></AdminRoute>} />
+              <Route path="linkinbio-stats" element={<LazyPage><LinkInBioStats /></LazyPage>} />
+              <Route path="performance" element={<LazyPage><AgentPerformance /></LazyPage>} />
             </Route>
-            <Route path="*" element={<NotFound />} />
+            <Route path="*" element={<LazyPage><NotFound /></LazyPage>} />
           </Routes>
         </AuthProvider>
       </BrowserRouter>

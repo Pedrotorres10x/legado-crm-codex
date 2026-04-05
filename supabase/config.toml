@@ -21,9 +21,6 @@ verify_jwt = false
 [functions.import-xml-feed]
 verify_jwt = false
 
-[functions.import-legacy-properties]
-verify_jwt = false
-
 [functions.ai-property-extract]
 verify_jwt = true
 
@@ -45,34 +42,22 @@ verify_jwt = true
 [functions.og-property]
 verify_jwt = false
 
+[functions.og-contract]
+verify_jwt = false
+
 [functions.ai-search]
 verify_jwt = true
-
-[functions.twilio-token]
-verify_jwt = true
-
-[functions.twilio-voice]
-verify_jwt = false
-
-[functions.twilio-call-status]
-verify_jwt = false
-
-[functions.twilio-verify-caller]
-verify_jwt = false
 
 [functions.property-instant-matches]
 verify_jwt = true
 
 [functions.run-full-crossing]
-verify_jwt = true
-
-[functions.twilio-transfer]
-verify_jwt = true
-
-[functions.twilio-conference-twiml]
 verify_jwt = false
 
 [functions.public-agent-card]
+verify_jwt = false
+
+[functions.image-proxy]
 verify_jwt = false
 
 [functions.sync-linkinbio]
@@ -127,6 +112,9 @@ verify_jwt = false
 [functions.portal-cutover-launch]
 verify_jwt = false
 
+[functions.kyero-cohort-refresh]
+verify_jwt = false
+
 [functions.campaign-demand-enrich]
 verify_jwt = true
 
@@ -142,5 +130,62 @@ verify_jwt = true
 [functions.web-leads-admin]
 verify_jwt = false
 
-[functions.ai-reengagement]
+[functions.migrate-property-images]
+verify_jwt = false
+
+[functions.import-csv-contacts]
+verify_jwt = false
+
+[functions.normalize-contact-taxonomy]
+verify_jwt = false
+
+[functions.audit-legacy-sensitive-properties]
+verify_jwt = false
+
+[functions.audit-portal-media-readiness]
+verify_jwt = false
+
+[functions.backup-contacts]
+verify_jwt = false
+
+[functions.outlook-demand-inbound]
+verify_jwt = false
+
+[functions.demand-email-inbound]
+verify_jwt = false
+
+[functions.ai-demand-screenshot-intake]
+verify_jwt = false
+
+[functions.ai-demand-screenshot-extract]
+verify_jwt = false
+
+[functions.admin-delete-manual-screenshot-contact]
+verify_jwt = false
+
+[functions.debug-contact-state]
+verify_jwt = false
+
+[functions.statefox-webhook]
+verify_jwt = false
+
+[functions.voice-campaign-dispatch]
+verify_jwt = true
+
+[functions.voice-provider-webhook]
+verify_jwt = false
+
+[functions.voice-client-context]
+verify_jwt = false
+
+[functions.admin-create-portal-demand]
+verify_jwt = true
+
+[functions.admin-demand-delete]
+verify_jwt = true
+
+[functions.demands-inbox]
+verify_jwt = true
+
+[functions.statefox-prospecting]
 verify_jwt = true

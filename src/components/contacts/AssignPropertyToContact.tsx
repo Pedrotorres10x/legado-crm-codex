@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Building, Loader2, Plus, Search as SearchIcon, XCircle } from 'lucide-react';
+import type { Tables, TablesUpdate } from '@/integrations/supabase/types';
 
 type Props = {
   contactId: string;
@@ -14,10 +15,15 @@ type Props = {
   onAssigned: () => void;
 };
 
+type PropertySearchResult = Pick<
+  Tables<'properties'>,
+  'id' | 'title' | 'address' | 'price' | 'status' | 'reference'
+>;
+
 export default function AssignPropertyToContact({ contactId, contactName, contactType, onAssigned }: Props) {
   const { toast } = useToast();
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<PropertySearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [assigning, setAssigning] = useState(false);
   const [open, setOpen] = useState(false);
@@ -40,7 +46,8 @@ export default function AssignPropertyToContact({ contactId, contactName, contac
 
   const assign = async (propertyId: string, propertyTitle: string) => {
     setAssigning(true);
-    const { error: propertyError } = await supabase.from('properties').update({ owner_id: contactId } as any).eq('id', propertyId);
+    const propertyPayload: TablesUpdate<'properties'> = { owner_id: contactId };
+    const { error: propertyError } = await supabase.from('properties').update(propertyPayload).eq('id', propertyId);
     if (propertyError) {
       toast({ title: 'Error', description: propertyError.message, variant: 'destructive' });
       setAssigning(false);
@@ -48,7 +55,8 @@ export default function AssignPropertyToContact({ contactId, contactName, contac
     }
 
     if (!['propietario', 'prospecto', 'ambos', 'vendedor_cerrado'].includes(contactType)) {
-      await supabase.from('contacts').update({ contact_type: 'prospecto' as any } as any).eq('id', contactId);
+      const contactPayload: TablesUpdate<'contacts'> = { contact_type: 'prospecto' };
+      await supabase.from('contacts').update(contactPayload).eq('id', contactId);
     }
 
     toast({ title: '✅ Inmueble asignado', description: `${propertyTitle} vinculado a ${contactName}. Si todavía no ha firmado, debe seguir como prospecto.` });

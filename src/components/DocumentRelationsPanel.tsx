@@ -21,6 +21,35 @@ const kindLabels: Record<string, string> = {
   other: 'Otro',
 };
 
+type RelatedContact = {
+  id: string;
+  full_name?: string | null;
+};
+
+type RelatedProperty = {
+  id: string;
+  title?: string | null;
+  address?: string | null;
+};
+
+type RelatedDocumentRow = {
+  id: string;
+  title: string;
+  file_name: string;
+  created_at: string;
+  expires_at?: string | null;
+  document_kind: string;
+  generated_contracts?: {
+    signature_status?: string | null;
+  } | null;
+  document_contacts?: Array<{
+    contacts?: RelatedContact | null;
+  }> | null;
+  document_properties?: Array<{
+    properties?: RelatedProperty | null;
+  }> | null;
+};
+
 const DocumentRelationsPanel = (props: Props) => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -78,6 +107,8 @@ const DocumentRelationsPanel = (props: Props) => {
     toast,
   });
 
+  const typedDocuments = documents as RelatedDocumentRow[];
+
   return (
     <>
       <Card className="animate-fade-in-up">
@@ -85,7 +116,7 @@ const DocumentRelationsPanel = (props: Props) => {
           <CardTitle className="text-base flex items-center gap-2">
             <Link2 className="h-4 w-4 text-primary" />
             Expediente documental
-            <Badge variant="secondary" className="text-xs">{documents.length}</Badge>
+            <Badge variant="secondary" className="text-xs">{typedDocuments.length}</Badge>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -94,19 +125,19 @@ const DocumentRelationsPanel = (props: Props) => {
               <Loader2 className="h-4 w-4 animate-spin" />
               Cargando documentos relacionados...
             </div>
-          ) : documents.length === 0 ? (
+          ) : typedDocuments.length === 0 ? (
             <div className="text-sm text-muted-foreground">Todavía no hay documentos registrados en este expediente.</div>
           ) : (
             <div className="space-y-2">
-              {documents.map((doc) => {
+              {typedDocuments.map((doc) => {
                 const linkedContacts = (doc.document_contacts || [])
-                  .map((link: any) => link.contacts)
+                  .map((link) => link.contacts)
                   .filter(Boolean)
-                  .filter((contact: any) => !isContactContext || contact.id !== props.contactId);
+                  .filter((contact) => !isContactContext || contact.id !== props.contactId);
                 const linkedProperties = (doc.document_properties || [])
-                  .map((link: any) => link.properties)
+                  .map((link) => link.properties)
                   .filter(Boolean)
-                  .filter((property: any) => isContactContext || property.id !== props.propertyId);
+                  .filter((property) => isContactContext || property.id !== props.propertyId);
 
                 return (
                   <div key={doc.id} className="rounded-lg border p-3 space-y-2">
@@ -148,13 +179,13 @@ const DocumentRelationsPanel = (props: Props) => {
 
                     {(linkedContacts.length > 0 || linkedProperties.length > 0) && (
                       <div className="flex flex-wrap gap-2">
-                        {linkedContacts.map((contact: any) => (
+                        {linkedContacts.map((contact) => (
                           <Badge key={contact.id} variant="secondary" className="gap-1">
                             <User className="h-3 w-3" />
                             {contact.full_name}
                           </Badge>
                         ))}
-                        {linkedProperties.map((property: any) => (
+                        {linkedProperties.map((property) => (
                           <Badge key={property.id} variant="secondary" className="gap-1">
                             <Home className="h-3 w-3" />
                             {property.title || property.address || 'Inmueble'}

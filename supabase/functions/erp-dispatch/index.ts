@@ -10,6 +10,12 @@ interface TargetConfig {
   eventMap: Record<string, string> | null;
 }
 
+interface SatelliteRow {
+  satellite_key: string;
+  base_url: string | null;
+  is_active: boolean | null;
+}
+
 /**
  * erp-dispatch — Webhook dispatcher
  *
@@ -22,7 +28,7 @@ interface TargetConfig {
 const DEFAULT_TARGETS: Record<string, Omit<TargetConfig, 'url'> & { url: string | null; urlSuffix: string }> = {};
 
 /** Build TARGETS by reading URLs from satellite_config table */
-async function buildTargets(supabase: any): Promise<Record<string, TargetConfig>> {
+async function buildTargets(supabase: ReturnType<typeof createClient>): Promise<Record<string, TargetConfig>> {
   const { data: satellites } = await supabase
     .from('satellite_config')
     .select('satellite_key, base_url, is_active')
@@ -30,7 +36,7 @@ async function buildTargets(supabase: any): Promise<Record<string, TargetConfig>
 
   const targets: Record<string, TargetConfig> = {};
   for (const [key, def] of Object.entries(DEFAULT_TARGETS)) {
-    const sat = satellites?.find((s: any) => s.satellite_key === key);
+    const sat = (satellites as SatelliteRow[] | null)?.find((s) => s.satellite_key === key);
     const baseUrl = sat?.base_url || null;
     const isActive = sat?.is_active ?? true;
     targets[key] = {

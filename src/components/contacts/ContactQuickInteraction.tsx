@@ -5,6 +5,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import type { TablesInsert } from '@/integrations/supabase/types';
 
 type InteractionLabels = Record<string, string>;
 
@@ -35,12 +36,13 @@ export default function ContactQuickInteraction({
     }
 
     setSaving(true);
-    const { error } = await supabase.from('interactions').insert({
+    const payload: TablesInsert<'interactions'> = {
       contact_id: contactId,
-      interaction_type: type as any,
+      interaction_type: type,
       subject: text.trim(),
       agent_id: userId,
-    });
+    };
+    const { error } = await supabase.from('interactions').insert(payload);
     setSaving(false);
 
     if (error) {

@@ -8,10 +8,30 @@ import { getAgentRecordRichness } from '@/lib/agent-record-richness';
 import { getAgentViabilitySignal } from '@/lib/agent-viability';
 import { getAgentOnboardingStage } from '@/lib/agent-onboarding';
 import { supabase } from '@/integrations/supabase/client';
+import type { Tables } from '@/integrations/supabase/types';
 
 type Props = {
   agentId?: string;
 };
+
+type ViabilityProperty = Pick<
+  Tables<'properties'>,
+  | 'agent_id'
+  | 'status'
+  | 'title'
+  | 'price'
+  | 'address'
+  | 'city'
+  | 'description'
+  | 'images'
+  | 'videos'
+  | 'virtual_tour_url'
+  | 'reference'
+  | 'bedrooms'
+  | 'bathrooms'
+  | 'surface_area'
+  | 'mandate_type'
+>;
 
 const toneMap = {
   rojo: {
@@ -67,7 +87,7 @@ const AdminAgentViabilityCard = ({ agentId }: Props) => {
 
       if (cancelled) return;
 
-      const properties = (propertiesRes.data as any[]) || [];
+      const properties = (propertiesRes.data ?? []) as ViabilityProperty[];
       const richness = getAgentRecordRichness(properties);
       const availableStock = properties.filter((property) => property.status === 'disponible').length;
       const signal = getAgentViabilitySignal({

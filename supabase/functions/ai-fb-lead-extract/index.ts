@@ -23,6 +23,25 @@ Responde SOLO con JSON válido:
   "form_id": "ID del formulario si aparece" o null
 }`;
 
+interface FacebookLeadExtractBody {
+  image_base64?: string;
+  mime_type?: string;
+}
+
+interface FacebookLeadResponseItem {
+  question?: string | null;
+  answer?: string | null;
+}
+
+interface ExtractedFacebookLead {
+  full_name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  form_responses?: FacebookLeadResponseItem[];
+  form_date?: string | null;
+  form_id?: string | null;
+}
+
 Deno.serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
@@ -55,7 +74,7 @@ Deno.serve(async (req) => {
       const buf = await file.arrayBuffer();
       imageBase64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
     } else {
-      const body = await req.json();
+      const body = await req.json() as FacebookLeadExtractBody;
       imageBase64 = body.image_base64;
       mimeType = body.mime_type || "image/png";
       if (!imageBase64) return json({ ok: false, error: "no_image" }, 400);
@@ -76,13 +95,13 @@ Deno.serve(async (req) => {
       },
     ], { max_tokens: 800 });
 
-    let extracted: any;
+    let extracted: ExtractedFacebookLead;
     try {
       const raw = (aiResult.content || "")
         .replace(/```json?\n?/g, "")
         .replace(/```/g, "")
         .trim();
-      extracted = JSON.parse(raw);
+      extracted = JSON.parse(raw) as ExtractedFacebookLead;
     } catch {
       console.error("[ai-fb-lead-extract] AI parse failed:", aiResult.content);
       return json({ ok: false, error: "ai_parse_failed", raw: aiResult.content }, 422);
@@ -96,7 +115,7 @@ Deno.serve(async (req) => {
 
     // Build notes from form responses
     const responsesText = formResponses
-      .map((r: any) => `"${r.question}" → "${r.answer}"`)
+      .map((r) => `"${r.question}" → "${r.answer}"`)
       .join(". ");
     const notes = [
       "Lead desde Facebook Lead Ads.",
@@ -183,8 +202,8 @@ Deno.serve(async (req) => {
       duplicate: isDuplicate,
       extracted,
     });
-  } catch (err: any) {
-    console.error("[ai-fb-lead-extract] Error:", err.message || err);
+  } catch (err: unknown) {
+    console.error("[ai-fb-lead-extract] Error:", err instanceof Error ? err.message : err);
     return json({ ok: false, error: "Error al procesar el screenshot" }, 500);
   }
 });

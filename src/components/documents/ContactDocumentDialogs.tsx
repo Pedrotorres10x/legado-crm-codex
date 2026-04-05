@@ -7,10 +7,38 @@ import { CheckCircle, FileText, Link, Loader2, PenTool, Plus, Search, Send, User
 import SignatureCertificate from '@/components/SignatureCertificate';
 
 type SignerContact = { id: string; full_name: string; email?: string | null } | null;
+type SearchContact = { id: string; full_name: string; email?: string | null; phone?: string | null };
+type TemplateOption = { id: string; name: string; category?: string | null };
+type CertificateContract = {
+  id: string;
+  content: string;
+  content_hash: string | null;
+  document_hash: string | null;
+  signature_status: string;
+  created_at: string;
+  template_name?: string;
+} | null;
+type CertificateSigner = {
+  id: string;
+  signer_label: string;
+  signer_name: string | null;
+  signer_id_number: string | null;
+  signer_email: string | null;
+  signer_ip: string | null;
+  signer_user_agent: string | null;
+  signed_at: string | null;
+  signature_status: string;
+  signature_url: string | null;
+  signature_hash: string | null;
+  document_hash: string | null;
+  otp_verified: boolean;
+  otp_attempts: number;
+  created_at: string;
+};
 
 interface ContactDocumentDialogsProps {
   contactName?: string;
-  templates: any[];
+  templates: TemplateOption[];
   categories: { value: string; label: string }[];
   newContractOpen: boolean;
   setNewContractOpen: (open: boolean) => void;
@@ -37,8 +65,8 @@ interface ContactDocumentDialogsProps {
   setSignerContacts: React.Dispatch<React.SetStateAction<SignerContact[]>>;
   signerSearchTerms: string[];
   setSignerSearchTerms: React.Dispatch<React.SetStateAction<string[]>>;
-  signerSearchResults: Array<any[]>;
-  setSignerSearchResults: React.Dispatch<React.SetStateAction<Array<any[]>>>;
+  signerSearchResults: SearchContact[][];
+  setSignerSearchResults: React.Dispatch<React.SetStateAction<SearchContact[][]>>;
   signerSearching: boolean[];
   searchContacts: (term: string, index: number) => void;
   sendToSign: () => void;
@@ -52,8 +80,8 @@ interface ContactDocumentDialogsProps {
   certDialogOpen: boolean;
   setCertDialogOpen: (open: boolean) => void;
   certLoading: boolean;
-  certContract: any;
-  certSigners: any[];
+  certContract: CertificateContract;
+  certSigners: CertificateSigner[];
 }
 
 const ContactDocumentDialogs = ({
@@ -291,7 +319,7 @@ const ContactDocumentDialogs = ({
                     </div>
                     {(signerSearchResults[index]?.length || 0) > 0 && (
                       <div className="absolute z-50 mt-1 max-h-40 w-full overflow-y-auto rounded-lg border bg-popover shadow-lg">
-                        {signerSearchResults[index].map((contact: any) => {
+                        {signerSearchResults[index].map((contact) => {
                           const alreadyUsed = signerContacts.some((selected, selectedIndex) => selectedIndex !== index && selected?.id === contact.id);
                           return (
                             <button

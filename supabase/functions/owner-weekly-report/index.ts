@@ -22,6 +22,28 @@ interface PropertyReport {
   mandate_end: string | null;
 }
 
+interface OwnerSummary {
+  full_name: string;
+  email: string;
+}
+
+interface PropertyOwnerRow {
+  id: string;
+  title: string;
+  crm_reference: string | null;
+  price: number | null;
+  city: string | null;
+  created_at: string;
+  mandate_end: string | null;
+  contacts: OwnerSummary | null;
+}
+
+interface PortalFeedSummary {
+  portal_feeds: {
+    display_name: string | null;
+  } | null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
@@ -53,8 +75,8 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: propError.message }), { status: 500, headers: corsHeaders });
   }
 
-  const eligibleProps = (properties || []).filter(
-    (p: any) => p.contacts?.email
+  const eligibleProps = ((properties || []) as PropertyOwnerRow[]).filter(
+    (p) => p.contacts?.email
   );
 
   if (eligibleProps.length === 0) {
@@ -67,7 +89,7 @@ Deno.serve(async (req) => {
 
   for (const prop of eligibleProps) {
     try {
-      const owner = prop.contacts as any;
+      const owner = prop.contacts as OwnerSummary;
 
       // Visits in last 7 days
       const { count: visitsCount } = await sb
@@ -98,7 +120,7 @@ Deno.serve(async (req) => {
         .is('removed_at', null);
 
       const portals = (portalData || [])
-        .map((pf: any) => pf.portal_feeds?.display_name)
+        .map((pf: PortalFeedSummary) => pf.portal_feeds?.display_name)
         .filter(Boolean);
 
       const daysOnMarket = Math.floor(
@@ -152,9 +174,10 @@ Deno.serve(async (req) => {
 
       sent++;
       console.log(`[OwnerReport] Sent report for ${prop.title} to ${owner.email}`);
-    } catch (e) {
-      console.error(`[OwnerReport] Error for property ${prop.id}:`, e);
-      errors.push(`${prop.id}: ${e.message}`);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      console.error(`[OwnerReport] Error for property ${prop.id}:`, message);
+      errors.push(`${prop.id}: ${message}`);
     }
   }
 

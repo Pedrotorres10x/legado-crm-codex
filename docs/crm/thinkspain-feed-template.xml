@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root>
+  <thinkspain>
+    <import_version>1.16</import_version>
+  </thinkspain>
+  <agent>
+    <name>Property Estates</name>
+  </agent>
+  <property>
+    <last_amended_date>2008-02-25 18:12:25</last_amended_date>
+    <unique_id>12345</unique_id>
+    <agent_ref>TS34678</agent_ref>
+    <euro_price>700</euro_price>
+    <currency>EUR</currency>
+    <sale_type>sale</sale_type>
+    <property_type>Villa</property_type>
+    <new_build>1</new_build>
+    <year_built>2016</year_built>
+    <street_name>Calle Sevilla</street_name>
+    <street_number>101</street_number>
+    <town>Marbella</town>
+    <location_detail>Casco Antiguo</location_detail>
+    <province>Malaga</province>
+    <postcode>29601</postcode>
+    <full_address>Calle Sevilla, 101, 29601 Marbella, Malaga</full_address>
+    <display_address>1</display_address>
+    <catastral>9872023VH5797S0001WX</catastral>
+    <location>
+      <latitude>36.510071</latitude>
+      <longitude>-4.8824474</longitude>
+      <geoapprox>1</geoapprox>
+    </location>
+    <url>http://www.yourwebsite.com/ref/123456</url>
+    <description>
+      <en>Property description in English.</en>
+      <es>Descripcion de la propiedad en espanol.</es>
+      <de>Objektbeschreibung auf Deutsch.</de>
+      <nl>Woningbeschrijving in het Nederlands.</nl>
+      <fr>Description du bien en francais.</fr>
+    </description>
+    <images>
+      <photo id="1">
+        <url>http://www.mysite/photos/photo12345.jpg</url>
+      </photo>
+    </images>
+    <media>
+      <video provider="youtube">https://youtu.be/168fQPJQ62637T44</video>
+      <virtualtour provider="eyespy360">https://media.mydomain.com/myembeddedtour263746</virtualtour>
+      <floorplan title="Ground Floor">https://media.mydomain.com/examplepdffloorplan263746.pdf</floorplan>
+      <floorplan title="First Floor">https://media.mydomain.com/examplejpgfloorplan263746.jpg</floorplan>
+    </media>
+    <bedrooms>3</bedrooms>
+    <bathrooms>2</bathrooms>
+    <toilets>1</toilets>
+    <living_area>100</living_area>
+    <plot_size>1500</plot_size>
+    <pool>1</pool>
+    <aircon>1</aircon>
+    <heating>1</heating>
+    <garage>1</garage>
+    <levels>4</levels>
+    <features>
+      <feature>sea view</feature>
+      <feature>private garden</feature>
+      <feature>piscina comunitaria</feature>
+      <feature>planta baja</feature>
+    </features>
+    <energy_rating>
+      <consumption>A</consumption>
+      <emissions>A</emissions>
+    </energy_rating>
+    <km_golf>5</km_golf>
+    <km_town>0</km_town>
+    <km_airport>70</km_airport>
+    <km_beach>2.5</km_beach>
+    <km_marina>2.9</km_marina>
+    <km_countryside>7</km_countryside>
+  </property>
+</root>

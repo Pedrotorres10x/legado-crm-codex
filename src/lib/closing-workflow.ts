@@ -1,19 +1,25 @@
 import type { ClosingStepKey } from '@/lib/closing-ops';
 
-type PropertySetter = (fn: (current: any) => any) => void;
-type PropertySaver = (updates: Record<string, any>) => void;
+type ClosingProperty = Record<string, unknown> & {
+  status?: string;
+  operation?: string;
+  arras_status?: string;
+};
+
+type PropertySetter = (fn: (current: ClosingProperty) => ClosingProperty) => void;
+type PropertySaver = (updates: Partial<ClosingProperty>) => void;
 
 export const commitClosingFieldUpdates = (
   onSetProperty: PropertySetter,
   onSaveField: PropertySaver,
-  updates: Record<string, any>,
+  updates: Partial<ClosingProperty>,
 ) => {
-  onSetProperty((current: any) => ({ ...current, ...updates }));
+  onSetProperty((current) => ({ ...current, ...updates }));
   onSaveField(updates);
 };
 
 export const buildClosingStageAdvanceUpdates = (
-  property: any,
+  property: ClosingProperty,
   activeStep: ClosingStepKey,
 ) => {
   if (activeStep === 'reserva') {
@@ -36,7 +42,7 @@ export const buildClosingStageAdvanceUpdates = (
 };
 
 export const buildArrasStatusUpdates = (
-  property: any,
+  property: ClosingProperty,
   arrasStatus: string,
 ) => ({
   arras_status: arrasStatus,

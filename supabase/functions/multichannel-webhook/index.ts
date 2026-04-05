@@ -2,6 +2,94 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, json, handleCors } from '../_shared/cors.ts';
 import { callAI } from '../_shared/ai.ts';
 import { sendMessage as sendDirectMessage } from '../_shared/send-message.ts';
+import { isPropertyInterestAutomationEnabled } from '../_shared/automation-outbound.ts';
+import { buildPropertyUrl, buildWhatsAppFollowUp, resolveLeadLanguage } from '../_shared/match-whatsapp.ts';
+import {
+  buildDemandConfirmationMessage,
+  buildDemandFollowUpMessage,
+  languageName,
+  normalizeContactLanguage,
+  resolveContactLanguage,
+} from '../_shared/contact-language.ts';
+
+type SupabaseClient = ReturnType<typeof createClient>;
+
+type ContactRecord = {
+  id: string;
+  full_name: string | null;
+  tags: string[] | null;
+  contact_type: string | null;
+  pipeline_stage: string | null;
+  agent_id: string | null;
+  phone: string | null;
+  phone2: string | null;
+  email: string | null;
+  notes: string | null;
+  preferred_language: string | null;
+  status?: string | null;
+};
+
+type PropertySummary = {
+  id: string;
+  title?: string | null;
+  city?: string | null;
+  province?: string | null;
+};
+
+type OpenerLog = {
+  id: string;
+  created_at: string;
+  property_id: string | null;
+  demand_id: string | null;
+  body_preview: string | null;
+  metadata?: Record<string, unknown> | null;
+  source: string | null;
+};
+
+type UserRoleRow = { user_id: string };
+type ConversationRow = { direction: string; body_preview: string | null; created_at: string };
+type DemandRow = { id: string; operation: string | null; property_type: string | null; max_price: number | null; cities: string[] | null; zones: string[] | null; min_price: number | null };
+type DemandCreationRow = { id: string };
+type WebhookPayload = {
+  type?: string;
+  contact_id?: string;
+  text?: string;
+  channel?: string;
+  provider_msg_id?: string;
+  status?: string;
+  error_message?: string;
+  metadata?: Record<string, unknown> | null;
+};
+type ClassificationResult = {
+  classification: "comprador" | "prospecto" | "inactivo" | "ambiguo";
+  confidence: number;
+  summary: string;
+};
+type DemandExtractionResult = {
+  operation: "venta" | "alquiler" | null;
+  property_types: string[];
+  cities: string[];
+  zones: string[];
+  min_bedrooms: number | null;
+  min_bathrooms: number | null;
+  min_price: number | null;
+  max_price: number | null;
+  min_surface: number | null;
+  features: string[];
+  notes: string;
+  has_enough_data: boolean;
+};
+type DemandEnrichResult = {
+  max_price: number | null;
+  min_price: number | null;
+  cities: string[];
+  zones: string[];
+  notes: string;
+  extracted_something: boolean;
+  still_missing: string[];
+  stop: boolean;
+  reply: string;
+};
 
 /**
  * Receives status updates AND inbound messages.
@@ -39,7 +127,7 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const body = await req.json();
+    const body = await req.json() as WebhookPayload;
 
     // Route: inbound message
     if (body.type === "inbound") {
@@ -48,14 +136,158 @@ Deno.serve(async (req) => {
 
     // Route: status update (existing logic)
     return await handleStatusUpdate(supabase, body);
-  } catch (e: any) {
-    console.error("multichannel-webhook error:", e.message);
-    return json({ ok: false, error: e.message }, 500);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("multichannel-webhook error:", message);
+    return json({ ok: false, error: message }, 500);
   }
 });
 
+async function handleAutoMatchReply(supabase: SupabaseClient, contact: ContactRecord, inboundText: string, channel: string) {
+  if (channel !== "whatsapp") return { handled: false };
+  if (!(await isPropertyInterestAutomationEnabled())) return { handled: false, automationDisabled: true };
+
+  const { data: openerLog } = await supabase
+    .from("communication_logs")
+    .select("id, created_at, property_id, demand_id, body_preview, metadata, source")
+    .eq("contact_id", contact.id)
+    .eq("channel", "whatsapp")
+    .eq("direction", "outbound")
+    .in("source", ["cruces", "cruces_reminder", "cruces_last_reminder"])
+    .not("property_id", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!openerLog?.property_id) return { handled: false };
+
+  const stage = typeof openerLog.metadata?.match_whatsapp_stage === "string" ? openerLog.metadata.match_whatsapp_stage : null;
+  if (stage && !["opener", "reminder", "final_reminder"].includes(stage)) return { handled: false };
+
+  const { data: existingFollowUp } = await supabase
+    .from("communication_logs")
+    .select("id")
+    .eq("contact_id", contact.id)
+    .eq("channel", "whatsapp")
+    .eq("direction", "outbound")
+    .eq("source", "cruces_followup")
+    .eq("property_id", openerLog.property_id)
+    .limit(1)
+    .maybeSingle();
+
+  if (existingFollowUp) return { handled: false, alreadySent: true };
+
+  const { data: property } = await supabase
+    .from("properties")
+    .select("id, title, city, province")
+    .eq("id", openerLog.property_id)
+    .single();
+
+  if (!property) return { handled: false };
+
+  const propertyUrl = buildPropertyUrl(property);
+  const preferredLanguage = resolveLeadLanguage(
+    contact.preferred_language || (typeof openerLog.metadata?.preferred_language === "string" ? openerLog.metadata.preferred_language : null) || null,
+    inboundText,
+    (typeof openerLog.metadata?.body_preview === "string" ? openerLog.metadata.body_preview : null) || null,
+    contact.full_name,
+  );
+  const followUpText = buildWhatsAppFollowUp(contact.full_name, propertyUrl, preferredLanguage);
+
+  const destination = contact.phone || contact.phone2;
+  if (!destination) return { handled: false };
+
+  const result = await sendDirectMessage({
+    channel: "whatsapp",
+    to: destination,
+    contactName: contact.full_name,
+    text: followUpText,
+  });
+
+  if (openerLog.demand_id && property.id) {
+    await supabase
+      .from("matches")
+      .update({ status: result.ok ? "enviado" : "pendiente" })
+      .eq("demand_id", openerLog.demand_id)
+      .eq("property_id", property.id);
+  }
+
+  await supabase.from("communication_logs").insert({
+    contact_id: contact.id,
+    channel: "whatsapp",
+    direction: "outbound",
+    source: "cruces_followup",
+    body_preview: followUpText.slice(0, 500),
+    provider_msg_id: result.provider_message_id || null,
+    status: result.ok ? "enviado" : "error",
+    error_message: result.ok ? null : (result.error || "Send failed"),
+    agent_id: contact.agent_id || null,
+    property_id: property.id,
+    demand_id: openerLog.demand_id || null,
+    metadata: {
+      match_whatsapp_stage: "followup_link",
+      replied_to_inbound: inboundText.slice(0, 250),
+      property_url: propertyUrl,
+      preferred_language: preferredLanguage,
+      pending_response: false,
+    },
+  });
+
+  await supabase.from("interactions").insert({
+    contact_id: contact.id,
+    interaction_type: "whatsapp",
+    subject: `Auto-match follow-up: ${property.title}`,
+    description: result.ok
+      ? `Se envió el enlace de la vivienda tras la respuesta del contacto.`
+      : `Falló el envío del enlace de la vivienda tras la respuesta del contacto: ${result.error || 'error desconocido'}`,
+    agent_id: contact.agent_id || null,
+  });
+
+  if (result.ok) {
+    await notifyPropertyLinkSentToAdmins(supabase, contact, property, openerLog.demand_id || null);
+  }
+
+  return { handled: result.ok, propertyId: property.id, sent: result.ok, error: result.error || null };
+}
+
+async function notifyPropertyLinkSentToAdmins(
+  supabase: SupabaseClient,
+  contact: ContactRecord,
+  property: { id: string; title?: string | null; city?: string | null; province?: string | null },
+  demandId: string | null,
+) {
+  const { data: admins } = await supabase
+    .from("user_roles")
+    .select("user_id")
+    .eq("role", "admin");
+
+  if (!admins?.length) return;
+
+  const propertyLabel = property.title || "Propiedad";
+  const locationLabel = property.city || property.province || "sin zona";
+  const notifications = admins
+    .filter((admin: UserRoleRow) => admin.user_id && admin.user_id !== contact.agent_id)
+    .map((admin: UserRoleRow) => ({
+      event_type: "property_link_sent",
+      entity_type: "contact",
+      entity_id: contact.id,
+      title: `🔗 Enlace enviado a ${contact.full_name || "contacto"}`,
+      description: `${propertyLabel} · ${locationLabel}`,
+      agent_id: admin.user_id,
+      metadata: {
+        property_id: property.id,
+        demand_id: demandId,
+        contact_id: contact.id,
+      },
+    }));
+
+  if (notifications.length) {
+    await supabase.from("notifications").insert(notifications);
+  }
+}
+
 /** Handle inbound messages from contacts */
-async function handleInbound(supabase: any, body: any) {
+async function handleInbound(supabase: SupabaseClient, body: WebhookPayload) {
   const { contact_id, text, channel, provider_msg_id } = body;
 
   if (!contact_id || !text) {
@@ -76,7 +308,7 @@ async function handleInbound(supabase: any, body: any) {
   // Check contact and tags
   const { data: contact } = await supabase
     .from("contacts")
-    .select("id, full_name, tags, contact_type, pipeline_stage, agent_id, phone, email")
+    .select("id, full_name, tags, contact_type, pipeline_stage, agent_id, phone, phone2, email, notes, preferred_language")
     .eq("id", contact_id)
     .single();
 
@@ -85,7 +317,18 @@ async function handleInbound(supabase: any, body: any) {
     return json({ ok: true, classified: false, reason: "contact_not_found" });
   }
 
+  const inboundLanguage = resolveContactLanguage(contact.preferred_language || null, text, contact.full_name);
+  if (inboundLanguage !== normalizeContactLanguage(contact.preferred_language)) {
+    await supabase.from("contacts").update({ preferred_language: inboundLanguage }).eq("id", contact_id);
+    contact.preferred_language = inboundLanguage;
+  }
+
   const tags: string[] = contact.tags || [];
+
+  const autoMatchReply = await handleAutoMatchReply(supabase, contact, text, channel || "whatsapp");
+  if (autoMatchReply.handled) {
+    return json({ ok: true, classified: false, reason: "match_followup_sent", property_id: autoMatchReply.propertyId });
+  }
 
   // ── FLOW 4: Contact has "qualify-pendiente" tag → qualify as comprador/prospecto ──
   if (tags.includes("qualify-pendiente")) {
@@ -139,13 +382,13 @@ Responde SOLO con un JSON (sin markdown) con estos campos:
     if (cleaned.startsWith("```")) {
       cleaned = cleaned.replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "");
     }
-    const classification = JSON.parse(cleaned);
+    const classification = JSON.parse(cleaned) as ClassificationResult;
 
     // Update contact based on classification
     const newTags = tags.filter((t: string) => t !== "clasificacion-pendiente");
     newTags.push("clasificado-campana");
 
-    const updateData: any = { tags: newTags };
+    const updateData: Record<string, unknown> = { tags: newTags };
 
     if (classification.classification === "comprador") {
       updateData.contact_type = "comprador";
@@ -194,8 +437,9 @@ Responde SOLO con un JSON (sin markdown) con estos campos:
 
     console.log(`multichannel-webhook: classified ${contact.full_name} → ${classification.classification}`);
     return json({ ok: true, classified: true, classification: classification.classification });
-  } catch (aiError: any) {
-    console.error("multichannel-webhook AI classification error:", aiError.message);
+  } catch (aiError) {
+    const message = aiError instanceof Error ? aiError.message : "Unknown AI classification error";
+    console.error("multichannel-webhook AI classification error:", message);
     const newTags = tags.filter((t: string) => t !== "clasificacion-pendiente");
     newTags.push("clasificado-campana");
     await supabase.from("contacts").update({ tags: newTags }).eq("id", contact_id);
@@ -207,7 +451,7 @@ Responde SOLO con un JSON (sin markdown) con estos campos:
       source: "campaign_classify",
       body_preview: `Error IA al clasificar. Respuesta original: ${text.slice(0, 300)}`,
       status: "revision_manual",
-      metadata: { needs_review: true, error: aiError.message, original_text: text.slice(0, 500) },
+      metadata: { needs_review: true, error: message, original_text: text.slice(0, 500) },
     });
 
     return json({ ok: true, classified: false, reason: "ai_error" });
@@ -218,23 +462,10 @@ Responde SOLO con un JSON (sin markdown) con estos campos:
  * Send a friendly follow-up to a buyer asking what they're looking for.
  * The next inbound will trigger demand extraction.
  */
-async function sendDemandFollowUp(supabase: any, contact: any, channel: string) {
-  const firstName = contact.full_name?.split(" ")[0] || "amigo";
+async function sendDemandFollowUp(supabase: SupabaseClient, contact: ContactRecord, channel: string) {
   const isWhatsapp = channel === "whatsapp" || channel !== "email";
-
-  const text = isWhatsapp
-    ? `¡Genial, ${firstName}! 😊 Para ayudarte mejor, cuéntame un poco qué buscas:\n\n` +
-      `- ¿Comprar o alquilar?\n` +
-      `- ¿Qué zona te interesa?\n` +
-      `- ¿Cuántas habitaciones necesitas?\n` +
-      `- ¿Tienes un presupuesto orientativo?\n\n` +
-      `Cuéntame lo que puedas y te ayudo a encontrar algo que encaje 🏡`
-    : `¡Genial, ${firstName}! Para ayudarte a encontrar lo ideal, me vendría genial saber un poco más:\n\n` +
-      `- ¿Buscas comprar o alquilar?\n` +
-      `- ¿Qué zona te interesa? (ciudad, barrio...)\n` +
-      `- ¿Cuántas habitaciones necesitas?\n` +
-      `- ¿Tienes un presupuesto orientativo?\n\n` +
-      `No te preocupes si no tienes todo claro, cuéntame lo que puedas y yo me encargo del resto. 😊`;
+  const preferredLanguage = resolveContactLanguage(contact.preferred_language || null, contact.full_name, contact.notes);
+  const message = buildDemandFollowUpMessage(contact.full_name, isWhatsapp ? "whatsapp" : "email", preferredLanguage);
 
   try {
     const destination = isWhatsapp
@@ -250,8 +481,8 @@ async function sendDemandFollowUp(supabase: any, contact: any, channel: string) 
       channel: isWhatsapp ? "whatsapp" : "email",
       to: destination,
       contactName: contact.full_name,
-      text,
-      subject: isWhatsapp ? undefined : `${firstName}, cuéntame qué buscas`,
+      text: message.text,
+      subject: isWhatsapp ? undefined : message.subject,
       replyTo: isWhatsapp ? undefined : `campaign+${contact.id}@inbound.planhogar.es`,
     });
 
@@ -261,7 +492,7 @@ async function sendDemandFollowUp(supabase: any, contact: any, channel: string) 
       channel: isWhatsapp ? "whatsapp" : "email",
       direction: "outbound",
       source: "campaign_demand_followup",
-      body_preview: text.slice(0, 500),
+      body_preview: message.text.slice(0, 500),
       status: "enviado",
     });
 
@@ -274,15 +505,15 @@ async function sendDemandFollowUp(supabase: any, contact: any, channel: string) 
     });
 
     console.log(`sendDemandFollowUp: sent to ${contact.full_name}`);
-  } catch (e: any) {
-    console.error("sendDemandFollowUp error:", e.message);
+  } catch (error) {
+    console.error("sendDemandFollowUp error:", error instanceof Error ? error.message : "Unknown error");
   }
 }
 
 /**
  * Extract demand details from contact's response and create demand in DB.
  */
-async function handleDemandExtraction(supabase: any, contact: any, text: string, channel: string) {
+async function handleDemandExtraction(supabase: SupabaseClient, contact: ContactRecord, text: string, channel: string) {
   const contactId = contact.id;
   const tags: string[] = contact.tags || [];
 
@@ -327,7 +558,7 @@ IMPORTANTE:
     if (cleaned.startsWith("```")) {
       cleaned = cleaned.replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "");
     }
-    const demandData = JSON.parse(cleaned);
+    const demandData = JSON.parse(cleaned) as DemandExtractionResult;
 
     // Remove "demanda-pendiente" tag
     const newTags = tags.filter((t: string) => t !== "demanda-pendiente");
@@ -399,8 +630,9 @@ IMPORTANTE:
     }
 
     return json({ ok: true, demand_created: demandData.has_enough_data, data: demandData });
-  } catch (e: any) {
-    console.error("handleDemandExtraction error:", e.message);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown extraction error";
+    console.error("handleDemandExtraction error:", message);
     // Remove tag to avoid infinite loop
     const newTags = tags.filter((t: string) => t !== "demanda-pendiente");
     await supabase.from("contacts").update({ tags: newTags }).eq("id", contactId);
@@ -412,7 +644,7 @@ IMPORTANTE:
       source: "campaign_demand_error",
       body_preview: `Error extrayendo demanda. Respuesta: ${text.slice(0, 300)}`,
       status: "revision_manual",
-      metadata: { needs_review: true, error: e.message, original_text: text.slice(0, 500) },
+      metadata: { needs_review: true, error: message, original_text: text.slice(0, 500) },
     });
 
     return json({ ok: true, demand_created: false, reason: "extraction_error" });
@@ -422,8 +654,7 @@ IMPORTANTE:
 /**
  * Send a brief confirmation to the contact that their demand was registered.
  */
-async function sendDemandConfirmation(supabase: any, contact: any, demandData: any, channel: string) {
-  const firstName = contact.full_name?.split(" ")[0] || "amigo";
+async function sendDemandConfirmation(supabase: SupabaseClient, contact: ContactRecord, demandData: DemandExtractionResult, channel: string) {
   const isWhatsapp = channel === "whatsapp" || channel !== "email";
 
   const details = [];
@@ -432,10 +663,28 @@ async function sendDemandConfirmation(supabase: any, contact: any, demandData: a
   if (demandData.max_price) details.push(`hasta ${demandData.max_price.toLocaleString("es-ES")}€`);
 
   const detailStr = details.length ? ` (${details.join(", ")})` : "";
-
-  const text = isWhatsapp
-    ? `¡Perfecto, ${firstName}! Ya tengo apuntado lo que buscas${detailStr} 📝\n\nEn cuanto tenga algo que encaje te aviso. ¡Estamos en contacto! 🏡`
-    : `¡Perfecto, ${firstName}! He registrado tu búsqueda${detailStr}.\n\nEn cuanto tengamos algo que encaje con lo que necesitas, te lo haré llegar. ¡Estamos en contacto!`;
+  const preferredLanguage = resolveContactLanguage(contact.preferred_language || null, contact.full_name, contact.notes);
+  const localizedDetailStr =
+    preferredLanguage === "en"
+      ? detailStr
+          .replace("(compra", "(buy")
+          .replace("(alquiler", "(rental")
+          .replace("en ", "in ")
+          .replace("hasta ", "up to ")
+      : preferredLanguage === "fr"
+        ? detailStr
+            .replace("(compra", "(achat")
+            .replace("(alquiler", "(location")
+            .replace("en ", "à ")
+            .replace("hasta ", "jusqu'à ")
+        : preferredLanguage === "de"
+          ? detailStr
+              .replace("(compra", "(Kauf")
+              .replace("(alquiler", "(Miete")
+              .replace("en ", "in ")
+              .replace("hasta ", "bis ")
+          : detailStr;
+  const message = buildDemandConfirmationMessage(contact.full_name, localizedDetailStr, isWhatsapp ? "whatsapp" : "email", preferredLanguage);
 
   try {
     const destination = isWhatsapp ? (contact.phone || contact.phone2) : contact.email;
@@ -445,8 +694,8 @@ async function sendDemandConfirmation(supabase: any, contact: any, demandData: a
       channel: isWhatsapp ? "whatsapp" : "email",
       to: destination,
       contactName: contact.full_name,
-      text,
-      subject: isWhatsapp ? undefined : `${firstName}, tu búsqueda está registrada`,
+      text: message.text,
+      subject: isWhatsapp ? undefined : message.subject,
     });
 
     await supabase.from("communication_logs").insert({
@@ -454,11 +703,11 @@ async function sendDemandConfirmation(supabase: any, contact: any, demandData: a
       channel: isWhatsapp ? "whatsapp" : "email",
       direction: "outbound",
       source: "campaign_demand_confirmation",
-      body_preview: text.slice(0, 500),
+      body_preview: message.text.slice(0, 500),
       status: "enviado",
     });
-  } catch (e: any) {
-    console.error("sendDemandConfirmation error:", e.message);
+  } catch (error) {
+    console.error("sendDemandConfirmation error:", error instanceof Error ? error.message : "Unknown error");
   }
 }
 
@@ -466,7 +715,7 @@ async function sendDemandConfirmation(supabase: any, contact: any, demandData: a
  * 🏆 PROSPECT DETECTED - Notify coordinator + agent urgently.
  * Prospects are gold for the agency.
  */
-async function notifyProspectDetected(supabase: any, contact: any, originalText: string) {
+async function notifyProspectDetected(supabase: SupabaseClient, contact: ContactRecord, originalText: string) {
   const contactName = contact.full_name || "Contacto";
 
   // Get all coordinators and admins
@@ -518,7 +767,7 @@ async function notifyProspectDetected(supabase: any, contact: any, originalText:
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
     if (supabaseUrl && serviceKey) {
-      const pushTargets = [contact.agent_id, ...(supervisors || []).map((s: any) => s.user_id)].filter(Boolean);
+      const pushTargets = [contact.agent_id, ...((supervisors as UserRoleRow[] | null) || []).map((s) => s.user_id)].filter(Boolean);
       const uniqueTargets = [...new Set(pushTargets)];
 
       for (const targetId of uniqueTargets) {
@@ -537,8 +786,8 @@ async function notifyProspectDetected(supabase: any, contact: any, originalText:
         }).catch(() => {}); // Fire and forget
       }
     }
-  } catch (e: any) {
-    console.error("notifyProspectDetected push error:", e.message);
+  } catch (error) {
+    console.error("notifyProspectDetected push error:", error instanceof Error ? error.message : "Unknown error");
   }
 
   // Create urgent task for the agent
@@ -560,7 +809,7 @@ async function notifyProspectDetected(supabase: any, contact: any, originalText:
 /**
  * Handle responses from the qualify campaign (propietarios + contactos → comprador/prospecto).
  */
-async function handleQualifyResponse(supabase: any, contact: any, text: string, channel: string) {
+async function handleQualifyResponse(supabase: SupabaseClient, contact: ContactRecord, text: string, channel: string) {
   const contactId = contact.id;
   const tags: string[] = contact.tags || [];
 
@@ -619,12 +868,12 @@ Analiza la respuesta y determina la intención. Responde SOLO con JSON (sin mark
     if (cleaned.startsWith("```")) {
       cleaned = cleaned.replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "");
     }
-    const classification = JSON.parse(cleaned);
+    const classification = JSON.parse(cleaned) as ClassificationResult;
 
     const newTags = tags.filter((t: string) => t !== "qualify-pendiente");
     newTags.push("qualify-done");
 
-    const updateData: any = { tags: newTags };
+    const updateData: Record<string, unknown> = { tags: newTags };
     let notifTitle = "";
     let notifDesc = "";
 
@@ -678,7 +927,7 @@ Analiza la respuesta y determina la intención. Responde SOLO con JSON (sin mark
     if (notifTitle) {
       const { data: supervisors } = await supabase.from("user_roles").select("user_id").in("role", ["admin", "coordinadora"]);
       if (supervisors?.length) {
-        const notifs = supervisors.filter((s: any) => s.user_id !== contact.agent_id).map((s: any) => ({
+        const notifs = (supervisors as UserRoleRow[]).filter((s) => s.user_id !== contact.agent_id).map((s) => ({
           event_type: "campaign_qualify", entity_type: "contact", entity_id: contactId,
           title: notifTitle, description: notifDesc, agent_id: s.user_id,
         }));
@@ -688,8 +937,9 @@ Analiza la respuesta y determina la intención. Responde SOLO con JSON (sin mark
 
     console.log(`handleQualifyResponse: ${contact.full_name} (${contact.contact_type}) → ${classification.classification}`);
     return json({ ok: true, classified: true, classification: classification.classification });
-  } catch (aiError: any) {
-    console.error("handleQualifyResponse AI error:", aiError.message);
+  } catch (aiError) {
+    const message = aiError instanceof Error ? aiError.message : "Unknown AI error";
+    console.error("handleQualifyResponse AI error:", message);
     const newTags = tags.filter((t: string) => t !== "qualify-pendiente");
     newTags.push("qualify-done");
     await supabase.from("contacts").update({ tags: newTags }).eq("id", contactId);
@@ -699,7 +949,7 @@ Analiza la respuesta y determina la intención. Responde SOLO con JSON (sin mark
       source: "campaign_qualify",
       body_preview: `Error IA al cualificar. Respuesta: ${text.slice(0, 300)}`,
       status: "revision_manual",
-      metadata: { needs_review: true, error: aiError.message, original_text: text.slice(0, 500), contact_name: contact.full_name },
+      metadata: { needs_review: true, error: message, original_text: text.slice(0, 500), contact_name: contact.full_name },
     });
 
     return json({ ok: true, classified: false, reason: "ai_error" });
@@ -711,10 +961,11 @@ Analiza la respuesta y determina la intención. Responde SOLO con JSON (sin mark
  * Uses conversational AI to extract budget/zone from natural language,
  * and continues the conversation if data is incomplete or unclear.
  */
-async function handleDemandEnrichResponse(supabase: any, contact: any, text: string, channel: string) {
+async function handleDemandEnrichResponse(supabase: SupabaseClient, contact: ContactRecord, text: string, channel: string) {
   const contactId = contact.id;
   const tags: string[] = contact.tags || [];
   const MAX_CONVERSATION_TURNS = 999; // No limit — keep until complete or opt-out
+  const preferredLanguage = resolveContactLanguage(contact.preferred_language || null, text, contact.full_name, contact.notes);
 
   try {
     const { data: demands } = await supabase
@@ -725,7 +976,7 @@ async function handleDemandEnrichResponse(supabase: any, contact: any, text: str
       .order("created_at", { ascending: false })
       .limit(1);
 
-    const demand = demands?.[0];
+    const demand = (demands as DemandRow[] | null)?.[0];
     if (!demand) {
       const newTags = tags.filter((t: string) => t !== "demanda-enrich-pendiente");
       await supabase.from("contacts").update({ tags: newTags }).eq("id", contactId);
@@ -742,8 +993,8 @@ async function handleDemandEnrichResponse(supabase: any, contact: any, text: str
       .order("created_at", { ascending: true })
       .limit(20);
 
-    const history = convHistory || [];
-    const outboundCount = history.filter((h: any) => h.direction === "outbound").length;
+    const history = (convHistory as ConversationRow[] | null) || [];
+    const outboundCount = history.filter((h) => h.direction === "outbound").length;
 
     if (outboundCount >= MAX_CONVERSATION_TURNS) {
       const newTags = tags.filter((t: string) => t !== "demanda-enrich-pendiente");
@@ -759,7 +1010,7 @@ async function handleDemandEnrichResponse(supabase: any, contact: any, text: str
       return json({ ok: true, enriched: false, reason: "max_turns_reached" });
     }
 
-    const conversationMessages = history.map((h: any) => ({
+    const conversationMessages = history.map((h) => ({
       role: h.direction === "outbound" ? "assistant" as const : "user" as const,
       content: h.body_preview || "",
     }));
@@ -800,6 +1051,7 @@ INTERPRETACIÓN DE LENGUAJE NATURAL:
 - "déjame en paz" / "no me escribas" → stop: true
 
 TONO: Cálida, directa, como una amiga. Máximo 3-4 líneas por WhatsApp. NUNCA suenes como un formulario.
+IDIOMA: La respuesta al cliente debe salir íntegramente en ${languageName(preferredLanguage)}.
 
 Responde SOLO con JSON (sin markdown):
 {
@@ -823,7 +1075,7 @@ Responde SOLO con JSON (sin markdown):
     if (cleaned.startsWith("```")) {
       cleaned = cleaned.replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "");
     }
-    const extracted = JSON.parse(cleaned);
+    const extracted = JSON.parse(cleaned) as DemandEnrichResult;
 
     if (extracted.stop) {
       const newTags = tags.filter((t: string) => t !== "demanda-enrich-pendiente");
@@ -850,7 +1102,7 @@ Responde SOLO con JSON (sin markdown):
       return json({ ok: true, enriched: false, reason: "stop_requested_nevera" });
     }
 
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
     if (extracted.max_price && !demand.max_price) updateData.max_price = extracted.max_price;
     if (extracted.min_price && !demand.min_price) updateData.min_price = extracted.min_price;
     if (extracted.cities?.length && !demand.cities?.length) updateData.cities = extracted.cities;
@@ -906,21 +1158,22 @@ Responde SOLO con JSON (sin markdown):
     console.log(`handleDemandEnrichResponse: partial from ${contact.full_name}, continuing`);
     return json({ ok: true, enriched: false, partial: didUpdate, still_missing: extracted.still_missing });
 
-  } catch (e: any) {
-    console.error("handleDemandEnrichResponse error:", e.message);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown enrich error";
+    console.error("handleDemandEnrichResponse error:", message);
     await supabase.from("communication_logs").insert({
       contact_id: contactId, channel: "system", direction: "inbound",
       source: "campaign_demand_enrich",
       body_preview: `Error en conversación: ${text.slice(0, 300)}`,
       status: "revision_manual",
-      metadata: { needs_review: true, error: e.message, original_text: text.slice(0, 500) },
+      metadata: { needs_review: true, error: message, original_text: text.slice(0, 500) },
     });
     return json({ ok: true, enriched: false, reason: "extraction_error" });
   }
 }
 
 /** Send a conversational reply in the demand enrichment flow */
-async function sendEnrichReply(supabase: any, contact: any, replyText: string, channel: string) {
+async function sendEnrichReply(supabase: SupabaseClient, contact: ContactRecord, replyText: string, channel: string) {
   try {
     const isWhatsapp = channel === "whatsapp" || channel !== "email";
     const destination = isWhatsapp ? (contact.phone || contact.phone2) : contact.email;
@@ -941,13 +1194,13 @@ async function sendEnrichReply(supabase: any, contact: any, replyText: string, c
       body_preview: replyText.slice(0, 500),
       status: "enviado",
     });
-  } catch (e: any) {
-    console.error("sendEnrichReply error:", e.message);
+  } catch (error) {
+    console.error("sendEnrichReply error:", error instanceof Error ? error.message : "Unknown error");
   }
 }
 
 /** Handle status updates (existing logic) */
-async function handleStatusUpdate(supabase: any, body: any) {
+async function handleStatusUpdate(supabase: SupabaseClient, body: WebhookPayload) {
   const { provider_msg_id, status, error_message, metadata } = body;
 
   if (!provider_msg_id || !status) {
@@ -959,7 +1212,7 @@ async function handleStatusUpdate(supabase: any, body: any) {
     return json({ ok: false, error: `Invalid status. Must be one of: ${validStatuses.join(", ")}` }, 400);
   }
 
-  const updateData: Record<string, any> = { status };
+  const updateData: Record<string, unknown> = { status };
   if (error_message) updateData.error_message = error_message;
   if (metadata) {
     const { data: existing } = await supabase
@@ -969,7 +1222,7 @@ async function handleStatusUpdate(supabase: any, body: any) {
       .limit(1)
       .single();
 
-    updateData.metadata = { ...(existing?.metadata as any || {}), ...metadata, [`${status}_at`]: new Date().toISOString() };
+    updateData.metadata = { ...((existing?.metadata as Record<string, unknown> | null) || {}), ...metadata, [`${status}_at`]: new Date().toISOString() };
   }
 
   const { error } = await supabase

@@ -60,7 +60,7 @@ const Chat = () => {
     if (!selectedChannelId) {
       setSelectedChannelId('00000000-0000-0000-0000-000000000001');
     }
-  }, []);
+  }, [selectedChannelId]);
 
   const handleSelectChannel = (id: string) => {
     setSelectedChannelId(id);

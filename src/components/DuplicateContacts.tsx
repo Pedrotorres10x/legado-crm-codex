@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -32,7 +32,7 @@ const DuplicateContacts = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const fetchDuplicates = async () => {
+  const fetchDuplicates = useCallback(async () => {
     setLoading(true);
     setSelected(new Set());
     const { data, error } = await supabase.rpc('find_duplicate_contacts');
@@ -42,21 +42,21 @@ const DuplicateContacts = () => {
       setDuplicates(data || []);
     }
     setLoading(false);
-  };
+  }, [toast]);
 
-  useEffect(() => { fetchDuplicates(); }, []);
+  useEffect(() => { void fetchDuplicates(); }, [fetchDuplicates]);
 
   const mergePair = async (pair: DuplicatePair) => {
     const keepId = pair.contact_id_1;
     const removeId = pair.contact_id_2;
-    await supabase.from('interactions').update({ contact_id: keepId } as any).eq('contact_id', removeId);
-    await supabase.from('visits').update({ contact_id: keepId } as any).eq('contact_id', removeId);
-    await supabase.from('offers').update({ contact_id: keepId } as any).eq('contact_id', removeId);
-    await supabase.from('demands').update({ contact_id: keepId } as any).eq('contact_id', removeId);
-    await supabase.from('tasks').update({ contact_id: keepId } as any).eq('contact_id', removeId);
+    await supabase.from('interactions').update({ contact_id: keepId }).eq('contact_id', removeId);
+    await supabase.from('visits').update({ contact_id: keepId }).eq('contact_id', removeId);
+    await supabase.from('offers').update({ contact_id: keepId }).eq('contact_id', removeId);
+    await supabase.from('demands').update({ contact_id: keepId }).eq('contact_id', removeId);
+    await supabase.from('tasks').update({ contact_id: keepId }).eq('contact_id', removeId);
     
-    await supabase.from('owner_reengagement').update({ contact_id: keepId } as any).eq('contact_id', removeId);
-    await supabase.from('properties').update({ owner_id: keepId } as any).eq('owner_id', removeId);
+    await supabase.from('owner_reengagement').update({ contact_id: keepId }).eq('contact_id', removeId);
+    await supabase.from('properties').update({ owner_id: keepId }).eq('owner_id', removeId);
     await supabase.from('contacts').delete().eq('id', removeId);
   };
 
@@ -66,12 +66,13 @@ const DuplicateContacts = () => {
       try {
         await mergePair(pair);
         return { error: null };
-      } catch (e: any) {
+      } catch (e) {
         return { error: e };
       }
     })();
     if (error) {
-      toast({ title: 'Error al fusionar', description: error.message, variant: 'destructive' });
+      const message = error instanceof Error ? error.message : 'Error desconocido';
+      toast({ title: 'Error al fusionar', description: message, variant: 'destructive' });
     } else {
       toast({ title: 'Contactos fusionados ✅', description: `Se mantuvo "${pair.name_1}" y se eliminó "${pair.name_2}"` });
       fetchDuplicates();
@@ -111,7 +112,8 @@ const DuplicateContacts = () => {
   const toggleSelect = (i: number) => {
     setSelected(prev => {
       const next = new Set(prev);
-      next.has(i) ? next.delete(i) : next.add(i);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
       return next;
     });
   };

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { supabase } from '@/integrations/supabase/client';
@@ -6,6 +6,33 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 
 type SignerContact = { id: string; full_name: string; email?: string | null } | null;
+type SignerSearchResult = { id: string; full_name: string; phone?: string | null; email?: string | null };
+type ContractTemplateRow = { id: string; name: string; category: string | null; content: string };
+type GeneratedContractRow = {
+  id: string;
+  content: string;
+  signature_status?: string | null;
+  signature_token?: string | null;
+  contract_templates?: { name: string | null; category?: string | null } | null;
+};
+type ProfileRow = { user_id: string; full_name: string | null };
+type ContractSignerRow = {
+  signer_label: string;
+  signature_token: string;
+  signature_status?: string | null;
+  signer_name?: string | null;
+  signer_email?: string | null;
+  signer_id_number?: string | null;
+  signed_at?: string | null;
+  signer_ip?: string | null;
+  signer_user_agent?: string | null;
+  otp_verified?: boolean | null;
+  otp_attempts?: number | null;
+  signature_hash?: string | null;
+  document_hash?: string | null;
+  signature_url?: string | null;
+};
+type ContractContentRow = { content: string | null };
 
 export function useContactDocumentContracts({
   contactId,
@@ -21,10 +48,10 @@ export function useContactDocumentContracts({
   const { user } = useAuth();
   const { toast } = useToast();
 
-  const [contracts, setContracts] = useState<any[]>([]);
-  const [templates, setTemplates] = useState<any[]>([]);
+  const [contracts, setContracts] = useState<GeneratedContractRow[]>([]);
+  const [templates, setTemplates] = useState<ContractTemplateRow[]>([]);
   const [contractsLoading, setContractsLoading] = useState(false);
-  const [profile, setProfile] = useState<any>(null);
+  const [profile, setProfile] = useState<ProfileRow | null>(null);
 
   const [newContractOpen, setNewContractOpen] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
@@ -48,15 +75,15 @@ export function useContactDocumentContracts({
 
   const [certDialogOpen, setCertDialogOpen] = useState(false);
   const [certLoading, setCertLoading] = useState(false);
-  const [certContract, setCertContract] = useState<any>(null);
-  const [certSigners, setCertSigners] = useState<any[]>([]);
+  const [certContract, setCertContract] = useState<(GeneratedContractRow & { template_name: string }) | null>(null);
+  const [certSigners, setCertSigners] = useState<ContractSignerRow[]>([]);
 
   const [signerContacts, setSignerContacts] = useState<SignerContact[]>([]);
   const [signerSearchTerms, setSignerSearchTerms] = useState<string[]>([]);
-  const [signerSearchResults, setSignerSearchResults] = useState<Array<any[]>>([]);
+  const [signerSearchResults, setSignerSearchResults] = useState<SignerSearchResult[][]>([]);
   const [signerSearching, setSignerSearching] = useState<boolean[]>([]);
 
-  const loadContracts = async () => {
+  const loadContracts = useCallback(async () => {
     setContractsLoading(true);
     const [contractsRes, templatesRes, profileRes] = await Promise.all([
       supabase
@@ -67,15 +94,15 @@ export function useContactDocumentContracts({
       supabase.from('contract_templates').select('*').order('name'),
       supabase.from('profiles').select('*').eq('user_id', user?.id ?? '').maybeSingle(),
     ]);
-    setContracts(contractsRes.data || []);
-    setTemplates(templatesRes.data || []);
-    setProfile(profileRes.data);
+    setContracts((contractsRes.data || []) as GeneratedContractRow[]);
+    setTemplates((templatesRes.data || []) as ContractTemplateRow[]);
+    setProfile((profileRes.data || null) as ProfileRow | null);
     setContractsLoading(false);
-  };
+  }, [contactId, user?.id]);
 
   useEffect(() => {
-    loadContracts();
-  }, [contactId]);
+    void loadContracts();
+  }, [loadContracts]);
 
   const fillTemplate = (content: string) => {
     const today = format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: es });
@@ -133,7 +160,7 @@ export function useContactDocumentContracts({
     toast({ title: '✅ Contrato generado' });
     setNewContractOpen(false);
     setSelectedTemplateId('');
-    loadContracts();
+    void loadContracts();
   };
 
   const openSignerCountDialog = (contractId: string) => {
@@ -191,7 +218,7 @@ export function useContactDocumentContracts({
       .limit(8);
     setSignerSearchResults((prev) => {
       const next = [...prev];
-      next[index] = data || [];
+      next[index] = (data || []) as SignerSearchResult[];
       return next;
     });
     setSignerSearching((prev) => {
@@ -222,15 +249,16 @@ export function useContactDocumentContracts({
         .single();
 
       let contentHash: string | null = null;
-      if (contractData?.content) {
-        const encoded = new TextEncoder().encode(contractData.content);
+      const contractContent = contractData as ContractContentRow | null;
+      if (contractContent?.content) {
+        const encoded = new TextEncoder().encode(contractContent.content);
         const hashBuffer = await crypto.subtle.digest('SHA-256', encoded);
         contentHash = Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, '0')).join('');
       }
 
       const { error } = await supabase
         .from('generated_contracts')
-        .update({ signature_status: 'pendiente', ...(contentHash ? { content_hash: contentHash } : {}) } as any)
+        .update({ signature_status: 'pendiente', ...(contentHash ? { content_hash: contentHash } : {}) })
         .eq('id', pendingContractId);
       if (error) throw error;
 
@@ -255,9 +283,9 @@ export function useContactDocumentContracts({
       })));
       setSignerCountOpen(false);
       setLinksDialogOpen(true);
-      loadContracts();
-    } catch (err: any) {
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+      void loadContracts();
+    } catch (error: unknown) {
+      toast({ title: 'Error', description: error instanceof Error ? error.message : 'No se pudo enviar a firma', variant: 'destructive' });
     } finally {
       setSendingToSign(false);
     }
@@ -277,9 +305,9 @@ export function useContactDocumentContracts({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       toast({ title: '🚫 Firma revocada', description: 'Los enlaces de firma han sido invalidados.' });
-      loadContracts();
-    } catch (err: any) {
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+      void loadContracts();
+    } catch (error: unknown) {
+      toast({ title: 'Error', description: error instanceof Error ? error.message : 'No se pudo revocar la firma', variant: 'destructive' });
     }
   };
 
@@ -338,8 +366,8 @@ export function useContactDocumentContracts({
       setFileToSign(null);
       loadContracts();
       openSignerCountDialog(newContract.id);
-    } catch (err: any) {
-      toast({ title: 'Error', description: err.message || 'No se pudo enviar a firmar', variant: 'destructive' });
+    } catch (error: unknown) {
+      toast({ title: 'Error', description: error instanceof Error ? error.message : 'No se pudo enviar a firmar', variant: 'destructive' });
     } finally {
       setSendingFileToSign(false);
     }
@@ -359,23 +387,23 @@ export function useContactDocumentContracts({
       supabase.from('contract_signers').select('*').eq('contract_id', contractId).order('created_at'),
       supabase.from('generated_contracts').select('*, contract_templates(name)').eq('id', contractId).single(),
     ]);
-    setCertSigners(signersRes.data || []);
+    setCertSigners((signersRes.data || []) as ContractSignerRow[]);
     if (contractRes.data) {
       setCertContract({
-        ...contractRes.data,
-        template_name: (contractRes.data as any).contract_templates?.name || 'Documento',
+        ...(contractRes.data as GeneratedContractRow),
+        template_name: (contractRes.data as GeneratedContractRow).contract_templates?.name || 'Documento',
       });
     }
     setCertLoading(false);
   };
 
-  const openContractLinks = async (contract: any) => {
+  const openContractLinks = async (contract: GeneratedContractRow) => {
     const { data: signers } = await supabase
       .from('contract_signers')
       .select('signer_label, signature_token, signature_status')
       .eq('contract_id', contract.id);
     if (signers && signers.length > 0) {
-      setGeneratedLinks(signers.map((signer) => ({ label: signer.signer_label, token: signer.signature_token })));
+      setGeneratedLinks((signers as ContractSignerRow[]).map((signer) => ({ label: signer.signer_label, token: signer.signature_token })));
       setLinksDialogOpen(true);
     } else if (contract.signature_token) {
       copySignLink(contract.signature_token);

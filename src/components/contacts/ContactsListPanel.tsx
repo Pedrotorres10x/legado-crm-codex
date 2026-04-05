@@ -9,12 +9,26 @@ import HealthDot from '@/components/HealthDot';
 import ContactHealthBadge from '@/components/ContactHealthBadge';
 import { CONTACTS_PAGE_SIZE } from '@/hooks/useContactsPipeline';
 import { getRelationshipTier, isInfluenceCircleContact } from '@/lib/agent-influence-circle';
+import type { HealthInfo } from '@/hooks/useHealthColors';
+
+type ContactListItem = {
+  id: string;
+  full_name: string;
+  pipeline_stage: string | null;
+  city: string | null;
+  phone: string | null;
+  email: string | null;
+  contact_type: string | null;
+  created_at?: string;
+  updated_at?: string;
+  [key: string]: unknown;
+};
 
 interface ContactsListPanelProps {
-  contacts: any[];
+  contacts: ContactListItem[];
   isMobile: boolean;
   pipelineStages: Array<{ key: string; label: string; color: string }>;
-  healthColors: Record<string, any>;
+  healthColors: Record<string, HealthInfo | undefined>;
   onOpenVisits: (contactId: string) => void;
   onOpenSummary: (contactId: string) => void;
   summaryLoading: boolean;

@@ -32,7 +32,7 @@ const AdminAgentTracker = ({ initialAgentId }: Props) => {
         if (data.length > 0 && !selectedAgent) setSelectedAgent(data[0].user_id);
       }
     });
-  }, []);
+  }, [selectedAgent]);
 
   useEffect(() => {
     if (initialAgentId) {

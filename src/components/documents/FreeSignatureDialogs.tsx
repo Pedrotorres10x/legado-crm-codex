@@ -13,6 +13,34 @@ type TemplateOption = {
   category: string;
 };
 
+type CertificateContract = {
+  id: string;
+  content: string;
+  content_hash: string | null;
+  document_hash: string | null;
+  signature_status: string;
+  created_at: string;
+  template_name?: string;
+} | null;
+
+type CertificateSigner = {
+  id: string;
+  signer_label: string;
+  signer_name: string | null;
+  signer_id_number: string | null;
+  signer_email: string | null;
+  signer_ip: string | null;
+  signer_user_agent: string | null;
+  signed_at: string | null;
+  signature_status: string;
+  signature_url: string | null;
+  signature_hash: string | null;
+  document_hash: string | null;
+  otp_verified: boolean;
+  otp_attempts: number;
+  created_at: string;
+};
+
 type FreeSignatureDialogsProps = {
   newFromTemplateOpen: boolean;
   setNewFromTemplateOpen: (open: boolean) => void;
@@ -36,8 +64,8 @@ type FreeSignatureDialogsProps = {
   signersDialogOpen: boolean;
   setSignersDialogOpen: (open: boolean) => void;
   signersLoading: boolean;
-  certContract: any;
-  signersDetail: any[];
+  certContract: CertificateContract;
+  signersDetail: CertificateSigner[];
 };
 
 const FreeSignatureDialogs = ({

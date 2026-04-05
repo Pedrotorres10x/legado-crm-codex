@@ -8,6 +8,7 @@ export interface PortalFeed {
   format: string;
   is_active: boolean;
   last_accessed_at: string | null;
+  updated_at: string;
   properties_count: number;
   notes: string | null;
   api_credentials: Record<string, string> | null;
@@ -27,6 +28,7 @@ export interface FotocasaSyncResult {
 export const FEED_BASE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/portal-xml-feed`;
 export const FOTOCASA_FN = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fotocasa-sync`;
 export const PORTAL_CUTOVER_LAUNCH_FN = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/portal-cutover-launch`;
+export const KYERO_COHORT_REFRESH_FN = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/kyero-cohort-refresh`;
 
 export const fetchWithTimeout = async (
   input: RequestInfo | URL,
@@ -52,7 +54,7 @@ export const resolvePropertyId = async (ref: string): Promise<string | null> => 
   const trimmed = ref.trim();
   if (!trimmed) return null;
 
-  for (const col of ['crm_reference', 'reference', 'id'] as const) {
+  for (const col of ['crm_reference', 'xml_id', 'reference', 'id'] as const) {
     const { data } = await supabase
       .from('properties')
       .select('id')

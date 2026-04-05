@@ -27,6 +27,72 @@ const AUTO_TASK_SOURCE_LABELS: Record<string, string> = {
   closing_deed_due: 'Auto escritura',
 };
 
+type SearchContactRow = {
+  id: string;
+  full_name: string;
+  phone?: string | null;
+  contact_type?: string | null;
+  city?: string | null;
+};
+
+type SearchPropertyRow = {
+  id: string;
+  title: string;
+  address?: string | null;
+  reference?: string | null;
+  crm_reference?: string | null;
+  city?: string | null;
+  zone?: string | null;
+  price?: number | null;
+  bedrooms?: number | null;
+  property_type?: string | null;
+  status?: string | null;
+};
+
+type SearchTaskRow = {
+  id: string;
+  title: string;
+  due_date?: string | null;
+  completed?: boolean | null;
+  task_type?: string | null;
+  source?: string | null;
+  property_id?: string | null;
+  contact_id?: string | null;
+};
+
+type AiSearchContactFilters = {
+  text_query?: string;
+  text_fields?: string[];
+  contact_type?: string;
+  city?: string;
+};
+
+type AiSearchPropertyFilters = {
+  text_query?: string;
+  text_fields?: string[];
+  city?: string;
+  zone?: string;
+  property_type?: string;
+  operation?: string;
+  status?: string;
+  min_price?: number;
+  max_price?: number;
+  min_bedrooms?: number;
+  min_surface?: number;
+};
+
+type AiSearchFilters = {
+  explanation?: string;
+  search_type?: 'contacts' | 'properties' | 'mixed';
+  full_text_search?: string | null;
+  contact_filters?: AiSearchContactFilters;
+  property_filters?: AiSearchPropertyFilters;
+};
+
+type AiSearchResponse = {
+  filters?: AiSearchFilters;
+};
+
 const getTaskSearchRoute = (task: { source?: string | null; property_id?: string | null; contact_id?: string | null }) => {
   if (task.property_id && ['closing_blocked', 'closing_signature_pending', 'closing_deed_due'].includes(task.source || '')) {
     return `/properties/${task.property_id}#cierre`;
@@ -43,7 +109,7 @@ const GlobalSearch = () => {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<{ contacts: any[]; properties: any[]; tasks: any[] }>({ contacts: [], properties: [], tasks: [] });
+  const [results, setResults] = useState<{ contacts: SearchContactRow[]; properties: SearchPropertyRow[]; tasks: SearchTaskRow[] }>({ contacts: [], properties: [], tasks: [] });
   const [aiMode, setAiMode] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiExplanation, setAiExplanation] = useState<string | null>(null);
@@ -85,12 +151,13 @@ const GlobalSearch = () => {
     try {
       const { data, error } = await supabase.functions.invoke('ai-search', { body: { query: q } });
       if (error) throw error;
-      if (!data?.filters) { await searchClassic(q); return; }
+      const response = data as AiSearchResponse;
+      if (!response?.filters) { await searchClassic(q); return; }
 
-      const { filters } = data;
+      const { filters } = response;
       setAiExplanation(filters.explanation || null);
 
-      const promises: Promise<any>[] = [];
+      const promises: Promise<{ data: SearchContactRow[] | SearchPropertyRow[] }>[] = [];
 
       // Contactos
       if (filters.search_type !== 'properties' && filters.contact_filters) {
@@ -104,7 +171,7 @@ const GlobalSearch = () => {
         }
         if (cf.contact_type) qb = qb.eq('contact_type', cf.contact_type);
         if (cf.city) qb = qb.ilike('city', `%${cf.city}%`);
-        promises.push(qb.limit(5) as unknown as Promise<any>);
+        promises.push(qb.limit(5) as unknown as Promise<{ data: SearchContactRow[] }>);
       } else {
         promises.push(Promise.resolve({ data: [] }));
       }
@@ -154,7 +221,7 @@ const GlobalSearch = () => {
         if (pf.max_price) qb = qb.lte('price', pf.max_price);
         if (pf.min_bedrooms) qb = qb.gte('bedrooms', pf.min_bedrooms);
         if (pf.min_surface) qb = qb.gte('surface_area', pf.min_surface);
-        promises.push(qb.limit(6) as unknown as Promise<any>);
+        promises.push(qb.limit(6) as unknown as Promise<{ data: SearchPropertyRow[] }>);
       } else {
         promises.push(Promise.resolve({ data: [] }));
       }
@@ -166,8 +233,9 @@ const GlobalSearch = () => {
         .eq('agent_id', user?.id ?? '').eq('completed', false).ilike('title', `%${q}%`).limit(4);
 
       setResults({ contacts: c.data || [], properties: p.data || [], tasks: taskRes.data || [] });
-    } catch (err: any) {
-      if (err?.message?.includes('429')) {
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '';
+      if (message.includes('429')) {
         toast.error('Límite de IA alcanzado. Usando búsqueda clásica.');
       }
       await searchClassic(q);

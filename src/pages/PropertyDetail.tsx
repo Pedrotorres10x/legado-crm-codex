@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { lazy, Suspense, useEffect, useState, useRef, useCallback, type CSSProperties } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -23,7 +23,6 @@ import {
   Plus, Eye, EyeOff, Key, Home, Rss
 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import DocumentScanner from '@/components/DocumentScanner';
 
 import MandateSection from '@/components/MandateSection';
 import InternalComments from '@/components/InternalComments';
@@ -38,18 +37,21 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { getCoverImage } from '@/lib/get-cover-image';
 import ArrasBuyerField from '@/components/ArrasBuyerField';
-import ClosingWorkflow from '@/components/ClosingWorkflow';
-import PropertyDocumentsSection from '@/components/PropertyDocumentsSection';
-import DocumentRelationsPanel from '@/components/DocumentRelationsPanel';
 import PropertyBusinessPanel from '@/components/properties/PropertyBusinessPanel';
 import PropertyBasicsPanel from '@/components/properties/PropertyBasicsPanel';
 import PropertyCommercialActivityPanel from '@/components/properties/PropertyCommercialActivityPanel';
+import PropertyDetailAnomalyBanner from '@/components/properties/PropertyDetailAnomalyBanner';
+import PropertyDetailHero from '@/components/properties/PropertyDetailHero';
+import PropertyDetailMetrics from '@/components/properties/PropertyDetailMetrics';
+import PropertyDetailWebCard from '@/components/properties/PropertyDetailWebCard';
 import PropertyExtendedMediaPanel from '@/components/properties/PropertyExtendedMediaPanel';
 import PropertyOwnerActionsPanel from '@/components/properties/PropertyOwnerActionsPanel';
 import PropertyPhotosPanel from '@/components/properties/PropertyPhotosPanel';
 import PropertyStakeholdersPanel from '@/components/properties/PropertyStakeholdersPanel';
+import PropertyVisitSheetDialog from '@/components/properties/PropertyVisitSheetDialog';
 import AISectionGuide from '@/components/ai/AISectionGuide';
 import { commitClosingFieldUpdates } from '@/lib/closing-workflow';
+import { sanitizePropertyTitle } from '@/lib/property-text';
 import {
   buildImageOrderUpdatePayload,
   buildPropertyMediaCollections,
@@ -58,6 +60,11 @@ import {
   removeDeletedImagesFromProperty,
   type PropertyImageOrderEntry,
 } from '@/lib/property-detail-media';
+
+const DocumentScanner = lazy(() => import('@/components/DocumentScanner'));
+const ClosingWorkflow = lazy(() => import('@/components/ClosingWorkflow'));
+const PropertyDocumentsSection = lazy(() => import('@/components/PropertyDocumentsSection'));
+const DocumentRelationsPanel = lazy(() => import('@/components/DocumentRelationsPanel'));
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 // ── Validación de valor de planta ───────────────────────────────────────────
@@ -80,7 +87,26 @@ const validateFloorNumber = (value: string): string | null => {
 const statusLabels: Record<string, string> = { disponible: 'Disponible', arras: 'Arras', vendido: 'Vendido', no_disponible: 'No disponible', reservado: 'Reservado', alquilado: 'Alquilado', retirado: 'Retirado' };
 const statusColors: Record<string, string> = { disponible: 'bg-success', arras: 'bg-warning', vendido: 'bg-primary', no_disponible: 'bg-muted', reservado: 'bg-warning', alquilado: 'bg-info', retirado: 'bg-muted' };
 
-function getPropertyOriginBadge(property: any) {
+type PropertyDetailProperty = NonNullable<ReturnType<typeof usePropertyDetailCore>['property']>;
+type PropertyUpdater = (updater: (prev: PropertyDetailProperty) => PropertyDetailProperty) => void;
+type PropertyDocumentExtracted = {
+  property_address?: string;
+  property_city?: string;
+  property_province?: string;
+  property_zip_code?: string;
+  property_type?: string;
+  cadastral_reference?: string;
+  surface_area?: number;
+  built_area?: number;
+  bedrooms?: number;
+  bathrooms?: number;
+  floor?: string;
+  price?: number;
+  energy_cert?: string;
+  property_description?: string;
+};
+
+function getPropertyOriginBadge(property: Pick<PropertyDetailProperty, 'source' | 'source_feed_name' | 'source_metadata'> | null | undefined) {
   const source = String(property?.source || '').toLowerCase();
   const sourceFeedName = String(property?.source_feed_name || '').toLowerCase();
   const legacyOrigin = String(property?.source_metadata?.legacy_origin || '').toLowerCase();
@@ -116,7 +142,7 @@ const PropertyDetail = () => {
   const { isAdmin, isCoordinadora, canViewAll, user } = useAuth();
   const isMobile = useIsMobile();
   // Si venimos desde el buscador global, preservamos el query para el breadcrumb
-  const fromSearch: string | undefined = (location.state as any)?.fromSearch;
+  const fromSearch = (location.state as { fromSearch?: string } | null)?.fromSearch;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const closingSectionRef = useRef<HTMLDivElement>(null);
   const expedienteSectionRef = useRef<HTMLDivElement>(null);
@@ -152,6 +178,7 @@ const PropertyDetail = () => {
   const [featureInput, setFeatureInput] = useState('');
   const [popularFeatures, setPopularFeatures] = useState<string[]>([]);
   const [dismissedAnomalies, setDismissedAnomalies] = useState<Set<string>>(new Set());
+  const [visitSheetDialogOpen, setVisitSheetDialogOpen] = useState(false);
   const {
     propertyMatches,
     propertyVisits,
@@ -209,15 +236,15 @@ const PropertyDetail = () => {
     return () => window.clearTimeout(timeoutId);
   }, [property, location.hash]);
 
-  const commitClosingField = useCallback((updates: Record<string, any>) => {
+  const commitClosingField = useCallback((updates: Record<string, unknown>) => {
     commitClosingFieldUpdates(setProperty, saveField, updates);
-  }, [saveField]);
+  }, [saveField, setProperty]);
 
   const fetchPopularFeatures = useCallback(async () => {
     const { data } = await supabase.from('settings').select('value').eq('key', 'popular_features').single();
     if (data?.value) {
-      const val = data.value as any;
-      setPopularFeatures((val.popular_extras || []).map((e: any) => e.name));
+      const val = data.value as { popular_extras?: Array<{ name?: string }> };
+      setPopularFeatures((val.popular_extras || []).map((e) => e.name || '').filter(Boolean));
     }
   }, []);
 
@@ -227,7 +254,7 @@ const PropertyDetail = () => {
   }, [dismissStoredAnomaly]);
 
   const handleMatchStatusChange = useCallback(async (matchId: string, status: string) => {
-    await supabase.from('matches').update({ status: status as any }).eq('id', matchId);
+    await supabase.from('matches').update({ status }).eq('id', matchId);
     fetchMatches();
     toast({ title: 'Estado actualizado' });
   }, [fetchMatches, toast]);
@@ -300,6 +327,7 @@ const PropertyDetail = () => {
   }
 
   const originBadge = getPropertyOriginBadge(property);
+  const safeTitle = sanitizePropertyTitle(property.title);
   const OriginIcon = originBadge.icon;
   const canSeePropertyContactData = canViewAll || property.agent_id === user?.id;
   const visibleAnomalies = anomalyNotifications.filter(n => !dismissedAnomalies.has(n.id));
@@ -310,11 +338,202 @@ const PropertyDetail = () => {
     !property.mandate_type,
     !!(property.mandate_end && new Date(property.mandate_end) < new Date()),
   ].filter(Boolean).length;
+  const sectionFallback = (
+    <div className="flex items-center justify-center py-10 text-sm text-muted-foreground">
+      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+      Cargando seccion...
+    </div>
+  );
+  const isPublished = ['disponible', 'reservado'].includes(property.status);
+  const hasCommercialAssets = Boolean(property.images?.length);
+  const hasCommercialDescription = Boolean(property.description?.trim());
+  const hasCommercialPrice = Boolean(property.price && Number(property.price) > 0);
+  const hasMandate = Boolean(property.mandate_type);
+  const hasOwners = propertyOwners.length > 0;
+  const documentsReady = propertyIssueCount === 0;
+  const scrollToElement = (sectionId: string) => {
+    document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const publicationBlockers = [
+    !hasCommercialAssets ? 'Subir fotos y material visual' : null,
+    !hasCommercialDescription ? 'Completar la descripcion comercial' : null,
+    !hasCommercialPrice ? 'Definir precio de salida' : null,
+    !hasMandate ? 'Revisar mandato o exclusividad' : null,
+    canSeePropertyContactData && !hasOwners ? 'Vincular propietario principal' : null,
+  ].filter(Boolean) as string[];
+
+  const commercialBlockers = [
+    isPublished && propertyVisits.length === 0 ? 'Registrar la primera visita en CRM' : null,
+    isPublished && propertyOffers.length === 0 ? 'Todavia no hay ofertas registradas' : null,
+    propertyMatches.length === 0 ? 'Sin cruces activos ahora mismo' : null,
+  ].filter(Boolean) as string[];
+
+  const topBlockers = [...publicationBlockers, ...commercialBlockers].slice(0, 3);
+
+  const primaryAction = (() => {
+    if (publicationBlockers.length > 0) {
+      return {
+        label: 'Preparar para publicar',
+        description: 'Antes de mover esta vivienda, cierra lo que hoy la deja floja o incompleta.',
+        onClick: () => {
+          if (!hasCommercialAssets) {
+            scrollToElement('fotos');
+            return;
+          }
+          if (!hasCommercialDescription || !hasCommercialPrice) {
+            scrollToElement('ficha');
+            return;
+          }
+          if (!hasMandate) {
+            scrollToElement('mandato');
+            return;
+          }
+          scrollToElement('ficha');
+        },
+      };
+    }
+
+    if (canSeePropertyContactData && isPublished) {
+      return {
+        label: 'Enviar hoja de visita',
+        description: 'Deja preparada la siguiente visita con una constancia clara para el cliente.',
+        onClick: () => setVisitSheetDialogOpen(true),
+      };
+    }
+
+    if (canSeePropertyContactData && ['arras', 'vendido'].includes(property.status)) {
+      return {
+        label: 'Ir a cierre',
+        description: 'Este inmueble ya esta entrando en cierre. Revisa firma, documentos y el siguiente hito.',
+        onClick: () => closingSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+      };
+    }
+
+    if (propertyMatches.length > 0) {
+      return {
+        label: 'Ver cruces activos',
+        description: 'Ya hay compradores compatibles. Lo siguiente es trabajar esos cruces con foco.',
+        onClick: () => navigate(`/matches?property_id=${id}`),
+      };
+    }
+
+    return {
+      label: 'Revisar documentación',
+      description: 'Empieza por el expediente para asegurarte de que el inmueble esta realmente listo.',
+      onClick: () => expedienteSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+    };
+  })();
 
   return (
     <div className="space-y-6">
+      <PropertyDetailAnomalyBanner anomalies={visibleAnomalies} onDismiss={dismissAnomaly} />
+
+      <PropertyDetailHero
+        property={property}
+        safeTitle={safeTitle}
+        originBadge={originBadge}
+        statusLabels={statusLabels}
+        statusColors={statusColors}
+        isMobile={isMobile}
+        fromSearch={fromSearch}
+        canSeePropertyContactData={canSeePropertyContactData}
+        propertyOwnersCount={propertyOwners.length}
+        isPublished={isPublished}
+        propertyTypes={propertyTypes}
+        operationTypes={operationTypes}
+        statusOptions={statusOptions}
+        primaryAction={primaryAction}
+        topBlockers={topBlockers}
+        propertyId={id!}
+        onBack={() => navigate(-1)}
+        onNavigateOwner={() => {
+          hapticLight();
+          navigate(`/contacts/${property.owner_id}`);
+        }}
+        onOpenMatches={() => {
+          hapticLight();
+          navigate(`/matches?property_id=${id}`);
+        }}
+        onOpenVisitSheet={() => setVisitSheetDialogOpen(true)}
+        onOpenFicha={() => scrollToElement('ficha')}
+        onOpenExpediente={() => scrollToElement('expediente')}
+        onTitleChange={(event) => setProperty(((prev: PropertyDetailProperty) => ({ ...prev, title: event.target.value })) as Parameters<PropertyUpdater>[0])}
+        onTitleBlur={() => saveField({ title: property.title })}
+        onSaveStatus={(value) => saveField({ status: value })}
+        onTogglePublished={() => saveField({ status: isPublished ? 'no_disponible' : 'disponible' })}
+        onSaveAutoMatch={async (checked) => {
+          await saveField({ auto_match: checked });
+        }}
+        onSavePropertyType={(value) => saveField({ property_type: value })}
+        onSaveSecondaryPropertyType={(value) => saveField({ secondary_property_type: value === '_none' ? null : value })}
+        onSaveOperation={(value) => saveField({ operation: value })}
+        scannerAction={(
+          <Suspense fallback={sectionFallback}>
+            <DocumentScanner
+              context="property"
+              onExtracted={async (data) => {
+                const extracted = data as PropertyDocumentExtracted;
+                const updates: Record<string, string | number> = {};
+                if (extracted.property_address) updates.address = extracted.property_address;
+                if (extracted.property_city) updates.city = extracted.property_city;
+                if (extracted.property_province) updates.province = extracted.property_province;
+                if (extracted.property_zip_code) updates.zip_code = extracted.property_zip_code;
+                if (extracted.property_type) updates.property_type = extracted.property_type;
+                if (extracted.cadastral_reference) updates.reference = extracted.cadastral_reference;
+                if (extracted.surface_area) updates.surface_area = extracted.surface_area;
+                if (extracted.built_area) updates.built_area = extracted.built_area;
+                if (extracted.bedrooms) updates.bedrooms = extracted.bedrooms;
+                if (extracted.bathrooms) updates.bathrooms = extracted.bathrooms;
+                if (extracted.floor) updates.floor_number = extracted.floor;
+                if (extracted.price) updates.price = extracted.price;
+                if (extracted.energy_cert) updates.energy_cert = extracted.energy_cert;
+                if (extracted.property_description) updates.description = extracted.property_description;
+                if (Object.keys(updates).length > 0) {
+                  await supabase.from('properties').update(updates).eq('id', id!);
+                  fetchProperty();
+                }
+              }}
+            />
+          </Suspense>
+        )}
+        ownerActions={canSeePropertyContactData ? (
+          <PropertyOwnerActionsPanel
+            property={property}
+            propertyId={id!}
+            isAdmin={isAdmin}
+            compact
+            onRefreshProperty={fetchProperty}
+            onDeleteSuccess={() => navigate('/properties')}
+          />
+        ) : undefined}
+      />
+
+      {canSeePropertyContactData && (
+        <PropertyVisitSheetDialog
+          open={visitSheetDialogOpen}
+          onOpenChange={setVisitSheetDialogOpen}
+          propertyId={property.id}
+          propertyTitle={safeTitle}
+          propertyAddress={property.address}
+          agentId={user?.id}
+          canViewAll={canViewAll}
+          viewerUserId={user?.id}
+          onCreated={fetchVisits}
+        />
+      )}
+
+      <PropertyDetailMetrics
+        visitsCount={propertyVisits.length}
+        offersCount={propertyOffers.length}
+        matchesCount={propertyMatches.length}
+        hasMandate={hasMandate}
+        documentsReady={documentsReady}
+        propertyIssueCount={propertyIssueCount}
+      />
+
       <AISectionGuide
-        title={`Ficha de ${property.title || 'inmueble'}`}
+        title={`Ficha de ${safeTitle}`}
         context="Aqui conviertes esta vivienda en producto real: bien captado, bien presentado, bien documentado y listo para vender."
         doNow={`Esta ficha tiene ${propertyIssueCount} hueco${propertyIssueCount === 1 ? '' : 's'} comercial${propertyIssueCount === 1 ? '' : 'es'}, ${propertyVisits.length} visita${propertyVisits.length === 1 ? '' : 's'} y ${propertyOffers.length} oferta${propertyOffers.length === 1 ? '' : 's'}. Empieza por lo que bloquea venta o captacion ahora mismo.`}
         dontForget="Una vivienda no se vende solo por existir en CRM. Se vende si esta bien trabajada, bien explicada y sin agujeros comerciales o legales."
@@ -326,406 +545,12 @@ const PropertyDetail = () => {
         ]}
       />
 
-      {/* ── ANOMALY BANNER ── */}
-      {visibleAnomalies.length > 0 && (
-        <div className="rounded-xl border border-warning/40 bg-warning/10 p-4 space-y-2 animate-fade-in-up">
-          <div className="flex items-start gap-2">
-            <span className="text-xl leading-none mt-0.5">⚠️</span>
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold text-foreground text-sm">
-                {visibleAnomalies.length === 1 ? 'Dato sospechoso detectado — revisa el formulario' : `${visibleAnomalies.length} datos sospechosos detectados — revisa el formulario`}
-              </p>
-              <ul className="mt-1 space-y-1">
-                {visibleAnomalies.map(n => (
-                  <li key={n.id} className="flex items-start gap-2 text-xs text-muted-foreground">
-                    <span className="flex-1">{n.description}</span>
-                    <button
-                      onClick={() => dismissAnomaly(n.id)}
-                      className="shrink-0 opacity-60 hover:opacity-100 transition-opacity"
-                      title="Marcar como revisado"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── MOBILE HERO ── */}
-      {isMobile && (
-        <div className="rounded-3xl bg-card border border-border/60 overflow-hidden shadow-sm animate-fade-in-up">
-          {/* Imagen principal */}
-           {(property.images && property.images.length > 0) || getCoverImage(property.images, property.image_order, property.id) ? (
-            <div className="aspect-[16/9] relative overflow-hidden bg-muted">
-              <img src={getCoverImage(property.images, property.image_order, property.id) || property.images?.[0]} alt={property.title} className="w-full h-full object-cover" />
-              <div className="absolute top-3 left-3 flex gap-1.5">
-                <Badge className={`border-0 text-xs font-semibold ${statusColors[property.status]} text-primary-foreground`}>
-                  {statusLabels[property.status]}
-                </Badge>
-              </div>
-              {property.crm_reference && (
-                <div className="absolute top-3 right-3">
-                  <span className="font-mono text-[11px] font-bold text-white bg-black/50 backdrop-blur-sm px-2 py-0.5 rounded">
-                    {property.crm_reference}
-                  </span>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="aspect-[16/9] bg-muted flex items-center justify-center">
-              <Home className="h-14 w-14 text-muted-foreground/30" />
-            </div>
-          )}
-
-          {/* Info principal */}
-          <div className="px-5 pt-4 pb-3">
-            <h2 className="font-display font-bold text-[17px] leading-tight mb-1">{property.title}</h2>
-            <div className="flex flex-wrap items-center gap-2 mb-2">
-              <Badge variant="outline" className={`${originBadge.className} flex items-center gap-1`}>
-                <OriginIcon className="h-3 w-3" />
-                {originBadge.label}
-              </Badge>
-            </div>
-            {property.address && (
-              <div className="flex items-center gap-1.5 text-sm text-muted-foreground mb-2">
-                <MapPin className="h-3.5 w-3.5 shrink-0" />
-                <span className="truncate">{property.address}{property.city ? `, ${property.city}` : ''}</span>
-              </div>
-            )}
-            <div className="flex items-center gap-4 text-sm text-muted-foreground mb-3">
-              {property.bedrooms > 0 && <span className="flex items-center gap-1"><BedDouble className="h-3.5 w-3.5" />{property.bedrooms} hab.</span>}
-              {property.bathrooms > 0 && <span className="flex items-center gap-1"><Bath className="h-3.5 w-3.5" />{property.bathrooms} baños</span>}
-              {property.surface_area && <span className="flex items-center gap-1"><Maximize className="h-3.5 w-3.5" />{property.surface_area} m²</span>}
-            </div>
-            {property.price && (
-              <p className="text-2xl font-display font-bold text-primary">{Number(property.price).toLocaleString('es-ES')} €</p>
-            )}
-          </div>
-
-          {/* Acciones rápidas */}
-          <div className="grid grid-cols-3 gap-px bg-border/40 border-t border-border/40">
-            {canSeePropertyContactData && property.owner_id ? (
-              <button
-                onClick={() => { hapticLight(); navigate(`/contacts/${property.owner_id}`); }}
-                className="flex flex-col items-center justify-center gap-1.5 py-4 bg-card active:bg-muted transition-colors relative"
-              >
-                <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center">
-                  <User className="h-[18px] w-[18px] text-primary" />
-                </div>
-                <span className="text-[11px] font-medium text-foreground">Propietario</span>
-                {propertyOwners.length > 1 && (
-                  <span className="absolute top-2 right-1/4 bg-primary text-primary-foreground text-[9px] font-bold rounded-full h-4 w-4 flex items-center justify-center">
-                    {propertyOwners.length}
-                  </span>
-                )}
-              </button>
-            ) : (
-              <div className="flex flex-col items-center justify-center gap-1.5 py-4 bg-card opacity-40">
-                <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
-                  <User className="h-[18px] w-[18px] text-muted-foreground" />
-                </div>
-                <span className="text-[11px] font-medium text-muted-foreground">
-                  {canSeePropertyContactData ? 'Sin propietario' : 'Contacto oculto'}
-                </span>
-              </div>
-            )}
-            <button
-              onClick={() => { hapticLight(); navigate(`/matches?property_id=${id}`); }}
-              className="flex flex-col items-center justify-center gap-1.5 py-4 bg-card active:bg-muted transition-colors"
-            >
-              <div className="h-9 w-9 rounded-full bg-emerald-500/10 flex items-center justify-center">
-                <Zap className="h-[18px] w-[18px] text-emerald-600" />
-              </div>
-              <span className="text-[11px] font-medium text-foreground">Cruces</span>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Header escritorio */}
-      {isMobile ? null : (
-      <div className="flex flex-col gap-2 animate-fade-in-up">
-        {/* Breadcrumb / volver */}
-        <div className="flex items-center gap-1 text-sm">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 px-2 gap-1.5 text-muted-foreground hover:text-foreground -ml-2"
-            onClick={() => navigate(-1)}
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            {fromSearch
-              ? <span>Resultados de <span className="font-semibold text-foreground">"{fromSearch}"</span></span>
-              : <span>Inmuebles</span>
-            }
-          </Button>
-        </div>
-        {/* Title row + actions */}
-        <div className="flex items-start gap-4">
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-col gap-3">
-              <Input
-                className="h-auto max-w-2xl border-0 bg-transparent px-0 text-2xl font-display font-bold tracking-tight focus-visible:ring-1"
-                value={property.title}
-                onChange={e => setProperty((p: any) => ({ ...p, title: e.target.value }))}
-                onBlur={() => saveField({ title: property.title })}
-              />
-              <div className="flex flex-col gap-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="outline" className={`${originBadge.className} flex shrink-0 items-center gap-1`}>
-                    <OriginIcon className="h-3 w-3" />
-                    {originBadge.label}
-                  </Badge>
-                  {property.crm_reference && (
-                    <span className="max-w-full select-all truncate rounded-md border border-primary/20 bg-primary/10 px-2.5 py-1 font-mono text-sm font-bold text-primary">
-                      {property.crm_reference}
-                    </span>
-                  )}
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Select value={property.status} onValueChange={v => saveField({ status: v })}>
-                    <SelectTrigger className="h-8 w-[130px] shrink-0">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {statusOptions.map(s => <SelectItem key={s} value={s}>{statusLabels[s]}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  {(() => {
-                    const isPublished = property.status === 'disponible';
-                    return (
-                      <Button
-                        size="sm"
-                        variant={isPublished ? 'default' : 'outline'}
-                        className={`shrink-0 gap-1.5 ${isPublished ? 'bg-success hover:bg-success/90 text-success-foreground' : 'text-muted-foreground'}`}
-                        onClick={() => saveField({ status: isPublished ? 'no_disponible' : 'disponible' })}
-                      >
-                        {isPublished ? <><Eye className="h-3.5 w-3.5" />Publicado</> : <><EyeOff className="h-3.5 w-3.5" />No publicado</>}
-                      </Button>
-                    );
-                  })()}
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-                <div className="flex items-center gap-2 rounded-lg border border-border/60 px-3 py-1.5">
-                  <Zap className={`h-3.5 w-3.5 ${property.auto_match !== false ? 'text-primary' : 'text-muted-foreground'}`} />
-                  <span className="text-xs text-muted-foreground">Cruce auto</span>
-                  <Switch
-                    checked={property.auto_match !== false}
-                    onCheckedChange={async (checked) => {
-                      await saveField({ auto_match: checked });
-                    }}
-                    className="scale-75"
-                  />
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
-              <Select value={property.property_type} onValueChange={v => saveField({ property_type: v })}>
-                <SelectTrigger className="w-[120px] h-7 text-xs capitalize">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {propertyTypes.map(t => <SelectItem key={t} value={t} className="capitalize">{t}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <Select value={property.secondary_property_type || '_none'} onValueChange={v => saveField({ secondary_property_type: v === '_none' ? null : v })}>
-                <SelectTrigger className="w-[130px] h-7 text-xs capitalize" title="Tipo secundario (portales)">
-                  <SelectValue placeholder="+ Tipo 2" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_none" className="text-muted-foreground">Sin tipo 2</SelectItem>
-                  {propertyTypes.filter(t => t !== property.property_type && t !== 'otro').map(t => <SelectItem key={t} value={t} className="capitalize">{t}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <Select value={property.operation} onValueChange={v => saveField({ operation: v })}>
-                <SelectTrigger className="w-[110px] h-7 text-xs capitalize">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {operationTypes.map(o => <SelectItem key={o} value={o} className="capitalize">{o}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <ChangeRequestButton
-              entityType="property"
-              entityId={property?.id || ''}
-              entityLabel={property?.title || ''}
-            />
-            <DocumentScanner
-              context="property"
-              onExtracted={async (data) => {
-                const updates: any = {};
-                if (data.property_address) updates.address = data.property_address;
-                if (data.property_city) updates.city = data.property_city;
-                if (data.property_province) updates.province = data.property_province;
-                if (data.property_zip_code) updates.zip_code = data.property_zip_code;
-                if (data.property_type) updates.property_type = data.property_type;
-                if (data.cadastral_reference) updates.reference = data.cadastral_reference;
-                if (data.surface_area) updates.surface_area = data.surface_area;
-                if (data.built_area) updates.built_area = data.built_area;
-                if (data.bedrooms) updates.bedrooms = data.bedrooms;
-                if (data.bathrooms) updates.bathrooms = data.bathrooms;
-                if (data.floor) updates.floor_number = data.floor;
-                if (data.price) updates.price = data.price;
-                if (data.energy_cert) updates.energy_cert = data.energy_cert;
-                if (data.property_description) updates.description = data.property_description;
-                if (Object.keys(updates).length > 0) {
-                  await supabase.from('properties').update(updates).eq('id', id!);
-                  fetchProperty();
-                }
-              }}
-            />
-            
-            {canSeePropertyContactData && (
-              <PropertyOwnerActionsPanel
-                property={property}
-                propertyId={id!}
-                isAdmin={isAdmin}
-                compact
-                onRefreshProperty={fetchProperty}
-                onDeleteSuccess={() => navigate('/properties')}
-              />
-            )}
-          </div>
-        </div>
-      </div>
-      )}
-
-      {/* Key metrics - editable */}
-      <Card className="animate-fade-in-up">
-        <CardContent className="p-4">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            {[
-              { icon: BedDouble, label: 'Habitaciones', field: 'bedrooms' },
-              { icon: Bath, label: 'Baños', field: 'bathrooms' },
-              { icon: Maximize, label: 'Superficie (m²)', field: 'surface_area' },
-              { icon: Maximize, label: 'Construida (m²)', field: 'built_area' },
-            ].map(m => (
-              <div key={m.field} className="flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10">
-                  <m.icon className="h-5 w-5 text-primary" />
-                </div>
-                <div className="flex-1">
-                  <Input
-                    type="number"
-                    className="h-8 text-lg font-bold border-0 bg-transparent px-0 focus-visible:ring-1 w-full"
-                    placeholder="0"
-                    value={property[m.field] || ''}
-                    onChange={e => setProperty((p: any) => ({ ...p, [m.field]: e.target.value ? Number(e.target.value) : null }))}
-                    onBlur={() => saveField({ [m.field]: property[m.field] })}
-                  />
-                  <p className="text-xs text-muted-foreground">{m.label}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* ── Card Ficha Web (compacta) ── */}
-      {(() => {
-        // legadocoleccion.es usa slugs exactamente iguales al sitemap:
-        // {tipo}-en-{ciudad}-{ciudad}-{últimos 5 hex del UUID sin guiones}
-        // Ej: piso-en-finestrat-finestrat-73a70, chalet-en-polop-polop-fc10f
-        const slugify = (s: string) =>
-          s.toLowerCase()
-            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-            .replace(/[^a-z0-9]+/g, '-')
-            .replace(/^-+|-+$/g, '');
-        const titleSlug = slugify(property.title || 'propiedad');
-        const citySlug = slugify(property.city || property.province || '');
-        const uuidSuffix = (property.id as string).replace(/-/g, '').slice(-5);
-        const propertySlug = citySlug
-          ? `${titleSlug}-${citySlug}-${uuidSuffix}`
-          : `${titleSlug}-${uuidSuffix}`;
-        const webUrl = `https://legadocoleccion.es/propiedad/${propertySlug}`;
-        // URL para compartir en redes: pasa por legadocoleccion.es/s/ que proxia a og-property
-        const socialUrl = `https://legadocoleccion.es/s/${id}`;
-        const isPublished = ['disponible', 'reservado'].includes(property.status);
-        const firstImage = getCoverImage(property.images, property.image_order, property.id);
-        const summaryParts: string[] = [];
-        if (property.bedrooms) summaryParts.push(`${property.bedrooms} hab.`);
-        if (property.bathrooms) summaryParts.push(`${property.bathrooms} baños`);
-        if (property.price) summaryParts.push(`${Number(property.price).toLocaleString('es-ES')} €`);
-
-        return (
-          <div className="flex justify-start animate-fade-in-up">
-            <div className="inline-flex items-center gap-2.5 rounded-lg border border-border/50 bg-card px-3 py-2 shadow-sm hover:shadow-md transition-shadow max-w-sm">
-              {/* Thumbnail */}
-              {firstImage && (
-                <div className="h-9 w-12 shrink-0 overflow-hidden rounded-md border border-border/40">
-                  <img src={firstImage} alt="" className="h-full w-full object-cover" />
-                </div>
-              )}
-              {/* Info */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5 mb-0.5">
-                  <Globe className="h-3 w-3 text-muted-foreground shrink-0" />
-                  <span className="text-xs font-medium text-foreground">Ficha web</span>
-                  {isPublished ? (
-                    <span className="inline-flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-wide text-success bg-success/10 px-1 py-0.5 rounded-full">
-                      <span className="h-1 w-1 rounded-full bg-success inline-block" />
-                      Live
-                    </span>
-                  ) : (
-                    <span className="text-[9px] font-medium text-muted-foreground bg-muted px-1 py-0.5 rounded-full uppercase">Off</span>
-                  )}
-                </div>
-                {summaryParts.length > 0 && (
-                  <p className="text-[10px] text-muted-foreground truncate leading-tight">{summaryParts.join(' · ')}</p>
-                )}
-              </div>
-              {/* Dropdown: Ver, Compartir, Ficha ciega */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button className="rounded-md border border-primary/30 bg-primary/5 hover:bg-primary/15 px-2.5 py-1.5 text-[11px] font-semibold text-primary transition-colors flex items-center gap-1 shrink-0">
-                    Acciones
-                    <ChevronDown className="h-3 w-3" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuItem onClick={() => window.open(webUrl, '_blank')}>
-                    <ExternalLink className="h-3.5 w-3.5 mr-2" />
-                    Ver en web
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => {
-                    navigator.clipboard.writeText(webUrl);
-                    toast({ title: 'Enlace web copiado ✓', description: 'URL directa para enviar a clientes' });
-                  }}>
-                    <Copy className="h-3.5 w-3.5 mr-2" />
-                    Copiar enlace web
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => {
-                    navigator.clipboard.writeText(socialUrl);
-                    toast({ title: 'Enlace redes copiado ✓', description: 'Pégalo en LinkedIn, WhatsApp o Facebook — verás preview con foto y precio' });
-                  }}>
-                    <Share2 className="h-3.5 w-3.5 mr-2" />
-                    Copiar enlace redes sociales
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => window.open(`/ficha-ciega/${id}`, '_blank')}>
-                    <EyeOff className="h-3.5 w-3.5 mr-2" />
-                    Ficha ciega
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => {
-                    const blindUrl = `${SUPABASE_URL}/functions/v1/og-blind?id=${id}`;
-                    navigator.clipboard.writeText(blindUrl);
-                    toast({ title: 'Enlace ficha ciega copiado ✓', description: 'Sin datos de la inmobiliaria — ideal para compartir con otras agencias' });
-                  }}>
-                    <Share2 className="h-3.5 w-3.5 mr-2" />
-                    Copiar enlace ficha ciega (redes)
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          </div>
-        );
-      })()}
+      <PropertyDetailWebCard
+        property={property}
+        propertyId={id!}
+        supabaseUrl={SUPABASE_URL}
+        onToast={(title, description) => toast({ title, description })}
+      />
 
       {canSeePropertyContactData ? (
         <PropertyStakeholdersPanel
@@ -902,19 +727,25 @@ const PropertyDetail = () => {
       {canSeePropertyContactData && (
         <>
           <div id="cierre" ref={closingSectionRef}>
-            <ClosingWorkflow
-              property={property}
-              propertyOwners={propertyOwners}
-              onCommitField={commitClosingField}
-              onSetProperty={setProperty}
-            />
+            <Suspense fallback={sectionFallback}>
+              <ClosingWorkflow
+                property={property}
+                propertyOwners={propertyOwners}
+                onCommitField={commitClosingField}
+                onSetProperty={setProperty}
+              />
+            </Suspense>
           </div>
 
           <div id="expediente" ref={expedienteSectionRef} className="space-y-4">
-            <DocumentRelationsPanel propertyId={property.id} />
+            <Suspense fallback={sectionFallback}>
+              <DocumentRelationsPanel propertyId={property.id} />
+            </Suspense>
 
             {/* Documentación Horus */}
-            <PropertyDocumentsSection propertyId={property.id} propertyStatus={property.status} />
+            <Suspense fallback={sectionFallback}>
+              <PropertyDocumentsSection propertyId={property.id} propertyStatus={property.status} />
+            </Suspense>
           </div>
         </>
       )}
@@ -980,7 +811,7 @@ const PropertyDetail = () => {
             )}
             {images[lightboxIndex] && (
               <div className="relative">
-                <img src={images[lightboxIndex].url} alt="" className="max-h-[80vh] max-w-full object-contain pointer-events-none" draggable={false} style={{ WebkitUserDrag: 'none' } as any} />
+                <img src={images[lightboxIndex].url} alt="" className="max-h-[80vh] max-w-full object-contain pointer-events-none" draggable={false} style={{ WebkitUserDrag: 'none' } as CSSProperties} />
                 {/* Watermark overlay lightbox – solo visible en CRM interno */}
                 <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center gap-16 overflow-hidden opacity-[0.12]">
                   {[0, 1, 2].map(row => (

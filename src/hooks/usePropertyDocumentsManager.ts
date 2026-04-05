@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { differenceInDays, isPast } from 'date-fns';
 
@@ -47,6 +47,47 @@ type NewDocState = {
   file: File | null;
 };
 
+type PropertyDocumentRow = {
+  id: string;
+  property_id: string;
+  doc_type: string;
+  label: string;
+  file_url: string | null;
+  file_name: string | null;
+  expires_at: string | null;
+  is_required?: boolean | null;
+  uploaded_by?: string | null;
+  notes: string | null;
+  created_at: string;
+};
+
+type PropertyAnalysisRow = {
+  reference: string | null;
+  address: string | null;
+  city: string | null;
+  province: string | null;
+  zip_code: string | null;
+  surface_area: number | null;
+  built_area: number | null;
+  bedrooms: number | null;
+  bathrooms: number | null;
+  floor_number: string | null;
+  property_type: string | null;
+  energy_cert: string | null;
+  description: string | null;
+};
+
+type OwnerSuggestion = {
+  id: string;
+  full_name: string | null;
+  email?: string | null;
+  phone?: string | null;
+  id_number?: string | null;
+  contact_type?: string | null;
+  match_score: number;
+  match_reason: string;
+};
+
 export const usePropertyDocumentsManager = ({
   propertyId,
   propertyStatus,
@@ -59,7 +100,7 @@ export const usePropertyDocumentsManager = ({
   toast: ToastFn;
 }) => {
   const navigate = useNavigate();
-  const [docs, setDocs] = useState<any[]>([]);
+  const [docs, setDocs] = useState<PropertyDocumentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
@@ -67,27 +108,27 @@ export const usePropertyDocumentsManager = ({
   const [reanalyzingAll, setReanalyzingAll] = useState(false);
   const [resolvingHolder, setResolvingHolder] = useState<string | null>(null);
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
-  const [linkingDoc, setLinkingDoc] = useState<any | null>(null);
+  const [linkingDoc, setLinkingDoc] = useState<PropertyDocumentRow | null>(null);
   const [linkingOwnerName, setLinkingOwnerName] = useState('');
-  const [ownerSuggestions, setOwnerSuggestions] = useState<any[]>([]);
+  const [ownerSuggestions, setOwnerSuggestions] = useState<OwnerSuggestion[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [newDoc, setNewDoc] = useState<NewDocState>({ doc_type: '', label: '', expires_at: '', file: null });
 
-  const fetchDocs = async () => {
+  const fetchDocs = useCallback(async () => {
     const { data } = await supabase
       .from('property_documents')
       .select('*')
       .eq('property_id', propertyId)
       .order('created_at', { ascending: true });
 
-    setDocs(data || []);
+    setDocs((data || []) as PropertyDocumentRow[]);
     setLoading(false);
-  };
+  }, [propertyId]);
 
   useEffect(() => {
     void fetchDocs();
-  }, [propertyId]);
+  }, [fetchDocs]);
 
   const requiredTypes = HORUS_DOCS.filter((doc) => doc.required_phases.includes(propertyStatus)).map((doc) => doc.type);
   const uploadedTypes = docs.map((doc) => doc.doc_type);
@@ -102,7 +143,7 @@ export const usePropertyDocumentsManager = ({
 
   const getAiSummary = (notes?: string | null): ParsedAiSummary | null => parseAiSummaryFromNotes(notes);
 
-  const runAnalysisForDocument = async (doc: any) => {
+  const runAnalysisForDocument = async (doc: Pick<PropertyDocumentRow, 'id' | 'file_url' | 'file_name' | 'label' | 'doc_type'>) => {
     if (!doc.file_url || !isAiAnalyzablePropertyDocument(doc.doc_type)) return null;
 
     const { data: property } = await supabase
@@ -111,13 +152,14 @@ export const usePropertyDocumentsManager = ({
       .eq('id', propertyId)
       .single();
 
-    if (!property) throw new Error('No se ha podido cargar la ficha del inmueble para reanalizar.');
+    const propertyRecord = property as PropertyAnalysisRow | null;
+    if (!propertyRecord) throw new Error('No se ha podido cargar la ficha del inmueble para reanalizar.');
 
     const analysis = await analyzePropertyDocumentUpload({
       fileUrl: doc.file_url,
       fileName: doc.file_name || doc.label || doc.doc_type,
       docType: doc.doc_type,
-      property,
+      property: propertyRecord,
       propertyId,
     });
 
@@ -213,10 +255,10 @@ export const usePropertyDocumentsManager = ({
               variant: analysis.inconsistencies.length > 0 ? 'destructive' : 'default',
             });
           }
-        } catch (analysisError: any) {
+        } catch (analysisError: unknown) {
           toast({
             title: 'Documento subido, pero analisis IA incompleto',
-            description: analysisError.message || 'No se pudo completar el cruce automatico.',
+            description: analysisError instanceof Error ? analysisError.message : 'No se pudo completar el cruce automatico.',
             variant: 'destructive',
           });
         } finally {
@@ -228,15 +270,15 @@ export const usePropertyDocumentsManager = ({
       setShowAdd(false);
       setNewDoc({ doc_type: '', label: '', expires_at: '', file: null });
       await fetchDocs();
-    } catch (error: any) {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    } catch (error: unknown) {
+      toast({ title: 'Error', description: error instanceof Error ? error.message : 'No se pudo subir el documento', variant: 'destructive' });
     } finally {
       setUploading(false);
       setAnalyzing(false);
     }
   };
 
-  const handleReanalyzeDocument = async (doc: any) => {
+  const handleReanalyzeDocument = async (doc: PropertyDocumentRow) => {
     setReanalyzingDocId(doc.id);
     try {
       const analysis = await runAnalysisForDocument(doc);
@@ -250,10 +292,10 @@ export const usePropertyDocumentsManager = ({
           variant: analysis.inconsistencies.length > 0 ? 'destructive' : 'default',
         });
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'No se pudo reanalizar el documento',
-        description: error.message || 'Ha fallado la reanalisis automatica.',
+        description: error instanceof Error ? error.message : 'Ha fallado la reanalisis automatica.',
         variant: 'destructive',
       });
     } finally {
@@ -281,10 +323,10 @@ export const usePropertyDocumentsManager = ({
         title: 'Expediente reanalizado',
         description: `He actualizado ${analyzableDocs.length} documento(s) con la capa juridica nueva.`,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Reanalisis incompleta',
-        description: error.message || 'No se pudieron refrescar todos los documentos analizables.',
+        description: error instanceof Error ? error.message : 'No se pudieron refrescar todos los documentos analizables.',
         variant: 'destructive',
       });
     } finally {
@@ -293,7 +335,7 @@ export const usePropertyDocumentsManager = ({
     }
   };
 
-  const handleDelete = async (doc: any) => {
+  const handleDelete = async (doc: PropertyDocumentRow) => {
     if (doc.file_url) {
       const path = doc.file_url.split('/property-documents/')[1];
       if (path) {
@@ -305,12 +347,12 @@ export const usePropertyDocumentsManager = ({
     await fetchDocs();
   };
 
-  const refreshOwnerNotes = async (doc: any, ownerName: string) => {
+  const refreshOwnerNotes = async (doc: PropertyDocumentRow, ownerName: string) => {
     const updatedNotes = (doc.notes || '').replace(`- Falta alta en CRM: ${ownerName}`, `- Vinculado: ${ownerName}`);
     await supabase.from('property_documents').update({ notes: updatedNotes }).eq('id', doc.id);
   };
 
-  const handleCreatePendingOwner = async (doc: any, ownerName: string) => {
+  const handleCreatePendingOwner = async (doc: PropertyDocumentRow, ownerName: string) => {
     setResolvingHolder(`${doc.id}:${ownerName}`);
     try {
       const result = await createContactStubForPropertyHolder({ fullName: ownerName, propertyId, agentId: userId });
@@ -323,10 +365,10 @@ export const usePropertyDocumentsManager = ({
       });
       await fetchDocs();
       navigate(`/contacts/${result.contactId}`);
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'No se pudo crear el titular',
-        description: error.message || 'Ha fallado la alta automatica del contacto.',
+        description: error instanceof Error ? error.message : 'Ha fallado la alta automatica del contacto.',
         variant: 'destructive',
       });
     } finally {
@@ -334,7 +376,7 @@ export const usePropertyDocumentsManager = ({
     }
   };
 
-  const openLinkExistingDialog = async (doc: any, ownerName: string) => {
+  const openLinkExistingDialog = async (doc: PropertyDocumentRow, ownerName: string) => {
     setResolvingHolder(`${doc.id}:${ownerName}:search`);
     setLinkingDoc(doc);
     setLinkingOwnerName(ownerName);
@@ -342,11 +384,11 @@ export const usePropertyDocumentsManager = ({
     setLoadingSuggestions(true);
     try {
       const matches = await findExistingContactsForHolder(ownerName);
-      setOwnerSuggestions(matches);
-    } catch (error: any) {
+      setOwnerSuggestions(matches as OwnerSuggestion[]);
+    } catch (error: unknown) {
       toast({
         title: 'No se pudieron cargar sugerencias',
-        description: error.message || 'Ha fallado la busqueda de contactos existentes.',
+        description: error instanceof Error ? error.message : 'Ha fallado la busqueda de contactos existentes.',
         variant: 'destructive',
       });
       setLinkDialogOpen(false);
@@ -356,7 +398,7 @@ export const usePropertyDocumentsManager = ({
     }
   };
 
-  const handleLinkExistingOwner = async (contact: any) => {
+  const handleLinkExistingOwner = async (contact: OwnerSuggestion) => {
     if (!linkingDoc || !linkingOwnerName) return;
     setResolvingHolder(`${linkingDoc.id}:${linkingOwnerName}:link:${contact.id}`);
     try {
@@ -372,10 +414,10 @@ export const usePropertyDocumentsManager = ({
       setOwnerSuggestions([]);
       await fetchDocs();
       navigate(`/contacts/${contact.id}`);
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'No se pudo vincular el contacto',
-        description: error.message || 'Ha fallado la vinculacion del titular existente.',
+        description: error instanceof Error ? error.message : 'Ha fallado la vinculacion del titular existente.',
         variant: 'destructive',
       });
     } finally {

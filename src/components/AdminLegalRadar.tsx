@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -39,7 +39,7 @@ const AdminLegalRadar = () => {
   const [refreshingAll, setRefreshingAll] = useState(false);
   const [refreshingPropertyId, setRefreshingPropertyId] = useState<string | null>(null);
 
-  const fetchLegalRisk = async () => {
+  const fetchLegalRisk = useCallback(async () => {
     let query = supabase
       .from('properties')
       .select('id, title, city, status, agent_id, legal_risk_level, legal_risk_summary, legal_risk_updated_at, legal_risk_docs_count')
@@ -55,7 +55,7 @@ const AdminLegalRadar = () => {
 
     setProperties((data || []) as RiskProperty[]);
     setLoading(false);
-  };
+  }, [selectedAgentId]);
 
   useEffect(() => {
     supabase
@@ -71,8 +71,8 @@ const AdminLegalRadar = () => {
 
   useEffect(() => {
     setLoading(true);
-    fetchLegalRisk();
-  }, [selectedAgentId]);
+    void fetchLegalRisk();
+  }, [fetchLegalRisk]);
 
   const summary = useMemo(() => ({
     alto: properties.filter((property) => property.legal_risk_level === 'alto').length,
@@ -102,10 +102,11 @@ const AdminLegalRadar = () => {
           ? `He reanalizado ${result.analyzableCount} documento(s) del inmueble.`
           : 'Ese inmueble no tiene nota simple, escritura o catastro analizables.',
       });
-    } catch (error: any) {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Ha fallado la reanalisis legal.';
       toast({
         title: 'No se pudo actualizar el inmueble',
-        description: error.message || 'Ha fallado la reanalisis legal.',
+        description: message,
         variant: 'destructive',
       });
     } finally {
@@ -124,10 +125,11 @@ const AdminLegalRadar = () => {
         title: 'Radar legal refrescado',
         description: `He reanalizado ${Math.min(properties.length, 6)} inmueble(s) visibles del radar.`,
       });
-    } catch (error: any) {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'No se pudieron reanalizar todos los inmuebles visibles.';
       toast({
         title: 'Actualización incompleta',
-        description: error.message || 'No se pudieron reanalizar todos los inmuebles visibles.',
+        description: message,
         variant: 'destructive',
       });
     } finally {

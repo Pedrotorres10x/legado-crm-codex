@@ -6,6 +6,35 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+interface FeaturedProperty {
+  id: string;
+  title: string | null;
+  description: string | null;
+  property_type: string | null;
+  status: string | null;
+  price: number | null;
+  city: string | null;
+  zone: string | null;
+  address: string | null;
+  bedrooms: number | null;
+  bathrooms: number | null;
+  surface_area: number | null;
+  built_area: number | null;
+  operation: string | null;
+  images: string[] | null;
+  virtual_tour_url: string | null;
+  created_at: string;
+  energy_cert: string | null;
+  has_garden: boolean | null;
+  has_elevator: boolean | null;
+  has_garage: boolean | null;
+  has_pool: boolean | null;
+  has_terrace: boolean | null;
+  features: string[] | null;
+  crm_reference: string | null;
+  floor_number: number | null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -38,8 +67,8 @@ Deno.serve(async (req) => {
     });
   }
 
-  const withPhotos = candidates.filter(
-    (p: any) => p.images && Array.isArray(p.images) && p.images.length >= 3
+  const withPhotos = (candidates as FeaturedProperty[]).filter(
+    (p) => p.images && Array.isArray(p.images) && p.images.length >= 3
   );
 
   if (withPhotos.length === 0) {
@@ -56,15 +85,15 @@ Deno.serve(async (req) => {
   );
 
   // Sort by id for stable order, then offset by day
-  const sorted = withPhotos.sort((a: any, b: any) => a.id.localeCompare(b.id));
+  const sorted = withPhotos.sort((a, b) => a.id.localeCompare(b.id));
   const offset = (dayOfYear * FEATURED_COUNT) % sorted.length;
-  const selected: any[] = [];
+  const selected: FeaturedProperty[] = [];
   for (let i = 0; i < FEATURED_COUNT; i++) {
     selected.push(sorted[(offset + i) % sorted.length]);
   }
 
   // 3. Mark as featured
-  const ids = selected.map((p: any) => p.id);
+  const ids = selected.map((p) => p.id);
   const { error: updateError } = await supabase
     .from("properties")
     .update({ is_featured: true })
@@ -82,7 +111,7 @@ Deno.serve(async (req) => {
   await supabase.from("featured_cache").delete().neq("id", "00000000-0000-0000-0000-000000000000");
 
   // Build cache rows with fields Legado expects
-  const cacheRows = selected.map((p: any) => ({
+  const cacheRows = selected.map((p) => ({
     property_id: p.id,
     property_data: {
       id: p.id,

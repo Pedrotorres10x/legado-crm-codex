@@ -100,10 +100,11 @@ Deno.serve(async (req) => {
       }
     }
 
+    const publicAppUrl = (Deno.env.get('PUBLIC_APP_URL') || 'https://legado-crm-codex.vercel.app').replace(/\/+$/, '')
     const blindFnUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/og-blind?id=${property.id}`
     const canonicalUrl = blindFnUrl
     // Redirect to the CRM app where /ficha-ciega/:id route exists
-    const appUrl = `https://legadocrm.lovable.app/ficha-ciega/${property.id}`
+    const appUrl = `${publicAppUrl}/ficha-ciega/${property.id}`
 
     const esc = (s: string) => s
       .replace(/&/g, '&amp;')

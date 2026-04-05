@@ -14,33 +14,54 @@ interface InternalCommentsProps {
   entityId: string;
 }
 
+type InternalCommentRow = {
+  id: string;
+  entity_type: 'property' | 'contact';
+  entity_id: string;
+  user_id: string;
+  content: string;
+  created_at: string;
+};
+
+type ProfileRow = {
+  user_id: string;
+  full_name: string | null;
+};
+
 const InternalComments = ({ entityType, entityId }: InternalCommentsProps) => {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [comments, setComments] = useState<any[]>([]);
+  const [comments, setComments] = useState<InternalCommentRow[]>([]);
   const [newComment, setNewComment] = useState('');
   const [sending, setSending] = useState(false);
   const [profiles, setProfiles] = useState<Record<string, string>>({});
 
   const fetchComments = useCallback(async () => {
-    const { data } = await supabase
-      .from('internal_comments' as any)
-      .select('*')
+    const { data } = await (supabase
+      .from('internal_comments' as never) as {
+        select: (query: string) => {
+          eq: (field: string, value: string) => {
+            eq: (field: string, value: string) => {
+              order: (field: string, options: { ascending: boolean }) => Promise<{ data: InternalCommentRow[] | null }>;
+            };
+          };
+        };
+      }).select('*')
       .eq('entity_type', entityType)
       .eq('entity_id', entityId)
       .order('created_at', { ascending: false });
-    const items = (data || []) as any[];
+    const items = data || [];
     setComments(items);
 
     // Fetch profile names for unique user_ids
-    const userIds = [...new Set(items.map((c: any) => c.user_id))];
+    const userIds = [...new Set(items.map((comment) => comment.user_id))];
     if (userIds.length > 0) {
       const { data: profileData } = await supabase
         .from('profiles')
         .select('user_id, full_name')
         .in('user_id', userIds);
       const map: Record<string, string> = {};
-      (profileData || []).forEach((p: any) => { map[p.user_id] = p.full_name; });
+      ((profileData || []) as ProfileRow[]).forEach((profile) => { map[profile.user_id] = profile.full_name || 'Asesor'; });
       setProfiles(map);
     }
   }, [entityType, entityId]);
@@ -50,12 +71,14 @@ const InternalComments = ({ entityType, entityId }: InternalCommentsProps) => {
   const handleSend = async () => {
     if (!newComment.trim() || !user) return;
     setSending(true);
-    const { error } = await supabase.from('internal_comments' as any).insert({
+    const { error } = await (supabase.from('internal_comments' as never) as {
+      insert: (values: Omit<InternalCommentRow, 'id' | 'created_at'>) => Promise<{ error: Error | null }>;
+    }).insert({
       entity_type: entityType,
       entity_id: entityId,
       user_id: user.id,
       content: newComment.trim(),
-    } as any);
+    });
     if (error) toast({ title: 'Error', description: error.message, variant: 'destructive' });
     else {
       setNewComment('');
@@ -65,7 +88,9 @@ const InternalComments = ({ entityType, entityId }: InternalCommentsProps) => {
   };
 
   const handleDelete = async (commentId: string) => {
-    const { error } = await supabase.from('internal_comments' as any).delete().eq('id', commentId);
+    const { error } = await (supabase.from('internal_comments' as never) as {
+      delete: () => { eq: (field: string, value: string) => Promise<{ error: Error | null }> };
+    }).delete().eq('id', commentId);
     if (error) toast({ title: 'Error', description: error.message, variant: 'destructive' });
     else fetchComments();
   };
@@ -100,7 +125,7 @@ const InternalComments = ({ entityType, entityId }: InternalCommentsProps) => {
           <p className="text-sm text-muted-foreground text-center py-4">Sin comentarios. Añade notas internas sobre esta ficha.</p>
         ) : (
           <div className="space-y-3">
-            {comments.map((c: any) => (
+            {comments.map((c) => (
               <div key={c.id} className="p-3 rounded-lg border bg-muted/30 space-y-1">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">

@@ -4,6 +4,7 @@ import { formatDistanceToNow, isPast } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { AlertTriangle, ChevronRight, CircleCheckBig, FileWarning, Landmark, Signature, UserCheck } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -39,6 +40,11 @@ type ClosingRadarItem = PropertyRow & {
   pendingSignatureCount: number;
   stage: string;
   ownerCount: number;
+};
+
+type PropertyDocumentRow = Pick<Database['public']['Tables']['property_documents']['Row'], 'doc_type'>;
+type DocumentSignatureRow = {
+  generated_contracts: Pick<Database['public']['Tables']['generated_contracts']['Row'], 'signature_status'> | null;
 };
 
 const AdminClosingRadar = () => {
@@ -89,9 +95,9 @@ const AdminClosingRadar = () => {
           supabase.from('property_owners').select('id', { count: 'exact', head: true }).eq('property_id', property.id),
         ]);
 
-        const uploadedDocTypes = Array.from(new Set((docsRes.data || []).map((doc: any) => doc.doc_type).filter(Boolean)));
-        const pendingSignatureCount = (signaturesRes.data || [])
-          .filter((doc: any) => doc.generated_contracts?.signature_status === 'pendiente')
+        const uploadedDocTypes = Array.from(new Set(((docsRes.data as PropertyDocumentRow[] | null) || []).map((doc) => doc.doc_type).filter(Boolean)));
+        const pendingSignatureCount = (((signaturesRes.data as DocumentSignatureRow[] | null) || []))
+          .filter((doc) => doc.generated_contracts?.signature_status === 'pendiente')
           .length;
         const ownerCount = ownersRes.count || 0;
 

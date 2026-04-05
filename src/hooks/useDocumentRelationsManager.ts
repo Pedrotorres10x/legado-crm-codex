@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 
 type ToastFn = (options: {
   title: string;
@@ -11,6 +12,34 @@ type ToastFn = (options: {
 type Props =
   | { contactId: string; propertyId?: never }
   | { propertyId: string; contactId?: never };
+
+type ContactOption = Pick<Database['public']['Tables']['contacts']['Row'], 'id' | 'full_name' | 'email' | 'phone'>;
+type PropertyOption = Pick<Database['public']['Tables']['properties']['Row'], 'id' | 'title' | 'address'>;
+type DocumentLinkContact = {
+  contact_id: string;
+  link_role?: string | null;
+  contacts?: ContactOption | null;
+};
+type DocumentLinkProperty = {
+  property_id: string;
+  properties?: PropertyOption | null;
+};
+type ManagedDocument = {
+  id: string;
+  title: string | null;
+  file_name: string | null;
+  document_kind: string | null;
+  source_context: string | null;
+  bucket_id: string;
+  storage_path: string;
+  contract_id: string | null;
+  expires_at: string | null;
+  created_at: string;
+  document_contacts?: DocumentLinkContact[] | null;
+  document_properties?: DocumentLinkProperty[] | null;
+  generated_contracts?: { id: string; signature_status: string | null } | null;
+};
+type InsertedSigner = { signer_label: string; signature_token: string };
 
 export const useDocumentRelationsManager = ({
   props,
@@ -24,29 +53,29 @@ export const useDocumentRelationsManager = ({
   const [loading, setLoading] = useState(true);
   const [openingId, setOpeningId] = useState<string | null>(null);
   const [preparingId, setPreparingId] = useState<string | null>(null);
-  const [documents, setDocuments] = useState<any[]>([]);
+  const [documents, setDocuments] = useState<ManagedDocument[]>([]);
   const [signatureDialogOpen, setSignatureDialogOpen] = useState(false);
-  const [selectedDocument, setSelectedDocument] = useState<any | null>(null);
+  const [selectedDocument, setSelectedDocument] = useState<ManagedDocument | null>(null);
   const [signerCount, setSignerCount] = useState(1);
   const [signerContacts, setSignerContacts] = useState<Array<{ id: string; full_name: string; email?: string | null } | null>>([]);
   const [signerSearchTerms, setSignerSearchTerms] = useState<string[]>([]);
-  const [signerSearchResults, setSignerSearchResults] = useState<Array<any[]>>([]);
+  const [signerSearchResults, setSignerSearchResults] = useState<ContactOption[][]>([]);
   const [signerSearching, setSignerSearching] = useState<boolean[]>([]);
   const [generatedLinks, setGeneratedLinks] = useState<{ label: string; token: string }[]>([]);
   const [linksDialogOpen, setLinksDialogOpen] = useState(false);
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
-  const [linkingDocument, setLinkingDocument] = useState<any | null>(null);
+  const [linkingDocument, setLinkingDocument] = useState<ManagedDocument | null>(null);
   const [contactSearch, setContactSearch] = useState('');
   const [propertySearch, setPropertySearch] = useState('');
-  const [contactResults, setContactResults] = useState<any[]>([]);
-  const [propertyResults, setPropertyResults] = useState<any[]>([]);
+  const [contactResults, setContactResults] = useState<ContactOption[]>([]);
+  const [propertyResults, setPropertyResults] = useState<PropertyOption[]>([]);
   const [selectedContacts, setSelectedContacts] = useState<Array<{ id: string; full_name: string }>>([]);
   const [selectedProperties, setSelectedProperties] = useState<Array<{ id: string; title?: string | null; address?: string | null }>>([]);
   const [savingLinks, setSavingLinks] = useState(false);
 
   const isContactContext = 'contactId' in props;
 
-  const loadDocuments = async () => {
+  const loadDocuments = useCallback(async () => {
     setLoading(true);
 
     const query = isContactContext
@@ -74,16 +103,16 @@ export const useDocumentRelationsManager = ({
       toast({ title: 'Error cargando expediente documental', description: error.message, variant: 'destructive' });
       setDocuments([]);
     } else {
-      setDocuments(data || []);
+      setDocuments((data || []) as ManagedDocument[]);
     }
     setLoading(false);
-  };
+  }, [isContactContext, props.contactId, props.propertyId, toast]);
 
   useEffect(() => {
     void loadDocuments();
-  }, [isContactContext, props.contactId, props.propertyId]);
+  }, [loadDocuments]);
 
-  const openDocument = async (doc: any) => {
+  const openDocument = async (doc: ManagedDocument) => {
     setOpeningId(doc.id);
     const { data, error } = await supabase.storage.from(doc.bucket_id).createSignedUrl(doc.storage_path, 60);
     setOpeningId(null);
@@ -102,11 +131,11 @@ export const useDocumentRelationsManager = ({
     setSignerSearching((prev) => [...prev.slice(0, newCount), ...Array(Math.max(0, newCount - prev.length)).fill(false)]);
   };
 
-  const openSignatureDialog = (doc: any) => {
+  const openSignatureDialog = (doc: ManagedDocument) => {
     setSelectedDocument(doc);
-    const existingContacts = (doc.document_contacts || []).map((link: any) => link.contacts).filter(Boolean);
+    const existingContacts = (doc.document_contacts || []).map((link) => link.contacts).filter(Boolean) as ContactOption[];
     const firstContact = isContactContext
-      ? existingContacts.find((contact: any) => contact.id === props.contactId) || existingContacts[0] || null
+      ? existingContacts.find((contact) => contact.id === props.contactId) || existingContacts[0] || null
       : existingContacts[0] || null;
 
     setSignerCount(1);
@@ -117,10 +146,10 @@ export const useDocumentRelationsManager = ({
     setSignatureDialogOpen(true);
   };
 
-  const openLinkDialog = (doc: any) => {
+  const openLinkDialog = (doc: ManagedDocument) => {
     setLinkingDocument(doc);
-    setSelectedContacts((doc.document_contacts || []).map((link: any) => link.contacts).filter(Boolean).map((contact: any) => ({ id: contact.id, full_name: contact.full_name })));
-    setSelectedProperties((doc.document_properties || []).map((link: any) => link.properties).filter(Boolean).map((property: any) => ({ id: property.id, title: property.title, address: property.address })));
+    setSelectedContacts((doc.document_contacts || []).map((link) => link.contacts).filter(Boolean).map((contact) => ({ id: contact!.id, full_name: contact!.full_name })));
+    setSelectedProperties((doc.document_properties || []).map((link) => link.properties).filter(Boolean).map((property) => ({ id: property!.id, title: property!.title, address: property!.address })));
     setContactSearch('');
     setPropertySearch('');
     setContactResults([]);
@@ -184,8 +213,8 @@ export const useDocumentRelationsManager = ({
     if (!linkingDocument) return;
     setSavingLinks(true);
     try {
-      const currentContactIds = new Set((linkingDocument.document_contacts || []).map((link: any) => link.contact_id));
-      const currentPropertyIds = new Set((linkingDocument.document_properties || []).map((link: any) => link.property_id));
+      const currentContactIds = new Set((linkingDocument.document_contacts || []).map((link) => link.contact_id));
+      const currentPropertyIds = new Set((linkingDocument.document_properties || []).map((link) => link.property_id));
       const desiredContactIds = new Set(selectedContacts.map((contact) => contact.id));
       const desiredPropertyIds = new Set(selectedProperties.map((property) => property.id));
       const contactsToAdd = selectedContacts.filter((contact) => !currentContactIds.has(contact.id));
@@ -219,8 +248,8 @@ export const useDocumentRelationsManager = ({
       toast({ title: '✅ Relaciones del documento actualizadas' });
       setLinkDialogOpen(false);
       await loadDocuments();
-    } catch (error: any) {
-      toast({ title: 'Error guardando relaciones', description: error.message, variant: 'destructive' });
+    } catch (error) {
+      toast({ title: 'Error guardando relaciones', description: error instanceof Error ? error.message : 'Error desconocido', variant: 'destructive' });
     } finally {
       setSavingLinks(false);
     }
@@ -306,13 +335,13 @@ export const useDocumentRelationsManager = ({
         { onConflict: 'document_id,contact_id' },
       );
 
-      setGeneratedLinks((insertedSigners || []).map((signer) => ({ label: signer.signer_label, token: signer.signature_token })));
+      setGeneratedLinks(((insertedSigners || []) as InsertedSigner[]).map((signer) => ({ label: signer.signer_label, token: signer.signature_token })));
       setSignatureDialogOpen(false);
       setLinksDialogOpen(true);
       await loadDocuments();
       toast({ title: '✅ Documento preparado para firma' });
-    } catch (error: any) {
-      toast({ title: 'Error preparando firma', description: error.message, variant: 'destructive' });
+    } catch (error) {
+      toast({ title: 'Error preparando firma', description: error instanceof Error ? error.message : 'Error desconocido', variant: 'destructive' });
     } finally {
       setPreparingId(null);
     }

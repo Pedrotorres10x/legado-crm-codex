@@ -7,6 +7,7 @@ import {
   Flame, Target, Building2, Share2, MapPin, TrendingUp, ArrowRight, Circle
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { format, startOfDay, endOfDay, addDays } from 'date-fns';
@@ -37,6 +38,41 @@ interface ToquesHorus {
   cafe_comida: number;
   total: number;
 }
+
+type InteractionType = Database['public']['Tables']['interactions']['Row']['interaction_type'];
+type InteractionLogRow = Pick<Database['public']['Tables']['interactions']['Row'], 'interaction_type'>;
+type MatchNotesRow = Pick<Database['public']['Tables']['matches']['Row'], 'notes'>;
+type OfferNotesRow = Pick<Database['public']['Tables']['offers']['Row'], 'notes'>;
+type StockPropertyRow = Pick<
+  Database['public']['Tables']['properties']['Row'],
+  'id' | 'title' | 'status' | 'mandate_type' | 'mandate_end' | 'xml_id' | 'source' | 'price' | 'images' | 'description'
+>;
+type PostSalePropertyRow = Pick<
+  Database['public']['Tables']['properties']['Row'],
+  'id' | 'title' | 'status' | 'updated_at'
+>;
+type CommissionSummaryRow = Pick<
+  Database['public']['Tables']['commissions']['Row'],
+  'property_id' | 'status' | 'agency_commission'
+>;
+type InvoiceSummaryRow = Pick<
+  Database['public']['Tables']['contact_invoices']['Row'],
+  'property_id' | 'status' | 'amount'
+>;
+type HotAlertRow = {
+  id: string;
+  contact_id: string;
+  subject: string | null;
+  contacts: { full_name: string | null } | null;
+};
+type TodayTaskRow = {
+  id: string;
+  title: string;
+  due_date: string;
+  task_type: string;
+  priority: string;
+  contacts: { full_name: string | null } | null;
+};
 
 type Props = {
   playbook?: AgentDailyPlaybook;
@@ -175,12 +211,12 @@ const TodayPriorities = ({ playbook, storageKey = 'agent-playbook' }: Props) => 
       ]);
       const kpiSummary = uid ? await getAgentKpiSummary(uid) : null;
 
-      const toquesData = (todayInteractions.data as any[]) || [];
+      const toquesData = ((todayInteractions.data as InteractionLogRow[]) || []);
       const toquesDesglose: ToquesHorus = {
-        llamada: toquesData.filter(t => t.interaction_type === 'llamada').length,
-        whatsapp: toquesData.filter(t => t.interaction_type === 'whatsapp').length,
-        email: toquesData.filter(t => t.interaction_type === 'email').length,
-        cafe_comida: toquesData.filter(t => t.interaction_type === 'cafe_comida').length,
+        llamada: toquesData.filter((t) => t.interaction_type === 'llamada').length,
+        whatsapp: toquesData.filter((t) => t.interaction_type === 'whatsapp').length,
+        email: toquesData.filter((t) => t.interaction_type === 'email').length,
+        cafe_comida: toquesData.filter((t) => t.interaction_type === 'cafe_comida').length,
         total: toquesData.length,
       };
       setToquesDetalle(toquesDesglose);
@@ -194,14 +230,14 @@ const TodayPriorities = ({ playbook, storageKey = 'agent-playbook' }: Props) => 
       const oportunidadesCalientes = kpiSummary?.oportunidadesCalientes ?? 0;
       const visitasSinOferta = kpiSummary?.visitasSinOferta ?? (visitsSinResultado.count || 0);
       const inboundSinTrabajar = inboundLeadsData.filter((lead) => lead.agent_id === uid && lead.needs_follow_up).length;
-      const topMatchLossReason = buildTopReasons(((matchLossesRes.data as any[]) || []).map((row) => extractMatchDiscardReason(row.notes)))[0]?.[0] || null;
-      const topOfferLossReason = buildTopReasons(((offerLossesRes.data as any[]) || []).map((row) => extractOfferLossReason(row.notes)))[0]?.[0] || null;
+      const topMatchLossReason = buildTopReasons((((matchLossesRes.data as MatchNotesRow[]) || []).map((row) => extractMatchDiscardReason(row.notes))))[0]?.[0] || null;
+      const topOfferLossReason = buildTopReasons((((offerLossesRes.data as OfferNotesRow[]) || []).map((row) => extractOfferLossReason(row.notes))))[0]?.[0] || null;
       const dominantCommercialReason = topOfferLossReason || topMatchLossReason;
-      const stockRows = ((stockRes.data as any[]) || []).filter((property) => isAvailablePropertyStock(property));
+      const stockRows = (((stockRes.data as StockPropertyRow[]) || []).filter((property) => isAvailablePropertyStock(property)));
       const expiredMandates = stockRows.filter((property) => isMandateExpired(property));
       const weakListings = stockRows.filter((property) => !hasPublishBasics(property));
       const distributionPending = stockRows.filter((property) => hasPublishBasics(property) && !hasDistributionReady(property));
-      const postSaleRows = ((postSalePropertiesRes.data as any[]) || []) as Array<{ id: string; title?: string | null; status?: string | null }>;
+      const postSaleRows = ((postSalePropertiesRes.data as PostSalePropertyRow[]) || []);
       const targets = {
         ventas_ano: kpiSummary?.targets.ventas_ano ?? 10,
         citas_semana: kpiSummary?.targets.citas_semana ?? 2,
@@ -216,13 +252,13 @@ const TodayPriorities = ({ playbook, storageKey = 'agent-playbook' }: Props) => 
           supabase.from('contact_invoices').select('property_id, status, amount').in('property_id', propertyIds),
         ]);
 
-        const commissionMap = new Map<string, any>();
-        for (const row of (postSaleCommissions as any[]) || []) {
+        const commissionMap = new Map<string, CommissionSummaryRow>();
+        for (const row of (postSaleCommissions as CommissionSummaryRow[]) || []) {
           if (!commissionMap.has(row.property_id)) commissionMap.set(row.property_id, row);
         }
 
-        const invoiceMap = new Map<string, any[]>();
-        for (const row of (postSaleInvoices as any[]) || []) {
+        const invoiceMap = new Map<string, InvoiceSummaryRow[]>();
+        for (const row of (postSaleInvoices as InvoiceSummaryRow[]) || []) {
           const current = invoiceMap.get(row.property_id) || [];
           current.push(row);
           invoiceMap.set(row.property_id, current);
@@ -240,7 +276,7 @@ const TodayPriorities = ({ playbook, storageKey = 'agent-playbook' }: Props) => 
       // 🔥 URGENT: High interest contacts
       // ═══════════════════════════════════════
       if ((hotAlerts.data?.length || 0) > 0) {
-        const names = hotAlerts.data!.slice(0, 3).map((a: any) => a.contacts?.full_name || 'Contacto').join(', ');
+        const names = (hotAlerts.data as HotAlertRow[]).slice(0, 3).map((a) => a.contacts?.full_name || 'Contacto').join(', ');
         items.push({
           icon: Flame, label: `${hotAlerts.data!.length} contacto${hotAlerts.data!.length > 1 ? 's' : ''} con alto interés`,
           detail: `${names} — ¡Llama ya!`,
@@ -263,9 +299,9 @@ const TodayPriorities = ({ playbook, storageKey = 'agent-playbook' }: Props) => 
       }
 
       // Today's tasks
-      const todayTasksList = (todayTasksRes.data as any[]) || [];
+      const todayTasksList = ((todayTasksRes.data as TodayTaskRow[]) || []);
       if (todayTasksList.length > 0) {
-        const names = todayTasksList.slice(0, 2).map((t: any) => t.title).join(', ');
+        const names = todayTasksList.slice(0, 2).map((t) => t.title).join(', ');
         items.push({
           icon: CalendarCheck, label: `${todayTasksList.length} tarea${todayTasksList.length > 1 ? 's' : ''} para hoy`,
           detail: names,

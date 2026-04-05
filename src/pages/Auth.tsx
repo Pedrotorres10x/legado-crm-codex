@@ -29,8 +29,8 @@ const Auth = () => {
         await signUp(email, password, fullName);
         toast({ title: 'Cuenta creada', description: 'Revisa tu email para confirmar tu cuenta' });
       }
-    } catch (error: any) {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    } catch (error: unknown) {
+      toast({ title: 'Error', description: error instanceof Error ? error.message : 'No se pudo completar el acceso', variant: 'destructive' });
     } finally {
       setLoading(false);
     }
@@ -72,8 +72,8 @@ const Auth = () => {
                   },
                 });
                 if (error) toast({ title: 'Error', description: String(error), variant: 'destructive' });
-              } catch (err: any) {
-                toast({ title: 'Error', description: err.message, variant: 'destructive' });
+              } catch (error: unknown) {
+                toast({ title: 'Error', description: error instanceof Error ? error.message : 'No se pudo iniciar Google Sign-In', variant: 'destructive' });
               } finally {
                 setGoogleLoading(false);
               }

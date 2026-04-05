@@ -1,4 +1,4 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -43,11 +43,7 @@ function isBot(ua: string, sessionId: string): boolean {
 
 // ── Internal / editor traffic filter ─────────────────────────────────────────
 const INTERNAL_INDICATORS = [
-  '__lovable_token',
   'forceHideBadge',
-  'lovable.app',
-  'lovable.dev',
-  'lovableproject.com',
   'adsmanager.facebook.com',  // ← tráfico propio desde Meta Ads Manager
 ]
 
@@ -58,14 +54,19 @@ function isInternalTraffic(page: string, referrer: string | null): boolean {
 }
 
 // ── Load exclusions from DB (emails, IPs, session prefixes) ──────────────────
-async function loadExclusions(supabase: any): Promise<{ emails: Set<string>; ips: Set<string>; sessionPrefixes: string[] }> {
+interface ExclusionRow {
+  type: string | null
+  value: string | null
+}
+
+async function loadExclusions(supabase: SupabaseClient): Promise<{ emails: Set<string>; ips: Set<string>; sessionPrefixes: string[] }> {
   const { data } = await supabase
     .from('analytics_exclusions')
     .select('type, value')
   const emails = new Set<string>()
   const ips = new Set<string>()
   const sessionPrefixes: string[] = []
-  for (const row of (data ?? [])) {
+  for (const row of (data ?? []) as ExclusionRow[]) {
     const v = (row.value ?? '').trim().toLowerCase()
     if (row.type === 'email') emails.add(v)
     else if (row.type === 'ip') ips.add(v)
@@ -90,7 +91,7 @@ function extractCleanPath(rawPage: string): string {
     }
 
     // Case 2: path has a full URL embedded after the "?" 
-    // e.g. "/?https%3A%2F%2Flegadocoleccion.lovable.app%2Fpropiedades%3Futm_source=..."
+    // e.g. "/?https%3A%2F%2Flegadocoleccion.es%2Fpropiedades%3Futm_source=..."
     if (rawPage.includes('?http')) {
       const inner = rawPage.split('?')[1]
       const innerDecoded = decodeURIComponent(inner)

@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { AgentInfluenceCircleSummary, getAgentInfluenceCircle } from '@/lib/agent-influence-circle';
 
 type InfluenceCircleState = AgentInfluenceCircleSummary | null;
+type InfluenceCircleContact = Parameters<typeof getAgentInfluenceCircle>[0][number];
 
 export const useAgentInfluenceCircle = (userId?: string) => {
   const [summary, setSummary] = useState<InfluenceCircleState>(null);
@@ -24,7 +25,7 @@ export const useAgentInfluenceCircle = (userId?: string) => {
         .eq('agent_id', userId);
 
       if (!cancelled) {
-        setSummary(getAgentInfluenceCircle((data as any[]) || []));
+        setSummary(getAgentInfluenceCircle((data as InfluenceCircleContact[]) || []));
         setLoading(false);
       }
     };

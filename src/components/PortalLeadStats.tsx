@@ -18,6 +18,10 @@ type PortalLead = {
   created_at: string;
 };
 
+type PortalChartRow = {
+  month: string;
+} & Record<string, string | number>;
+
 const PORTAL_COLORS: Record<string, string> = {
   idealista: '#1FC780',
   fotocasa: '#E4002B',
@@ -163,12 +167,12 @@ export default function PortalLeadStats() {
 
   // Chart data: last 6 months stacked by portal
   const portals = [...portalMap.keys()];
-  const chartData: any[] = [];
+  const chartData: PortalChartRow[] = [];
   for (let i = 5; i >= 0; i--) {
     const monthStart = startOfMonth(subMonths(now, i));
     const monthEnd = endOfMonth(subMonths(now, i));
     const label = format(monthStart, 'MMM yy', { locale: es });
-    const row: any = { month: label };
+    const row: PortalChartRow = { month: label };
     for (const p of portals) {
       const items = portalMap.get(p) || [];
       row[p] = items.filter(l => {

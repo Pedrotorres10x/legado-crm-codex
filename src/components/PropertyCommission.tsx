@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent } from '@/components/ui/card';
@@ -18,6 +18,7 @@ import { es } from 'date-fns/locale';
 import { getSemesterRange, getAgentTier, fmt, calcProgressiveAgentAmount } from '@/lib/commissions';
 import { notifyERP } from '@/lib/erp-sync';
 import { useAgentHorusStatus } from '@/hooks/useAgentHorusStatus';
+import type { Tables, TablesInsert, TablesUpdate } from '@/integrations/supabase/types';
 
 interface PropertyCommissionProps {
   propertyId: string;
@@ -62,6 +63,24 @@ interface Commission {
   created_at: string;
 }
 
+type CommissionAccumulatedRow = Pick<
+  Tables<'commissions'>,
+  'agency_commission' | 'listing_origin_agent_id' | 'buying_origin_agent_id'
+>;
+
+type ProfileOption = {
+  user_id: string;
+  full_name: string;
+};
+
+type ContactOption = {
+  id: string;
+  full_name: string;
+  email: string | null;
+  phone: string | null;
+  contact_type: string;
+};
+
 const calcCommission = (
   salePrice: number, agencyPct = 6, prevAccumulated = 0, horusBonus = false, horusPct = 5,
   listingPct = 60, buyingPct = 40, originPct = 30, fieldPct = 70
@@ -88,8 +107,8 @@ const PropertyCommission = ({ propertyId, propertyTitle, propertyPrice, property
   const [commissions, setCommissions] = useState<Commission[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [agents, setAgents] = useState<{ user_id: string; full_name: string }[]>([]);
-  const [contacts, setContacts] = useState<{ id: string; full_name: string; email: string | null; phone: string | null; contact_type: string }[]>([]);
+  const [agents, setAgents] = useState<ProfileOption[]>([]);
+  const [contacts, setContacts] = useState<ContactOption[]>([]);
   const [sameAgent, setSameAgent] = useState(false);
   const [semesterAccumulated, setSemesterAccumulated] = useState(0);
 
@@ -117,7 +136,7 @@ const PropertyCommission = ({ propertyId, propertyTitle, propertyPrice, property
   };
   const [form, setForm] = useState(defaultForm);
 
-  const fetchCommissions = async () => {
+  const fetchCommissions = useCallback(async () => {
     const { data } = await supabase
       .from('commissions')
       .select('*')
@@ -125,7 +144,7 @@ const PropertyCommission = ({ propertyId, propertyTitle, propertyPrice, property
       .order('created_at', { ascending: false });
     setCommissions((data as Commission[]) || []);
     setLoading(false);
-  };
+  }, [propertyId]);
 
   useEffect(() => {
     const fetchAccumulated = async () => {
@@ -142,7 +161,8 @@ const PropertyCommission = ({ propertyId, propertyTitle, propertyPrice, property
         .gte('created_at', semester.start.toISOString())
         .or(`listing_origin_agent_id.eq.${originAgentId},buying_origin_agent_id.eq.${originAgentId}`);
 
-      const acc = (data as any[] || []).reduce((s: number, r: any) => {
+      const rows = (data ?? []) as CommissionAccumulatedRow[];
+      const acc = rows.reduce((s, r) => {
         const originatedByAgent =
           r.listing_origin_agent_id === originAgentId ||
           r.buying_origin_agent_id === originAgentId;
@@ -170,7 +190,7 @@ const PropertyCommission = ({ propertyId, propertyTitle, propertyPrice, property
     // Load contacts for buyer/seller selection
     supabase.from('contacts').select('id, full_name, email, phone, contact_type')
       .order('full_name').then(r => setContacts(r.data || []));
-  }, [propertyId]);
+  }, [fetchCommissions, propertyId]);
 
   // Update seller when owner changes
   useEffect(() => {
@@ -209,7 +229,7 @@ const PropertyCommission = ({ propertyId, propertyTitle, propertyPrice, property
       toast.error('Completa al menos los asesores de campo y el precio');
       return;
     }
-    const { error } = await supabase.from('commissions').insert({
+    const payload: TablesInsert<'commissions'> = {
       property_id: propertyId,
       agent_id: form.listing_field_agent_id,
       listing_agent_id: form.listing_field_agent_id,
@@ -239,7 +259,8 @@ const PropertyCommission = ({ propertyId, propertyTitle, propertyPrice, property
       buying_field_amount: computed.buyingFieldAmount,
       notes: form.notes || null,
       status: 'borrador',
-    } as any);
+    };
+    const { error } = await supabase.from('commissions').insert(payload);
     if (error) { toast.error('Error al guardar'); return; }
 
     // Notify Faktura with full sale package (seller + buyer + property + commissions)
@@ -269,7 +290,7 @@ const PropertyCommission = ({ propertyId, propertyTitle, propertyPrice, property
         buying_agent_name: buyingAgent?.full_name,
         listing_amount: computed.listingAmount,
         buying_amount: computed.buyingAmount,
-      } as any);
+      });
     }
 
     toast.success(isAdmin ? 'Comisión registrada y enviada a facturación' : 'Solicitud enviada — pendiente de aprobación');
@@ -280,7 +301,8 @@ const PropertyCommission = ({ propertyId, propertyTitle, propertyPrice, property
   };
 
   const updateStatus = async (id: string, status: string) => {
-    await supabase.from('commissions').update({ status } as any).eq('id', id);
+    const payload: TablesUpdate<'commissions'> = { status };
+    await supabase.from('commissions').update(payload).eq('id', id);
     fetchCommissions();
     toast.success(`Estado actualizado a ${status}`);
   };

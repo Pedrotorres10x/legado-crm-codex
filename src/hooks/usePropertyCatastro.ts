@@ -36,10 +36,42 @@ type ToastFn = (options: {
 
 type UsePropertyCatastroParams = {
   id?: string;
-  property: any;
+  property: {
+    reference?: string | null;
+    province?: string | null;
+    city?: string | null;
+    address?: string | null;
+  } | null;
   toast: ToastFn;
   onPropertyRefresh: () => Promise<void> | void;
-  onSyncSnapshot: (reference: string, catastroData: Record<string, any>) => Promise<void>;
+  onSyncSnapshot: (reference: string, catastroData: Record<string, string | number>) => Promise<void>;
+};
+
+type CatastroCandidate = {
+  rc: string;
+  superficie?: string | number | null;
+  escalera?: string | null;
+  planta?: string | null;
+  puerta?: string | null;
+  uso?: string | null;
+};
+
+type CatastroReferenceDetails = {
+  municipio?: string | null;
+  provincia?: string | null;
+  address?: string | null;
+  zip_code?: string | null;
+  floor?: string | null;
+  superficie?: number | null;
+  uso?: string | null;
+  property_type?: string | null;
+};
+
+type CatastroLookupResponse = {
+  error?: string;
+  found?: boolean;
+  results?: CatastroCandidate[];
+  data?: CatastroReferenceDetails;
 };
 
 export const usePropertyCatastro = ({
@@ -50,7 +82,7 @@ export const usePropertyCatastro = ({
   onSyncSnapshot,
 }: UsePropertyCatastroParams) => {
   const [catastroLoading, setCatastroLoading] = useState(false);
-  const [catastroResults, setCatastroResults] = useState<any[]>([]);
+  const [catastroResults, setCatastroResults] = useState<CatastroCandidate[]>([]);
   const [catastroDialogOpen, setCatastroDialogOpen] = useState(false);
   const [referenceInput, setReferenceInput] = useState('');
   const [savingRef, setSavingRef] = useState(false);
@@ -59,10 +91,10 @@ export const usePropertyCatastro = ({
     setReferenceInput(property?.reference || '');
   }, [property?.reference]);
 
-  const applyReferenceCandidate = useCallback(async (candidate: any) => {
+  const applyReferenceCandidate = useCallback(async (candidate: CatastroCandidate) => {
     if (!id) return;
 
-    const updates: any = { reference: candidate.rc };
+    const updates: Record<string, string | number> = { reference: candidate.rc };
     if (candidate.superficie) updates.surface_area = parseInt(candidate.superficie);
     if (candidate.escalera) updates.staircase = candidate.escalera;
     if (candidate.planta || candidate.puerta) {
@@ -108,7 +140,7 @@ export const usePropertyCatastro = ({
         }),
       });
 
-      const data = await resp.json();
+      const data = (await resp.json()) as CatastroLookupResponse;
       if (data.error && (!data.results || data.results.length === 0)) {
         toast({ title: 'Catastro', description: data.error, variant: 'destructive' });
       } else if (data.results?.length === 1) {
@@ -139,12 +171,12 @@ export const usePropertyCatastro = ({
         body: JSON.stringify({ rc: referenceInput }),
       });
 
-      const data = await resp.json();
+      const data = (await resp.json()) as CatastroLookupResponse;
       if (data.error) {
         toast({ title: 'Catastro', description: data.error, variant: 'destructive' });
       } else if (data.found) {
         const details = data.data;
-        const updates: any = { reference: referenceInput };
+        const updates: Record<string, string | number> = { reference: referenceInput };
         if (details.municipio) updates.city = details.municipio;
         if (details.provincia) updates.province = details.provincia;
         if (details.address) updates.address = details.address;
@@ -177,13 +209,13 @@ export const usePropertyCatastro = ({
     if (!id) return;
 
     setSavingRef(true);
-    await supabase.from('properties').update({ reference: referenceInput || null } as any).eq('id', id);
+    await supabase.from('properties').update({ reference: referenceInput || null }).eq('id', id);
     toast({ title: 'Referencia guardada' });
     setSavingRef(false);
     await onPropertyRefresh();
   }, [id, onPropertyRefresh, referenceInput, toast]);
 
-  const selectCatastroResult = useCallback(async (candidate: any) => {
+  const selectCatastroResult = useCallback(async (candidate: CatastroCandidate) => {
     setReferenceInput(candidate.rc);
     setCatastroDialogOpen(false);
     await applyReferenceCandidate(candidate);

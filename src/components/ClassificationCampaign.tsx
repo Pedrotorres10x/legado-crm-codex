@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import DOMPurify from 'dompurify';
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -27,10 +28,33 @@ interface ReviewItem {
   created_at: string;
 }
 
+interface CampaignPreviewData {
+  contact_name: string;
+  channel: string;
+  remaining: number;
+  message?: {
+    html?: string;
+    text?: string;
+    subject?: string;
+  };
+}
+
+interface CampaignBatchResponse {
+  sent?: number;
+  errors?: unknown[];
+}
+
+type CommunicationLogRow = Database["public"]["Tables"]["communication_logs"]["Row"];
+type ContactUpdate = Database["public"]["Tables"]["contacts"]["Update"];
+type CommunicationLogUpdate = Database["public"]["Tables"]["communication_logs"]["Update"];
+type CommunicationLogMetadata = Record<string, Database["public"]["Tables"]["communication_logs"]["Row"]["metadata"] | string | boolean | null>;
+
 const ClassificationCampaign = () => {
   const queryClient = useQueryClient();
-  const [previewData, setPreviewData] = useState<any>(null);
+  const [previewData, setPreviewData] = useState<CampaignPreviewData | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const classificationMetadata = (classification: string) =>
+    ({ classification } as Record<string, string>);
 
   // Fetch campaign statistics
   const { data: stats, isLoading: statsLoading } = useQuery({
@@ -56,15 +80,15 @@ const ClassificationCampaign = () => {
         supabase.from('communication_logs').select('id', { count: 'exact', head: true })
           .eq('source', 'campaign_classify')
           .eq('status', 'clasificado')
-          .contains('metadata', { classification: 'comprador' } as any),
+          .contains('metadata', classificationMetadata('comprador')),
         supabase.from('communication_logs').select('id', { count: 'exact', head: true })
           .eq('source', 'campaign_classify')
           .eq('status', 'clasificado')
-          .contains('metadata', { classification: 'prospecto' } as any),
+          .contains('metadata', classificationMetadata('prospecto')),
         supabase.from('communication_logs').select('id', { count: 'exact', head: true })
           .eq('source', 'campaign_classify')
           .eq('status', 'clasificado')
-          .contains('metadata', { classification: 'inactivo' } as any),
+          .contains('metadata', classificationMetadata('inactivo')),
         supabase.from('communication_logs').select('id', { count: 'exact', head: true })
           .eq('source', 'campaign_classify')
           .eq('status', 'revision_manual'),
@@ -95,11 +119,15 @@ const ClassificationCampaign = () => {
         .order('created_at', { ascending: false })
         .limit(50);
 
-      return (data || []).map((item: any) => ({
+      return (data || []).map((item: CommunicationLogRow) => ({
         id: item.id,
         contact_id: item.contact_id,
-        contact_name: item.metadata?.contact_name || 'Desconocido',
-        original_text: item.metadata?.original_text || item.body_preview || '',
+        contact_name: typeof item.metadata === 'object' && item.metadata && 'contact_name' in item.metadata && typeof item.metadata.contact_name === 'string'
+          ? item.metadata.contact_name
+          : 'Desconocido',
+        original_text: typeof item.metadata === 'object' && item.metadata && 'original_text' in item.metadata && typeof item.metadata.original_text === 'string'
+          ? item.metadata.original_text
+          : item.body_preview || '',
         created_at: item.created_at,
       }));
     },
@@ -107,12 +135,12 @@ const ClassificationCampaign = () => {
 
   // Send batch mutation
   const sendBatch = useMutation({
-    mutationFn: async (mode: string = "initial") => {
+    mutationFn: async (mode: string = "initial"): Promise<CampaignBatchResponse> => {
       const { data, error } = await supabase.functions.invoke('campaign-classify', {
         body: { batch_size: 50, mode },
       });
       if (error) throw error;
-      return data;
+      return (data as CampaignBatchResponse | null) ?? {};
     },
     onSuccess: (data) => {
       toast.success(`Lote enviado: ${data.sent} mensajes`);
@@ -121,8 +149,9 @@ const ClassificationCampaign = () => {
       }
       queryClient.invalidateQueries({ queryKey: ['campaign-stats'] });
     },
-    onError: (error: any) => {
-      toast.error(`Error enviando lote: ${error.message}`);
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : 'Error desconocido';
+      toast.error(`Error enviando lote: ${message}`);
     },
   });
 
@@ -134,9 +163,10 @@ const ClassificationCampaign = () => {
         body: { preview: true },
       });
       if (error) throw error;
-      setPreviewData(data);
-    } catch (e: any) {
-      toast.error(`Error generando preview: ${e.message}`);
+      setPreviewData((data as CampaignPreviewData | null) ?? null);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'Error desconocido';
+      toast.error(`Error generando preview: ${message}`);
     } finally {
       setPreviewLoading(false);
     }
@@ -144,7 +174,7 @@ const ClassificationCampaign = () => {
 
   // Manual classify
   const manualClassify = async (contactId: string, classification: string, logId: string) => {
-    const updateData: any = {};
+    const updateData: ContactUpdate = {};
     if (classification === 'comprador') {
       updateData.contact_type = 'comprador';
       updateData.pipeline_stage = 'nuevo';
@@ -157,7 +187,9 @@ const ClassificationCampaign = () => {
     }
 
     await supabase.from('contacts').update(updateData).eq('id', contactId);
-    await supabase.from('communication_logs').update({ status: 'clasificado', metadata: { classification, manual: true } as any }).eq('id', logId);
+    const metadata: CommunicationLogMetadata = { classification, manual: true };
+    const logUpdate: CommunicationLogUpdate = { status: 'clasificado', metadata };
+    await supabase.from('communication_logs').update(logUpdate).eq('id', logId);
     toast.success('Contacto clasificado manualmente');
     queryClient.invalidateQueries({ queryKey: ['campaign-stats'] });
     queryClient.invalidateQueries({ queryKey: ['campaign-review'] });

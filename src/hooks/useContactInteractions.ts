@@ -13,6 +13,13 @@ const INITIAL_INTERACTION_FORM = {
   description: '',
 };
 
+type InteractionForm = typeof INITIAL_INTERACTION_FORM;
+
+type ContactSummaryResponse = {
+  summary?: string;
+  error?: string;
+};
+
 export const useContactInteractions = ({
   contactId,
   agentId,
@@ -25,7 +32,7 @@ export const useContactInteractions = ({
   onReload: () => Promise<void> | void;
 }) => {
   const [interactionOpen, setInteractionOpen] = useState(false);
-  const [intForm, setIntForm] = useState(INITIAL_INTERACTION_FORM);
+  const [intForm, setIntForm] = useState<InteractionForm>(INITIAL_INTERACTION_FORM);
   const [intSaving, setIntSaving] = useState(false);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summary, setSummary] = useState('');
@@ -52,12 +59,12 @@ export const useContactInteractions = ({
     setIntSaving(true);
     const { error } = await supabase.from('interactions').insert({
       contact_id: contactId,
-      interaction_type: intForm.interaction_type as any,
+      interaction_type: intForm.interaction_type,
       subject: intForm.subject || null,
       description: intForm.description || null,
       agent_id: agentId || null,
       interaction_date: new Date().toISOString(),
-    } as any);
+    });
     setIntSaving(false);
 
     if (error) {
@@ -85,7 +92,7 @@ export const useContactInteractions = ({
         },
         body: JSON.stringify({ contact_id: contactId }),
       });
-      const data = await resp.json();
+      const data = (await resp.json()) as ContactSummaryResponse;
       if (data.error) {
         toast({ title: 'Error IA', description: data.error, variant: 'destructive' });
       } else {

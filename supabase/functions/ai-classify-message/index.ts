@@ -1,5 +1,6 @@
 import { corsHeaders, json, handleCors } from '../_shared/cors.ts';
 import { callAI } from '../_shared/ai.ts';
+import { languageName, resolveContactLanguage } from '../_shared/contact-language.ts';
 
 /**
  * Generates a personalized campaign message for a contact.
@@ -10,12 +11,47 @@ import { callAI } from '../_shared/ai.ts';
  * Input: { contact, channel, agent_name?, options?, campaign_type?, demand? }
  * Output: { text, subject?, html? }
  */
+
+interface CampaignInteraction {
+  subject?: string | null;
+  description?: string | null;
+}
+
+interface CampaignDemand {
+  operation?: string | null;
+  property_type?: string | null;
+  cities?: string[];
+  max_price?: number | null;
+}
+
+interface CampaignContact {
+  full_name?: string | null;
+  city?: string | null;
+  nationality?: string | null;
+  notes?: string | null;
+  preferred_language?: string | null;
+  contact_type?: string | null;
+  interactions?: CampaignInteraction[];
+  demands?: CampaignDemand[];
+}
+
+interface CampaignMessageRequest {
+  contact?: CampaignContact | null;
+  channel?: string;
+  agent_name?: string;
+  attempt_number?: number;
+  previous_messages?: string[];
+  options?: string[] | null;
+  campaign_type?: string;
+  demand?: CampaignDemand | null;
+}
+
 Deno.serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
 
   try {
-    const { contact, channel, agent_name, attempt_number, previous_messages, options, campaign_type, demand } = await req.json();
+    const { contact, channel, agent_name, attempt_number, previous_messages, options, campaign_type, demand } = await req.json() as CampaignMessageRequest;
 
     if (!contact || !channel) {
       return json({ ok: false, error: "contact and channel are required" }, 400);
@@ -27,6 +63,7 @@ Deno.serve(async (req) => {
     const prevMsgs = previous_messages || [];
     const customOptions = options || null;
     const campaignType = campaign_type || "classify";
+    const preferredLanguage = resolveContactLanguage(contact.preferred_language || null, contact.full_name, contact.notes);
 
     // Build context about the contact
     const contextParts: string[] = [];
@@ -34,11 +71,12 @@ Deno.serve(async (req) => {
     if (contact.city) contextParts.push(`Ciudad: ${contact.city}`);
     if (contact.nationality) contextParts.push(`Nacionalidad: ${contact.nationality}`);
     if (contact.notes) contextParts.push(`Notas: ${contact.notes.slice(0, 200)}`);
+    if (contact.preferred_language) contextParts.push(`Idioma preferido: ${contact.preferred_language}`);
     if (contact.interactions?.length) {
-      contextParts.push(`Historial: ${contact.interactions.map((i: any) => i.subject || i.description).filter(Boolean).slice(0, 3).join("; ")}`);
+      contextParts.push(`Historial: ${contact.interactions.map((i) => i.subject || i.description).filter(Boolean).slice(0, 3).join("; ")}`);
     }
     if (contact.demands?.length) {
-      contextParts.push(`Demandas anteriores: ${contact.demands.map((d: any) => {
+      contextParts.push(`Demandas anteriores: ${contact.demands.map((d) => {
         const parts = [];
         if (d.operation) parts.push(d.operation);
         if (d.property_type) parts.push(d.property_type);
@@ -98,6 +136,7 @@ Deno.serve(async (req) => {
     } else {
       systemPrompt = buildClassifyPrompt(agentName, isEmail, attemptInstructions, customOptions);
     }
+    systemPrompt += `\n\nIDIOMA OBLIGATORIO:\n- Escribe TODO el mensaje final en ${languageName(preferredLanguage)}.\n- Si el canal es email, el asunto, el texto y el HTML deben estar en ${languageName(preferredLanguage)}.\n- No mezcles idiomas.`;
 
     const campaignLabel = campaignType === "demand_enrich" ? "enriquecimiento de demanda" : "clasificación";
     const userPrompt = `Genera un mensaje personalizado de ${campaignLabel} para este contacto.${contactContext}${followupContext}${optionsContext}
@@ -124,9 +163,10 @@ Responde SOLO con el JSON, sin markdown ni backticks.`;
     const parsed = JSON.parse(cleaned);
 
     return json({ ok: true, ...parsed });
-  } catch (e: any) {
-    console.error("ai-classify-message error:", e.message);
-    return json({ ok: false, error: e.message }, 500);
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+    console.error("ai-classify-message error:", message);
+    return json({ ok: false, error: message }, 500);
   }
 });
 
@@ -214,7 +254,7 @@ ${buildFormatBlock(isEmail, agentName)}`;
 }
 
 /** Build the qualify campaign system prompt (propietarios + contactos → comprador/prospecto) */
-function buildQualifyPrompt(agentName: string, isEmail: boolean, attemptInstructions: string, customOptions: string[] | null, contact: any): string {
+function buildQualifyPrompt(agentName: string, isEmail: boolean, attemptInstructions: string, customOptions: string[] | null, contact: CampaignContact | null | undefined): string {
   const isPropietario = contact?.contact_type === "propietario";
   const optionsBlock = customOptions
     ? `- Usa EXACTAMENTE las opciones predefinidas que se te proporcionan más abajo.`

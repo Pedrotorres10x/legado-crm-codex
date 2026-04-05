@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { differenceInDays } from 'date-fns';
 
@@ -22,8 +22,8 @@ const CONTACT_COOLING_DAYS = 180;
 export function usePropertyHealthColors(properties: { id: string; created_at: string; status: string }[]): Record<string, HealthInfo> {
   const [result, setResult] = useState<Record<string, HealthInfo>>({});
 
-  const availableProps = properties.filter(p => p.status === 'disponible');
-  const ids = availableProps.map(p => p.id);
+  const availableProps = useMemo(() => properties.filter(p => p.status === 'disponible'), [properties]);
+  const ids = useMemo(() => availableProps.map(p => p.id), [availableProps]);
   const idsKey = ids.join(',');
 
   useEffect(() => {
@@ -92,7 +92,7 @@ export function usePropertyHealthColors(properties: { id: string; created_at: st
     };
 
     fetch();
-  }, [idsKey]);
+  }, [availableProps, ids, idsKey]);
 
   return result;
 }
@@ -100,8 +100,8 @@ export function usePropertyHealthColors(properties: { id: string; created_at: st
 export function useContactHealthColors(contacts: { id: string; created_at: string; status: string }[]): Record<string, HealthInfo> {
   const [result, setResult] = useState<Record<string, HealthInfo>>({});
 
-  const activeContacts = contacts.filter(c => ['nuevo', 'en_seguimiento', 'activo'].includes(c.status));
-  const ids = activeContacts.map(c => c.id);
+  const activeContacts = useMemo(() => contacts.filter(c => ['nuevo', 'en_seguimiento', 'activo'].includes(c.status)), [contacts]);
+  const ids = useMemo(() => activeContacts.map(c => c.id), [activeContacts]);
   const idsKey = ids.join(',');
 
   useEffect(() => {
@@ -141,7 +141,7 @@ export function useContactHealthColors(contacts: { id: string; created_at: strin
     };
 
     fetch();
-  }, [idsKey]);
+  }, [activeContacts, ids, idsKey]);
 
   return result;
 }

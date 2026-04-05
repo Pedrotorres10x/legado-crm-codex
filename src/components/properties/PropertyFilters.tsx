@@ -8,15 +8,15 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { MapPin, SlidersHorizontal, X, ArrowUpDown, Check } from 'lucide-react';
-import { statusLabels } from './PropertyCard';
-
-export const propertyTypes = ['piso', 'casa', 'chalet', 'adosado', 'atico', 'duplex', 'estudio', 'local', 'oficina', 'nave', 'terreno', 'garaje', 'trastero', 'otro'] as const;
+import { statusLabels } from './property-card-config';
+import { propertyTypes } from './property-filters-config';
 
 export interface PropertyFiltersState {
   filterType: string;
   filterStatus: string;
   filterOperation: string;
   filterLegalRisk: string;
+  filterCohort: string;
   priceMin: string;
   priceMax: string;
   surfaceMin: string;
@@ -48,18 +48,29 @@ export const PropertyFilters = ({
   cityPopoverOpen,
   onCityPopoverChange,
 }: PropertyFiltersProps) => {
-  const { filterType, filterStatus, filterOperation, priceMin, priceMax, surfaceMin, bedroomsMin, filterMandate, sortBy, filterCity, filterCountry } = filters;
+  const { filterType, filterStatus, filterOperation, filterCohort, priceMin, priceMax, surfaceMin, bedroomsMin, filterMandate, sortBy, filterCity, filterCountry } = filters;
   const { filterLegalRisk } = filters;
 
   const activeFilterCount = useMemo(() =>
-    [filterOperation !== 'all', filterLegalRisk !== 'all', priceMin, priceMax, surfaceMin, bedroomsMin, filterCity, filterCountry, filterMandate !== 'all'].filter(Boolean).length,
-    [filterOperation, filterLegalRisk, priceMin, priceMax, surfaceMin, bedroomsMin, filterCity, filterCountry, filterMandate]
+    [
+      filterOperation !== 'all',
+      filterLegalRisk !== 'all',
+      filterCohort !== 'all',
+      priceMin,
+      priceMax,
+      surfaceMin,
+      bedroomsMin !== 'any',
+      filterCity,
+      filterCountry,
+      filterMandate !== 'all',
+    ].filter(Boolean).length,
+    [filterOperation, filterLegalRisk, filterCohort, priceMin, priceMax, surfaceMin, bedroomsMin, filterCity, filterCountry, filterMandate]
   );
 
   const clearAdvancedFilters = () => {
     onFiltersChange({
       filterOperation: 'all', priceMin: '', priceMax: '',
-      surfaceMin: '', bedroomsMin: '', filterCity: '', filterCountry: '', filterMandate: 'all', filterLegalRisk: 'all',
+      surfaceMin: '', bedroomsMin: '', filterCity: '', filterCountry: '', filterMandate: 'all', filterLegalRisk: 'all', filterCohort: 'all',
     });
   };
 
@@ -105,6 +116,13 @@ export const PropertyFilters = ({
               {activeFilterCount}
             </Badge>
           )}
+        </Button>
+
+        <Button
+          variant={filterCohort === 'kyero_alicante_50' ? 'secondary' : 'outline'}
+          onClick={() => onFiltersChange({ filterCohort: filterCohort === 'kyero_alicante_50' ? 'all' : 'kyero_alicante_50' })}
+        >
+          Muestra Alicante 50
         </Button>
       </div>
 

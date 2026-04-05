@@ -3,6 +3,11 @@ import { corsHeaders, json, handleCors } from '../_shared/cors.ts';
 import { callAI, AIError } from '../_shared/ai.ts';
 import { getAIContext, logAIInteraction } from '../_shared/ai-context.ts';
 
+interface SummaryInteractionRow {
+  subject?: string | null;
+  interaction_date?: string | null;
+}
+
 Deno.serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
@@ -43,21 +48,21 @@ Deno.serve(async (req) => {
     const interactions = interactionsRes.data || [];
 
     // Extract Brevo email engagement metrics
-    const brevoEvents = interactions.filter((i: any) => i.subject?.startsWith("Brevo:"));
-    const opens = brevoEvents.filter((i: any) => i.subject?.includes("Abrió")).length;
-    const clicks = brevoEvents.filter((i: any) => i.subject?.includes("Clic")).length;
-    const bounces = brevoEvents.filter((i: any) => i.subject?.includes("Rebote")).length;
-    const unsubscribed = brevoEvents.filter((i: any) => i.subject?.includes("baja")).length;
-    const hotAlerts = brevoEvents.filter((i: any) => i.subject?.includes("ALTO INTERÉS")).length;
-    const delivered = brevoEvents.filter((i: any) => i.subject?.includes("entregado")).length;
+    const brevoEvents = (interactions as SummaryInteractionRow[]).filter((i) => i.subject?.startsWith("Brevo:"));
+    const opens = brevoEvents.filter((i) => i.subject?.includes("Abrió")).length;
+    const clicks = brevoEvents.filter((i) => i.subject?.includes("Clic")).length;
+    const bounces = brevoEvents.filter((i) => i.subject?.includes("Rebote")).length;
+    const unsubscribed = brevoEvents.filter((i) => i.subject?.includes("baja")).length;
+    const hotAlerts = brevoEvents.filter((i) => i.subject?.includes("ALTO INTERÉS")).length;
+    const delivered = brevoEvents.filter((i) => i.subject?.includes("entregado")).length;
 
     const recentEngagement = brevoEvents
-      .filter((i: any) => i.subject?.includes("Abrió") || i.subject?.includes("Clic"))
+      .filter((i) => i.subject?.includes("Abrió") || i.subject?.includes("Clic"))
       .slice(0, 10)
-      .map((i: any) => `${i.interaction_date}: ${i.subject}`)
+      .map((i) => `${i.interaction_date}: ${i.subject}`)
       .join("\n");
 
-    const manualInteractions = interactions.filter((i: any) => !i.subject?.startsWith("Brevo:"));
+    const manualInteractions = (interactions as SummaryInteractionRow[]).filter((i) => !i.subject?.startsWith("Brevo:"));
 
     const engagementBlock = brevoEvents.length > 0 ? `
 📊 EMAIL ENGAGEMENT (datos de Brevo):

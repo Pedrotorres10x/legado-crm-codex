@@ -5,6 +5,21 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+interface AgentCardProperty {
+  id: string;
+  title: string | null;
+  city: string | null;
+  zone: string | null;
+  price: number | null;
+  property_type: string | null;
+  operation: string | null;
+  bedrooms: number | null;
+  bathrooms: number | null;
+  surface_area: number | null;
+  images: string[] | null;
+  portal_token: string | null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -65,7 +80,7 @@ Deno.serve(async (req) => {
       .limit(50);
 
     // Build property summaries with first image only
-    const propertySummaries = (properties || []).map((p: any) => ({
+    const propertySummaries = ((properties || []) as AgentCardProperty[]).map((p) => ({
       id: p.id,
       title: p.title,
       city: p.city,

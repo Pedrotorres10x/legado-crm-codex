@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, CheckCircle2, ShieldAlert } from 'lucide-react';
 import { subMonths } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -23,6 +24,22 @@ type EvaluationRow = {
   evaluation: ReturnType<typeof buildAgentEvaluation>;
 };
 
+type RoleRow = Pick<Database['public']['Tables']['user_roles']['Row'], 'user_id'>;
+type InteractionRow = Pick<
+  Database['public']['Tables']['interactions']['Row'],
+  'agent_id' | 'interaction_type' | 'interaction_date' | 'contact_id' | 'property_id'
+>;
+type ContactRow = Pick<
+  Database['public']['Tables']['contacts']['Row'],
+  'id' | 'agent_id' | 'status' | 'updated_at' | 'contact_type' | 'tags' | 'source_ref'
+>;
+type PropertyRow = Pick<
+  Database['public']['Tables']['properties']['Row'],
+  'agent_id' | 'created_at' | 'arras_status' | 'arras_date' | 'status'
+>;
+type VisitRow = Pick<Database['public']['Tables']['visits']['Row'], 'agent_id' | 'result'>;
+type OfferRow = Pick<Database['public']['Tables']['offers']['Row'], 'agent_id' | 'status'>;
+
 const verdictWeight = {
   mal: 0,
   atencion: 1,
@@ -42,50 +59,44 @@ const AdminAgentEvaluationOverview = () => {
       const start = subMonths(now, 3);
       const startISO = start.toISOString();
 
-      // Phase 1: get agent IDs first so we can filter all subsequent queries
-      const { data: roles } = await supabase.from('user_roles').select('user_id').eq('role', 'agent');
-      if (cancelled) return;
-
-      const agentIds = ((roles as any[]) || []).map((r) => r.user_id);
-      if (agentIds.length === 0) { setRows([]); setLoading(false); return; }
-
-      // Phase 2: fetch only data belonging to agents
-      const [{ data: profiles }, { data: interactions }, { data: contacts }, { data: properties }, { data: visits }, { data: offers }] =
+      const [{ data: roles }, { data: profiles }, { data: interactions }, { data: contacts }, { data: properties }, { data: visits }, { data: offers }] =
         await Promise.all([
-          supabase.from('profiles').select('user_id, full_name').in('user_id', agentIds).order('full_name'),
+          supabase.from('user_roles').select('user_id').eq('role', 'agent'),
+          supabase.from('profiles').select('user_id, full_name').order('full_name'),
           supabase
             .from('interactions')
             .select('agent_id, interaction_type, interaction_date, contact_id, property_id')
-            .in('agent_id', agentIds)
             .gte('interaction_date', startISO),
           supabase
             .from('contacts')
-            .select('agent_id, status, updated_at, contact_type, tags, source_ref')
-            .in('agent_id', agentIds),
+            .select('agent_id, status, updated_at, contact_type, tags, source_ref'),
           supabase
             .from('properties')
-            .select('agent_id, created_at, arras_status, arras_date, status')
-            .in('agent_id', agentIds),
+            .select('agent_id, created_at, arras_status, arras_date, status'),
           supabase
             .from('visits')
             .select('agent_id, result')
-            .in('agent_id', agentIds)
             .lte('visit_date', now.toISOString()),
-          supabase.from('offers').select('agent_id, status').in('agent_id', agentIds),
+          supabase.from('offers').select('agent_id, status'),
         ]);
 
       if (cancelled) return;
 
-      const agentIdSet = new Set(agentIds);
-      const agentProfiles = ((profiles as AgentProfile[]) || []).filter((profile) => agentIdSet.has(profile.user_id) && profile.full_name);
+      const roleIds = new Set(((roles as RoleRow[] | null) || []).map((role) => role.user_id));
+      const agentProfiles = ((profiles as AgentProfile[]) || []).filter((profile) => roleIds.has(profile.user_id) && profile.full_name);
+      const interactionRows = (interactions as InteractionRow[] | null) || [];
+      const contactRows = (contacts as ContactRow[] | null) || [];
+      const propertyRows = (properties as PropertyRow[] | null) || [];
+      const visitRows = (visits as VisitRow[] | null) || [];
+      const offerRows = (offers as OfferRow[] | null) || [];
 
       const nextRows = agentProfiles
         .map((profile) => {
-          const agentInteractions = ((interactions as any[]) || []).filter((interaction) => interaction.agent_id === profile.user_id);
-          const agentContacts = ((contacts as any[]) || []).filter((contact) => contact.agent_id === profile.user_id);
-          const agentProperties = ((properties as any[]) || []).filter((property) => property.agent_id === profile.user_id);
-          const agentVisits = ((visits as any[]) || []).filter((visit) => visit.agent_id === profile.user_id);
-          const agentOffers = ((offers as any[]) || []).filter((offer) => offer.agent_id === profile.user_id);
+          const agentInteractions = interactionRows.filter((interaction) => interaction.agent_id === profile.user_id);
+          const agentContacts = contactRows.filter((contact) => contact.agent_id === profile.user_id);
+          const agentProperties = propertyRows.filter((property) => property.agent_id === profile.user_id);
+          const agentVisits = visitRows.filter((visit) => visit.agent_id === profile.user_id);
+          const agentOffers = offerRows.filter((offer) => offer.agent_id === profile.user_id);
 
           const toquesCount = countHorusTouches(agentInteractions);
           const entrevistasCount = countCaptureInterviews(agentInteractions);
@@ -152,7 +163,7 @@ const AdminAgentEvaluationOverview = () => {
             visitsWithoutOffer: agentVisits.filter((visit) => ['seguimiento', 'segunda_visita', 'realizada'].includes(visit.result || '')).length,
           };
 
-          const influenceTotal = getAgentInfluenceCircle(agentContacts as any[]).total;
+          const influenceTotal = getAgentInfluenceCircle(agentContacts).total;
 
           return {
             agentId: profile.user_id,

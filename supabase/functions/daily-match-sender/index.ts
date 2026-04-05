@@ -1,34 +1,135 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders, json } from '../_shared/cors.ts'
 import { expandCityRadius, normalizeCityName } from '../_shared/geo-coords.ts'
+import {
+  bedroomMatches,
+  MATCHING_PILLARS,
+  operationMatches,
+  propertyTypeMatches,
+  scoreBedroomFit,
+  scoreBudgetFit,
+} from '../_shared/matching.ts'
 import { sendMessage } from '../_shared/send-message.ts'
+import { isAutomationOutboundEnabled } from '../_shared/automation-outbound.ts'
 
 // ─── WhatsApp compliance: rate limits & messaging rules ───
 const WA_MAX_PER_DAY = 12
 const WA_DELAY_MIN_MS = 120_000  // 2 minutes minimum
 const WA_DELAY_MAX_MS = 300_000  // 5 minutes maximum
+const WA_RETRY_AFTER_DAYS = 7
+const WA_MAX_OPENER_ATTEMPTS = 3
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 const randomDelay = () => WA_DELAY_MIN_MS + Math.random() * (WA_DELAY_MAX_MS - WA_DELAY_MIN_MS)
 
-// ─── Alicia: amiga experta, cero comercial, cercana y natural ───
-function buildWhatsAppOpener(contactName: string, prop: any, price: string): string {
-  const name = contactName ? ` ${contactName}` : ''
-  const city = prop.city || prop.province || 'tu zona'
-  const type = prop.property_type || 'vivienda'
+interface MatchSenderProperty {
+  id: string
+  title: string | null
+  city: string | null
+  province: string | null
+  zone: string | null
+  price: number | null
+  bedrooms: number | null
+  bathrooms: number | null
+  surface_area: number | null
+  property_type: string | null
+  operation: string | null
+  images: string[] | null
+  description: string | null
+  image_order: unknown
+}
 
-  const templates = [
-    `Hola${name} 👋 Soy Alicia, de Legado Inmobiliaria. He visto un ${type} en ${city} por ${price} y me ha recordado a lo que buscas. ¿Te cuento un poco más? Sin compromiso 🙂`,
+interface MatchSenderContact {
+  id: string
+  full_name: string | null
+  email: string | null
+  phone: string | null
+  agent_id: string | null
+  gdpr_consent: boolean | null
+  opt_out?: boolean | null
+  tags: string[] | null
+}
 
-    `Hola${name}! Te escribo porque ha salido un ${type} en ${city} (${price}) que creo que te puede encajar. Si te apetece que te pase los detalles, me dices. Sin agobios 😊`,
+interface MatchSenderDemand {
+  id: string
+  contacts: MatchSenderContact | null
+  cities: string[] | null
+  zones: string[] | null
+  min_price: number | null
+  max_price: number | null
+  property_type: string | null
+  property_types: string[] | null
+  operation: string | null
+  min_bedrooms: number | null
+  min_surface: number | null
+}
 
-    `Buenas${name} 🙂 Soy Alicia. Ha aparecido un ${type} interesante en ${city} a ${price} y he pensado en ti. ¿Quieres que te cuente? Solo si te viene bien, claro.`,
+interface MatchConfigValue {
+  price_margin?: number | string
+  radius_km?: number | string
+}
 
-    `Hola${name}, soy Alicia de Legado. Me ha llegado un ${type} en ${city} por ${price} que encaja bastante con lo que buscas. ¿Te apetece que te dé más info o prefieres que no te moleste? 🙂`,
+interface MatchSenderLogRow {
+  contact_id: string
+  property_id: string | null
+  direction: string
+  channel: string
+  source: string | null
+  created_at: string
+  metadata: {
+    match_whatsapp_stage?: string
+    opener_attempt?: number | string
+  } | null
+}
 
-    `Hola${name} 👋 Ha salido algo en ${city} que creo que merece la pena que veas — un ${type} a ${price}. ¿Te paso los detalles por aquí? Soy Alicia, de Legado 🙂`,
-  ]
+function stripUrls(text: string): string {
+  return text
+    .replace(/https?:\/\/\S+/gi, '')
+    .replace(/www\.\S+/gi, '')
+    .replace(/wa\.me\/\S+/gi, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
 
-  return templates[Math.floor(Math.random() * templates.length)]
+function slugify(s: string): string {
+  return s.toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+function buildPropertyUrl(prop: Pick<MatchSenderProperty, 'id' | 'title' | 'city' | 'province'>): string {
+  const titleSlug = slugify(prop.title || 'propiedad')
+  const citySlug = slugify(prop.city || prop.province || '')
+  const uuidSuffix = String(prop.id || '').replace(/-/g, '').slice(-5)
+  const propertySlug = citySlug
+    ? `${titleSlug}-${citySlug}-${uuidSuffix}`
+    : `${titleSlug}-${uuidSuffix}`
+
+  return `https://legadocoleccion.es/propiedad/${propertySlug}`
+}
+
+function isRetryWindowOpen(sentAt: string | null | undefined): boolean {
+  if (!sentAt) return false
+  const sentTime = new Date(sentAt).getTime()
+  if (Number.isNaN(sentTime)) return false
+  const elapsedMs = Date.now() - sentTime
+  return elapsedMs >= WA_RETRY_AFTER_DAYS * 24 * 60 * 60 * 1000
+}
+
+function addDaysIso(baseDate: string, days: number): string {
+  const d = new Date(baseDate)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString()
+}
+
+// ─── Alicia: cercana, natural y con pie a respuesta ───
+function buildWhatsAppOpener(contactName: string): string {
+  const greeting = contactName
+    ? `Hola ${contactName}, soy Alicia, de Legado.`
+    : 'Hola, soy Alicia, de Legado.'
+
+  return `${greeting} Me acaba de entrar una vivienda que podría cuadrarte bastante. Si quieres, te cuento un poco y me dices qué te parece.`
 }
 
 Deno.serve(async (req) => {
@@ -52,6 +153,11 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const automationEnabled = await isAutomationOutboundEnabled()
+    if (!automationEnabled) {
+      return json({ message: 'Automatizacion saliente desactivada', automation_enabled: false })
+    }
+
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -82,7 +188,7 @@ Deno.serve(async (req) => {
       .select('value')
       .eq('key', 'match_config')
       .maybeSingle()
-    const matchConfig = matchConfigRow?.value as any
+    const matchConfig = matchConfigRow?.value as MatchConfigValue | null
     const priceMarginPct = matchConfig?.price_margin
       ? Number(matchConfig.price_margin) / 100
       : 0.25
@@ -115,11 +221,11 @@ Deno.serve(async (req) => {
     }
 
     // 3. Group demands by contact_id
-    const groupedByContact = new Map<string, typeof demands>()
-    for (const demand of demands) {
-      const contact = demand.contacts as any
+    const groupedByContact = new Map<string, MatchSenderDemand[]>()
+    for (const demand of demands as MatchSenderDemand[]) {
+      const contact = demand.contacts
       if (!contact) continue
-      const cId = contact.id as string
+      const cId = contact.id
       if (!groupedByContact.has(cId)) groupedByContact.set(cId, [])
       groupedByContact.get(cId)!.push(demand)
     }
@@ -128,6 +234,9 @@ Deno.serve(async (req) => {
     const demandIds = demands.map(d => d.id)
     const contactPropertySet = new Set<string>()
     const sentSet = new Set<string>()
+    const openerByContactProperty = new Map<string, { created_at: string; attempts: number }>()
+    const followUpSet = new Set<string>()
+    const latestInboundByContact = new Map<string, string>()
 
     let offset = 0
     const pageSize = 1000
@@ -143,7 +252,7 @@ Deno.serve(async (req) => {
       for (const m of batch) {
         sentSet.add(`${m.demand_id}_${m.property_id}`)
         const ownerDemand = demands.find(d => d.id === m.demand_id)
-        const ownerContact = ownerDemand?.contacts as any
+        const ownerContact = ownerDemand?.contacts
         if (ownerContact) {
           contactPropertySet.add(`${ownerContact.id}_${m.property_id}`)
         }
@@ -153,12 +262,66 @@ Deno.serve(async (req) => {
       offset += pageSize
     }
 
+    // 4b. Load communication history needed for WhatsApp retry logic
+    const contactIds = [...groupedByContact.keys()]
+    if (contactIds.length > 0) {
+      let commOffset = 0
+      while (true) {
+        const { data: commBatch } = await supabase
+          .from('communication_logs')
+          .select('contact_id, property_id, direction, channel, source, created_at, metadata')
+          .in('contact_id', contactIds)
+          .eq('channel', 'whatsapp')
+          .range(commOffset, commOffset + pageSize - 1)
+
+        if (!commBatch || commBatch.length === 0) break
+
+        for (const logEntry of commBatch as MatchSenderLogRow[]) {
+          const contactId = logEntry.contact_id
+          const propertyId = logEntry.property_id
+          const key = propertyId ? `${contactId}_${propertyId}` : null
+
+          if (logEntry.direction === 'inbound') {
+            const prev = latestInboundByContact.get(contactId)
+            if (!prev || new Date(logEntry.created_at).getTime() > new Date(prev).getTime()) {
+              latestInboundByContact.set(contactId, logEntry.created_at)
+            }
+            continue
+          }
+
+          if (!key) continue
+
+          if (logEntry.source === 'cruces_followup') {
+            followUpSet.add(key)
+            continue
+          }
+
+          if (logEntry.source !== 'cruces') continue
+
+          const stage = logEntry.metadata?.match_whatsapp_stage || 'opener'
+          if (stage !== 'opener') continue
+
+          const current = openerByContactProperty.get(key)
+          const currentAttempts = Number(logEntry.metadata?.opener_attempt || 1)
+          if (!current || new Date(logEntry.created_at).getTime() > new Date(current.created_at).getTime()) {
+            openerByContactProperty.set(key, {
+              created_at: logEntry.created_at,
+              attempts: Number.isFinite(currentAttempts) && currentAttempts > 0 ? currentAttempts : 1,
+            })
+          }
+        }
+
+        if (commBatch.length < pageSize) break
+        commOffset += pageSize
+      }
+    }
+
     // 5. Process per contact
     let waSentThisRun = 0
 
     for (const [contactId, contactDemands] of groupedByContact) {
 
-      const contact = (contactDemands[0].contacts as any)
+      const contact = contactDemands[0].contacts
       if (!contact) { log.contacts_skipped++; continue }
 
       // Skip contacts without GDPR consent (must have voluntarily left their number)
@@ -181,7 +344,7 @@ Deno.serve(async (req) => {
         continue
       }
 
-      let bestCandidate: { prop: any; demand: any; score: number } | null = null
+      let bestCandidate: { prop: MatchSenderProperty; demand: MatchSenderDemand; score: number } | null = null
       let skippedAlreadySent = 0
 
       for (const demand of contactDemands) {
@@ -202,8 +365,26 @@ Deno.serve(async (req) => {
         if (demandCities.length === 0 && demandZones.length === 0) continue
 
         for (const prop of allProperties) {
-          if (contactPropertySet.has(`${contactId}_${prop.id}`)) { skippedAlreadySent++; continue }
-          if (sentSet.has(`${demand.id}_${prop.id}`)) { skippedAlreadySent++; continue }
+          const contactPropertyKey = `${contactId}_${prop.id}`
+          const demandPropertyKey = `${demand.id}_${prop.id}`
+          const priorOpener = openerByContactProperty.get(contactPropertyKey)
+          const latestInboundAt = latestInboundByContact.get(contactId)
+          const hasInboundAfterOpener = Boolean(
+            priorOpener &&
+            latestInboundAt &&
+            new Date(latestInboundAt).getTime() > new Date(priorOpener.created_at).getTime()
+          )
+          const retryEligible = Boolean(
+            channel === 'whatsapp' &&
+            priorOpener &&
+            priorOpener.attempts < WA_MAX_OPENER_ATTEMPTS &&
+            !followUpSet.has(contactPropertyKey) &&
+            !hasInboundAfterOpener &&
+            isRetryWindowOpen(priorOpener.created_at)
+          )
+
+          if (!retryEligible && contactPropertySet.has(contactPropertyKey)) { skippedAlreadySent++; continue }
+          if (!retryEligible && sentSet.has(demandPropertyKey)) { skippedAlreadySent++; continue }
 
           const propCityNorm = normalizeCityName(prop.city || '')
           const propProvince = (prop.province || '').toLowerCase().trim()
@@ -220,21 +401,28 @@ Deno.serve(async (req) => {
             if (!cityMatch && !zoneMatch) continue
           }
 
-          if (demand.max_price && prop.price) {
-            if (Number(prop.price) > Number(demand.max_price) * (1 + priceMarginPct)) continue
-          }
-          if (demand.min_price && prop.price) {
-            if (Number(prop.price) < Number(demand.min_price) * (1 - priceMarginPct)) continue
-          }
+          const budget = scoreBudgetFit(demand.min_price, demand.max_price, prop.price, priceMarginPct)
+          if (!budget.ok) continue
 
-          if (demand.property_type && prop.property_type && demand.property_type !== prop.property_type) continue
-          if (demand.operation && prop.operation && demand.operation !== prop.operation && demand.operation !== 'ambas') continue
-          if (demand.min_bedrooms && prop.bedrooms && prop.bedrooms < demand.min_bedrooms) continue
+          if (!propertyTypeMatches(demand.property_type, demand.property_types, prop.property_type)) continue
+          if (!operationMatches(demand.operation, prop.operation)) continue
+          if (!bedroomMatches(demand.min_bedrooms, prop.bedrooms)) continue
           if (demand.min_surface && prop.surface_area && Number(prop.surface_area) < Number(demand.min_surface)) continue
 
           let score = 0
-          if (demand.max_price && prop.price && Number(prop.price) <= Number(demand.max_price)) score += 10
-          if (demand.min_bedrooms && prop.bedrooms && prop.bedrooms >= demand.min_bedrooms) score += 5
+          score += Math.round(MATCHING_PILLARS.budget * budget.score)
+
+          if (demand.min_bedrooms && prop.bedrooms) {
+            score += Math.round(MATCHING_PILLARS.bedrooms * scoreBedroomFit(demand.min_bedrooms, prop.bedrooms))
+          }
+
+          if (propertyTypeMatches(demand.property_type, demand.property_types, prop.property_type)) {
+            score += MATCHING_PILLARS.propertyFamily
+          }
+
+          if (operationMatches(demand.operation, prop.operation)) {
+            score += MATCHING_PILLARS.operation
+          }
 
           if (!bestCandidate || score > bestCandidate.score) {
             bestCandidate = { prop, demand, score }
@@ -254,11 +442,16 @@ Deno.serve(async (req) => {
       const contactName = (rawName && rawName.length > 1 && !/^\d/.test(rawName) && !contact.email?.toLowerCase().startsWith(rawName.toLowerCase()) && !invalidNames.includes(rawName.toLowerCase()) && !(contact.full_name || '').toLowerCase().includes('sin asignar')) ? rawName : ''
       const price = bestProp.price ? `${Number(bestProp.price).toLocaleString('es-ES')} €` : 'Consultar'
 
-      // Build property link with OG-friendly slug
       const propertyUrl = buildPropertyUrl(bestProp)
+      const priorOpener = openerByContactProperty.get(`${contactId}_${bestProp.id}`)
+      const openerAttempt = priorOpener ? priorOpener.attempts + 1 : 1
+      const sentAtIso = new Date().toISOString()
+      const nextRetryAt = channel === 'whatsapp' && openerAttempt < WA_MAX_OPENER_ATTEMPTS
+        ? addDaysIso(sentAtIso, WA_RETRY_AFTER_DAYS)
+        : null
 
       // Build messages — WhatsApp uses conversational opener (NO links)
-      const whatsappMsg = buildWhatsAppOpener(contactName, bestProp, price)
+      const whatsappMsg = stripUrls(buildWhatsAppOpener(contactName))
 
       const emailSubject = `${bestProp.title} — ${bestProp.city || 'Nueva propiedad'} · Legado Colección`
       const htmlContent = buildEmailHtml(contactName, bestProp, price, propertyUrl)
@@ -292,11 +485,12 @@ Deno.serve(async (req) => {
         } else {
           throw new Error(result.error || 'Send failed')
         }
-      } catch (e: any) {
-        sendError = e.message
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : 'Send failed'
+        sendError = message
         if (channel === 'whatsapp') log.whatsapp_failed++
         else log.emails_failed++
-        log.errors.push(`${channel} ${contact.phone || contact.email}: ${e.message}`)
+        log.errors.push(`${channel} ${contact.phone || contact.email}: ${message}`)
       }
 
       // Log in match_emails (for email channel)
@@ -313,13 +507,19 @@ Deno.serve(async (req) => {
         })
       }
 
+      const matchStatus = channel === 'whatsapp'
+        ? 'pendiente'
+        : sendOk
+          ? 'enviado'
+          : 'pendiente'
+
       // Create match record
       await supabase.from('matches').upsert(
         {
           demand_id: bestDemand.id,
           property_id: bestProp.id,
           compatibility: 80,
-          status: sendOk ? 'enviado' : 'pendiente',
+          status: matchStatus,
           agent_id: contact.agent_id || null,
           notes: null,
         },
@@ -331,7 +531,7 @@ Deno.serve(async (req) => {
       const interactionType = channel === 'whatsapp' ? 'whatsapp' : 'email'
       await supabase.from('interactions').insert({
         contact_id: contact.id,
-        interaction_type: interactionType as any,
+        interaction_type: interactionType,
         subject: `Auto-match: ${bestProp.title}`,
         description: `Propiedad enviada automáticamente por ${channel === 'whatsapp' ? 'WhatsApp (Green API)' : 'email (Brevo)'} (campaña: cruces). Ciudad: ${bestProp.city || 'N/A'}, Precio: ${price}. ${sendOk ? 'Enviado OK' : `Error: ${sendError}`}`,
         agent_id: contact.agent_id || null,
@@ -351,10 +551,27 @@ Deno.serve(async (req) => {
         agent_id: contact.agent_id || null,
         property_id: bestProp.id,
         demand_id: bestDemand.id,
+        metadata: channel === 'whatsapp'
+          ? {
+              match_whatsapp_stage: 'opener',
+              property_url: propertyUrl,
+              opener_attempt: openerAttempt,
+              max_opener_attempts: WA_MAX_OPENER_ATTEMPTS,
+              pending_response: true,
+              next_retry_at: nextRetryAt,
+              retries_remaining: Math.max(0, WA_MAX_OPENER_ATTEMPTS - openerAttempt),
+            }
+          : { property_url: propertyUrl },
       })
 
       contactPropertySet.add(`${contactId}_${bestProp.id}`)
       sentSet.add(`${bestDemand.id}_${bestProp.id}`)
+      if (channel === 'whatsapp') {
+        openerByContactProperty.set(`${contactId}_${bestProp.id}`, {
+          created_at: sentAtIso,
+          attempts: openerAttempt,
+        })
+      }
     }
 
     await saveLog()
@@ -409,19 +626,7 @@ Deno.serve(async (req) => {
   }
 })
 
-function slugify(s: string): string {
-  return s.toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-}
-
-function buildPropertyUrl(prop: any): string {
-  const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
-  return `${supabaseUrl}/functions/v1/og-property?id=${prop.id}`
-}
-
-function buildEmailHtml(contactName: string, prop: any, price: string, propertyUrl: string): string {
+function buildEmailHtml(contactName: string, prop: MatchSenderProperty, price: string, propertyUrl: string): string {
   return `
     <div style="font-family: Georgia, 'Times New Roman', serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #fff;">
       <div style="text-align: center; padding: 20px 0; border-bottom: 2px solid #1a365d;">
@@ -459,4 +664,3 @@ function buildEmailHtml(contactName: string, prop: any, price: string, propertyU
     </div>
   `
 }
-

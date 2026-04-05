@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { countCaptureInterviews, countHorusTouches } from '@/lib/horus-model';
+import type { HorusInteractionLike } from '@/lib/horus-model';
 
 type Props = {
   currentAgentId?: string;
@@ -25,6 +26,22 @@ type AgentMetricRow = {
   visitasCaptacion: number;
   captaciones: number;
   arras: number;
+};
+
+type InteractionMetricRow = HorusInteractionLike & {
+  agent_id: string | null;
+  interaction_date: string;
+};
+
+type PropertyMetricRow = {
+  agent_id: string | null;
+  created_at: string;
+  arras_status: string | null;
+  arras_date: string | null;
+};
+
+type UserRoleRow = {
+  user_id: string;
 };
 
 const metricConfig: Record<MetricKey, { label: string; icon: typeof PhoneCall; helper: string }> = {
@@ -52,8 +69,8 @@ const metricConfig: Record<MetricKey, { label: string; icon: typeof PhoneCall; h
 
 const buildCompetitionRows = (
   profiles: AgentProfile[],
-  interactions: any[],
-  properties: any[],
+  interactions: InteractionMetricRow[],
+  properties: PropertyMetricRow[],
   start: Date,
   now: Date,
 ): AgentMetricRow[] =>
@@ -72,8 +89,8 @@ const buildCompetitionRows = (
     return {
       agentId: profile.user_id,
       name: profile.full_name || 'Sin nombre',
-      toques: countHorusTouches(agentInteractions as any),
-      visitasCaptacion: countCaptureInterviews(agentInteractions as any),
+      toques: countHorusTouches(agentInteractions),
+      visitasCaptacion: countCaptureInterviews(agentInteractions),
       captaciones,
       arras,
     };
@@ -106,10 +123,18 @@ const AgentCompetitionCard = ({ currentAgentId }: Props) => {
 
       if (cancelled) return;
 
-      const roleIds = new Set(((roles as any[]) || []).map((role) => role.user_id));
+      const roleIds = new Set(((roles ?? []) as UserRoleRow[]).map((role) => role.user_id));
       const agentProfiles = ((profiles as AgentProfile[]) || []).filter((profile) => roleIds.has(profile.user_id));
 
-      setRows(buildCompetitionRows(agentProfiles, (interactions as any[]) || [], (properties as any[]) || [], start, now));
+      setRows(
+        buildCompetitionRows(
+          agentProfiles,
+          (interactions ?? []) as InteractionMetricRow[],
+          (properties ?? []) as PropertyMetricRow[],
+          start,
+          now,
+        ),
+      );
       setLoading(false);
     };
 

@@ -6,6 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Sparkles, Send, Loader2, Check, X, BedDouble, Bath, Maximize, Euro, MapPin, Building2, Edit } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import ReactMarkdown from 'react-markdown';
@@ -41,6 +42,11 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
 }
+
+type PropertyInsert = Database['public']['Tables']['properties']['Insert'];
+type PropertyType = Database['public']['Enums']['property_type'];
+type OperationType = Database['public']['Enums']['operation_type'];
+type PropertyStatus = Database['public']['Enums']['property_status'];
 
 const fieldLabels: Record<string, string> = {
   title: 'Título', property_type: 'Tipo', operation: 'Operación', price: 'Precio',
@@ -98,9 +104,11 @@ const AIPropertyCreator = ({ onCreated, onCancel }: Props) => {
       const ext = data.extracted as ExtractedData;
       // Merge with existing data (keep old values if new ones are undefined)
       if (extracted) {
-        const merged: any = { ...extracted };
+        const merged: ExtractedData = { ...extracted };
         for (const [k, v] of Object.entries(ext)) {
-          if (v !== undefined && v !== null && v !== '') merged[k] = v;
+          if (v !== undefined && v !== null && v !== '') {
+            merged[k as keyof ExtractedData] = v as never;
+          }
         }
         setExtracted(merged);
       } else {
@@ -122,11 +130,11 @@ const AIPropertyCreator = ({ onCreated, onCancel }: Props) => {
     setSaving(true);
 
     const { missing_fields, follow_up_message, features, ...rest } = extracted;
-    const { data: propertyData, error } = await supabase.from('properties').insert([{
+    const payload: PropertyInsert = {
       title: rest.title!,
-      property_type: (rest.property_type || 'otro') as any,
-      operation: (rest.operation || 'venta') as any,
-      status: (rest.status || 'disponible') as any,
+      property_type: (rest.property_type || 'otro') as PropertyType,
+      operation: (rest.operation || 'venta') as OperationType,
+      status: (rest.status || 'disponible') as PropertyStatus,
       price: rest.price || null,
       surface_area: rest.surface_area || null,
       built_area: rest.built_area || null,
@@ -146,7 +154,9 @@ const AIPropertyCreator = ({ onCreated, onCancel }: Props) => {
       has_garden: rest.has_garden || false,
       features: features || [],
       agent_id: user?.id,
-    }]).select('id').single();
+    };
+
+    const { data: propertyData, error } = await supabase.from('properties').insert([payload]).select('id').single();
 
     setSaving(false);
     if (error || !propertyData) { toast.error('Error al guardar: ' + (error?.message || 'Sin datos')); return; }
@@ -154,7 +164,7 @@ const AIPropertyCreator = ({ onCreated, onCancel }: Props) => {
     onCreated(propertyData.id);
   };
 
-  const formatValue = (key: string, val: any): string => {
+  const formatValue = (key: string, val: string | number | boolean | null | undefined): string => {
     if (key === 'price') return val ? `${Number(val).toLocaleString('es-ES')} €` : '-';
     if (key === 'surface_area' || key === 'built_area') return val ? `${val} m²` : '-';
     return String(val ?? '-');
@@ -252,9 +262,13 @@ const AIPropertyCreator = ({ onCreated, onCancel }: Props) => {
             {extracted.bedrooms != null && extracted.bedrooms > 0 && <Badge variant="outline" className="gap-1"><BedDouble className="h-3 w-3" />{extracted.bedrooms} hab</Badge>}
             {extracted.bathrooms != null && extracted.bathrooms > 0 && <Badge variant="outline" className="gap-1"><Bath className="h-3 w-3" />{extracted.bathrooms} baños</Badge>}
             {extracted.surface_area && <Badge variant="outline" className="gap-1"><Maximize className="h-3 w-3" />{extracted.surface_area} m²</Badge>}
-            {Object.entries(boolLabels).map(([k, label]) => 
-              (extracted as any)[k] ? <Badge key={k} variant="secondary" className="text-xs">{label}</Badge> : null
-            )}
+            {Object.entries(boolLabels).map(([k, label]) => {
+              const key = k as keyof Pick<
+                ExtractedData,
+                'has_elevator' | 'has_garage' | 'has_pool' | 'has_terrace' | 'has_garden'
+              >;
+              return extracted[key] ? <Badge key={k} variant="secondary" className="text-xs">{label}</Badge> : null;
+            })}
             {extracted.features?.map((f, i) => <Badge key={i} variant="outline" className="text-xs">{f}</Badge>)}
           </div>
           {extracted.missing_fields && extracted.missing_fields.length > 0 && (

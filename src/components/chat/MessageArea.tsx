@@ -130,7 +130,7 @@ const MessageArea = ({ channelId, onNewMessage }: Props) => {
       .subscribe();
 
     return () => { supabase.removeChannel(sub); };
-  }, [channelId, user]);
+  }, [channelId, onNewMessage, user]);
 
   // Auto-scroll to bottom
   useEffect(() => {

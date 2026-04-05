@@ -6,8 +6,15 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 
+type PropertyVideo = {
+  name?: string;
+  url?: string;
+  file_name?: string;
+  [key: string]: unknown;
+};
+
 type PropertyExtendedMediaPanelProps = {
-  videos: any[];
+  videos: PropertyVideo[];
   virtualTour: string;
   savingTour: boolean;
   uploading: boolean;

@@ -5,6 +5,17 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+interface LinkInBioLink {
+  id: string;
+  [key: string]: unknown;
+}
+
+interface LinkInBioPayload {
+  company: Record<string, unknown>;
+  links: LinkInBioLink[];
+  social: Record<string, unknown>;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -18,7 +29,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const body = await req.json();
+    const body = await req.json() as Partial<LinkInBioPayload>;
 
     // Validate required structure
     if (!body.company || !body.links || !body.social) {
@@ -35,7 +46,7 @@ Deno.serve(async (req) => {
 
     // Remove the whatsapp link if present (agents have their own)
     const linksWithoutWhatsapp = (body.links || []).filter(
-      (l: any) => l.id !== 'whatsapp'
+      (link: LinkInBioLink) => link.id !== 'whatsapp'
     );
 
     const config = {

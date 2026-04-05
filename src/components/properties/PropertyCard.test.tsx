@@ -36,9 +36,8 @@ vi.mock('@/components/HealthDot', () => ({
 
 import {
   PropertyCard,
-  statusLabels,
-  statusColors,
 } from './PropertyCard';
+import { statusLabels, statusColors } from './property-card-config';
 
 // ── Fixture base ───────────────────────────────────────────────────────────
 const BASE_PROPERTY = {

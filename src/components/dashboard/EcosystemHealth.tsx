@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,12 +7,18 @@ import { Button } from '@/components/ui/button';
 import { HeartPulse, Building2, Users, Clock, TrendingDown, ChevronDown, ChevronUp } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { differenceInDays } from 'date-fns';
+import type { LucideIcon } from 'lucide-react';
 
 const STALE_DAYS = 30;
 const NO_LEAD_DAYS = 21;
 const UNTOUCH_DAYS = 14;
 
 type TrafficColor = 'green' | 'yellow' | 'red';
+type PropertyHealthRow = { id: string; title: string; created_at: string; updated_at: string };
+type MatchActivityRow = { property_id: string; created_at: string };
+type VisitActivityRow = { property_id: string; created_at: string };
+type ContactHealthRow = { id: string; full_name: string; created_at: string };
+type InteractionActivityRow = { contact_id: string; interaction_date: string };
 
 const getTrafficColor = (problemCount: number, total: number): TrafficColor => {
   if (total === 0) return 'green';
@@ -28,7 +34,7 @@ const trafficStyles: Record<TrafficColor, { bg: string; ring: string; glow: stri
   red: { bg: 'bg-red-500', ring: 'ring-red-400/50', glow: 'shadow-[0_0_12px_rgba(239,68,68,0.5)]', label: 'Crítico' },
 };
 
-const TrafficLight = ({ color, label, count, total, icon: Icon }: { color: TrafficColor; label: string; count: number; total: number; icon: any }) => {
+const TrafficLight = ({ color, label, count, total, icon: Icon }: { color: TrafficColor; label: string; count: number; total: number; icon: LucideIcon }) => {
   const s = trafficStyles[color];
   return (
     <div className="flex flex-col items-center gap-2">
@@ -61,14 +67,11 @@ const EcosystemHealth = () => {
   const [data, setData] = useState<HealthDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
+  const userId = user?.id;
 
-  useEffect(() => {
-    if (!user?.id) return;
-    fetchHealth();
-  }, [user?.id]);
-
-  const fetchHealth = async () => {
-    const uid = user!.id;
+  const fetchHealth = useCallback(async () => {
+    if (!userId) return;
+    const uid = userId;
     const now = new Date();
 
     const { data: properties } = await supabase
@@ -77,19 +80,23 @@ const EcosystemHealth = () => {
       .eq('agent_id', uid)
       .eq('status', 'disponible');
 
-    const propList = properties || [];
+    const propList = (properties ?? []) as PropertyHealthRow[];
     const propIds = propList.map(p => p.id);
 
-    let latestMatchByProp: Record<string, string> = {};
-    let latestVisitByProp: Record<string, string> = {};
+    const latestMatchByProp: Record<string, string> = {};
+    const latestVisitByProp: Record<string, string> = {};
 
     if (propIds.length > 0) {
       const [matchesRes, visitsRes] = await Promise.all([
         supabase.from('matches').select('property_id, created_at').in('property_id', propIds).order('created_at', { ascending: false }),
         supabase.from('visits').select('property_id, created_at').in('property_id', propIds).order('created_at', { ascending: false }),
       ]);
-      (matchesRes.data || []).forEach(m => { if (!latestMatchByProp[m.property_id]) latestMatchByProp[m.property_id] = m.created_at; });
-      (visitsRes.data || []).forEach(v => { if (!latestVisitByProp[v.property_id]) latestVisitByProp[v.property_id] = v.created_at; });
+      ((matchesRes.data ?? []) as MatchActivityRow[]).forEach((m) => {
+        if (!latestMatchByProp[m.property_id]) latestMatchByProp[m.property_id] = m.created_at;
+      });
+      ((visitsRes.data ?? []) as VisitActivityRow[]).forEach((v) => {
+        if (!latestVisitByProp[v.property_id]) latestVisitByProp[v.property_id] = v.created_at;
+      });
     }
 
     const staleProperties = propList
@@ -114,17 +121,19 @@ const EcosystemHealth = () => {
       .eq('agent_id', uid)
       .in('status', ['nuevo', 'en_seguimiento', 'activo']);
 
-    const contactList = contacts || [];
+    const contactList = (contacts ?? []) as ContactHealthRow[];
     const contactIds = contactList.map(c => c.id);
 
-    let latestInterByContact: Record<string, string> = {};
+    const latestInterByContact: Record<string, string> = {};
     if (contactIds.length > 0) {
       const { data: interactions } = await supabase
         .from('interactions')
         .select('contact_id, interaction_date')
         .in('contact_id', contactIds)
         .order('interaction_date', { ascending: false });
-      (interactions || []).forEach(i => { if (!latestInterByContact[i.contact_id]) latestInterByContact[i.contact_id] = i.interaction_date; });
+      ((interactions ?? []) as InteractionActivityRow[]).forEach((i) => {
+        if (!latestInterByContact[i.contact_id]) latestInterByContact[i.contact_id] = i.interaction_date;
+      });
     }
 
     const untouchedContacts = contactList
@@ -142,7 +151,11 @@ const EcosystemHealth = () => {
 
     setData({ staleProperties, noLeadProperties, untouchedContacts, totalProperties: propList.length, totalContacts: contactList.length, propColor, contactColor });
     setLoading(false);
-  };
+  }, [userId]);
+
+  useEffect(() => {
+    fetchHealth();
+  }, [fetchHealth]);
 
   if (loading || !data) return null;
 

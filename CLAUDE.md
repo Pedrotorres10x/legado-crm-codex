@@ -29,7 +29,7 @@ CRM inmobiliario para **Legado Inmobiliaria**. Gestiona el ciclo completo de la 
 - **Campañas** — email/WhatsApp/SMS multicanal con segmentación
 - **Portales** — sync con Fotocasa y otros portales inmobiliarios
 - **Comunicaciones** — llamadas Twilio, email Brevo, WhatsApp Green API
-- **IA** — 81 Edge Functions: extracción de datos, resumen de llamadas, scoring, matching, búsqueda semántica
+- **IA** — 74 Edge Functions: extracción de datos, resumen de llamadas, scoring, matching, búsqueda semántica
 - **Admin** — KPIs, evaluación de agentes, radar legal, salud del ecosistema
 
 ## Estructura de directorios
@@ -44,7 +44,7 @@ src/
 └── integrations/supabase/  # Cliente y tipos generados
 
 supabase/
-├── functions/      # 81 Edge Functions en Deno/TypeScript
+├── functions/      # 74 Edge Functions en Deno/TypeScript
 ├── migrations/     # Migraciones de esquema PostgreSQL
 └── config.toml     # Configuración de funciones (verify_jwt)
 ```
@@ -75,6 +75,39 @@ npm run test         # Tests con Vitest
 supabase db push     # Aplicar migraciones pendientes
 supabase functions deploy <nombre>  # Desplegar una Edge Function
 ```
+
+## Workflow con IA
+
+Este proyecto usa dos agentes de IA en combinación:
+
+- **Claude Code** (este agente) — auditorías, refactors complejos, PRs, debugging profundo, migraciones, seguridad
+- **Codex CLI** (copiloto) — generación rápida de features, componentes, boilerplate
+
+### Codex CLI
+
+Ejecutable disponible en:
+```
+C:/Users/Pedro Torres/AppData/Local/npm-cache/_npx/c8ab89660c602c20/node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/codex/codex.exe
+```
+
+Uso no interactivo (desde Claude Code):
+```bash
+"$CODEX" exec -C <dir> --sandbox workspace-write "<prompt>"
+```
+
+Config en `~/.codex/config.toml` — modelo `gpt-5.4`, approval_policy `never`.
+
+**Cuándo delegar a Codex:**
+- Generar un componente nuevo desde cero
+- Scaffolding de features con spec clara
+- Boilerplate repetitivo
+
+**Cuándo actúa Claude Code directamente:**
+- Seguridad y auditorías
+- Refactors con contexto amplio
+- Debugging complejo
+- Migraciones de BD y Edge Functions
+- Decisiones de arquitectura
 
 ## Permisos bash (sin confirmación)
 

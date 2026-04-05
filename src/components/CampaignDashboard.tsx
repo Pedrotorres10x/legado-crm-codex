@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -73,6 +74,29 @@ interface CrucesStats {
   errors: string[];
 }
 
+interface MatchEmailRun {
+  run_at: string;
+  emails_sent: number;
+  emails_failed: number;
+  whatsapp_sent: number;
+  matches_created: number;
+  contacts_processed: number;
+}
+
+interface MatchEmailStats {
+  total_sent: number;
+  sent_ok: number;
+  sent_failed: number;
+  delivery_rate: number;
+  recent_runs: MatchEmailRun[];
+}
+
+type SettingRow = Pick<Database["public"]["Tables"]["settings"]["Row"], "key" | "value">;
+type SettingInsert = Database["public"]["Tables"]["settings"]["Insert"];
+type MatchSenderLogRow = Database["public"]["Tables"]["match_sender_logs"]["Row"];
+type DemandRow = Pick<Database["public"]["Tables"]["demands"]["Row"], "id" | "max_price" | "cities">;
+type ClassificationMetadata = Record<string, string>;
+
 const CampaignDashboard = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -87,7 +111,7 @@ const CampaignDashboard = () => {
         .select('key, value')
         .in('key', ['campaign_classify_enabled', 'campaign_enrich_enabled', 'match_sender_enabled']);
       const map: Record<string, boolean> = {};
-      (data || []).forEach((r: any) => {
+      (data || []).forEach((r: SettingRow) => {
         map[r.key] = r.value === true || r.value === 'true';
       });
       return map;
@@ -98,9 +122,10 @@ const CampaignDashboard = () => {
 
   const handleToggle = async (key: string, newValue: boolean) => {
     setTogglingKey(key);
+    const settingUpdate: SettingInsert = { key, value: newValue };
     const { error } = await supabase
       .from('settings')
-      .upsert({ key, value: newValue } as any, { onConflict: 'key' });
+      .upsert(settingUpdate, { onConflict: 'key' });
     if (error) {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
     } else {
@@ -114,6 +139,7 @@ const CampaignDashboard = () => {
   const { data: classifyStats, isLoading: classifyLoading } = useQuery({
     queryKey: ['campaign-dashboard-classify'],
     queryFn: async (): Promise<ClassifyStats> => {
+      const metadataFor = (classification: string): ClassificationMetadata => ({ classification });
       const [
         { count: pendingSend },
         { count: sentPending },
@@ -131,15 +157,15 @@ const CampaignDashboard = () => {
         supabase.from('communication_logs').select('id', { count: 'exact', head: true })
           .eq('source', 'campaign_classify')
           .eq('status', 'clasificado')
-          .contains('metadata', { classification: 'comprador' } as any),
+          .contains('metadata', metadataFor('comprador')),
         supabase.from('communication_logs').select('id', { count: 'exact', head: true })
           .eq('source', 'campaign_classify')
           .eq('status', 'clasificado')
-          .contains('metadata', { classification: 'prospecto' } as any),
+          .contains('metadata', metadataFor('prospecto')),
         supabase.from('communication_logs').select('id', { count: 'exact', head: true })
           .eq('source', 'campaign_classify')
           .eq('status', 'clasificado')
-          .contains('metadata', { classification: 'inactivo' } as any),
+          .contains('metadata', metadataFor('inactivo')),
         supabase.from('communication_logs').select('id', { count: 'exact', head: true })
           .eq('source', 'campaign_classify')
           .eq('status', 'revision_manual'),
@@ -166,7 +192,7 @@ const CampaignDashboard = () => {
         .select('id, max_price, cities')
         .eq('is_active', true);
 
-      const allDemands = demands || [];
+      const allDemands: DemandRow[] = demands || [];
       const incomplete = allDemands.filter(d => d.max_price == null || !d.cities?.length);
 
       const [
@@ -208,7 +234,7 @@ const CampaignDashboard = () => {
       ]);
 
       const enabled = settingResult.data?.value === true || settingResult.data?.value === 'true';
-      const log = logsResult.data;
+      const log: MatchSenderLogRow | null = logsResult.data;
 
       return {
         enabled,
@@ -306,7 +332,7 @@ const CampaignDashboard = () => {
   // ── Match emails engagement ──
   const { data: matchEmailStats } = useQuery({
     queryKey: ['campaign-match-email-stats'],
-    queryFn: async () => {
+    queryFn: async (): Promise<MatchEmailStats> => {
       const [
         { count: totalSent },
         { count: sentOk },
@@ -326,7 +352,7 @@ const CampaignDashboard = () => {
         sent_ok: sentOk || 0,
         sent_failed: sentFailed || 0,
         delivery_rate: (totalSent || 0) > 0 ? Math.round(((sentOk || 0) / (totalSent || 1)) * 100) : 0,
-        recent_runs: recentLogs || [],
+        recent_runs: (recentLogs || []) as MatchEmailRun[],
       };
     },
     refetchInterval: 120000,
@@ -463,7 +489,7 @@ const CampaignDashboard = () => {
               <div className="mt-4">
                 <p className="text-xs font-medium mb-2">Últimas 10 ejecuciones</p>
                 <ResponsiveContainer width="100%" height={150}>
-                  <BarChart data={matchEmailStats.recent_runs.reverse().map((r: any) => ({
+                  <BarChart data={[...matchEmailStats.recent_runs].reverse().map((r: MatchEmailRun) => ({
                     fecha: format(new Date(r.run_at), 'dd/MM'),
                     Emails: r.emails_sent,
                     WhatsApp: r.whatsapp_sent,

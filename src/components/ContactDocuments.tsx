@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -24,6 +24,14 @@ interface Props {
   contactName?: string;
 }
 
+type StorageFileRow = {
+  name: string;
+  created_at?: string | null;
+  metadata?: {
+    size?: number;
+  } | null;
+};
+
 const CATEGORIES = [
   { value: 'arras', label: 'Arras' },
   { value: 'alquiler', label: 'Alquiler' },
@@ -38,7 +46,7 @@ const ContactDocuments = ({ contactId, contactName }: Props) => {
   const { toast } = useToast();
 
   // ── Bucket files ──
-  const [files, setFiles] = useState<any[]>([]);
+  const [files, setFiles] = useState<StorageFileRow[]>([]);
   const [filesLoading, setFilesLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -106,16 +114,16 @@ const ContactDocuments = ({ contactId, contactName }: Props) => {
   // ─────────────────────────────────────────────────────────────────────────
   // Load data
   // ─────────────────────────────────────────────────────────────────────────
-  const loadFiles = async () => {
+  const loadFiles = useCallback(async () => {
     setFilesLoading(true);
     const { data, error } = await supabase.storage.from(BUCKET).list(bucketPath, { sortBy: { column: 'created_at', order: 'desc' } });
-    if (!error) setFiles(data || []);
+    if (!error) setFiles((data || []) as StorageFileRow[]);
     setFilesLoading(false);
-  };
+  }, [bucketPath]);
 
   useEffect(() => {
-    loadFiles();
-  }, [contactId]);
+    void loadFiles();
+  }, [loadFiles]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // File operations
@@ -148,7 +156,7 @@ const ContactDocuments = ({ contactId, contactName }: Props) => {
       });
     }
     toast({ title: '✅ Archivo subido' });
-    loadFiles();
+    void loadFiles();
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -170,7 +178,7 @@ const ContactDocuments = ({ contactId, contactName }: Props) => {
     if (error) { toast({ title: 'Error al eliminar', description: error.message, variant: 'destructive' }); return; }
     await unregisterDocument(BUCKET, filePath);
     toast({ title: 'Archivo eliminado' });
-    loadFiles();
+    void loadFiles();
   };
 
   const getFileIcon = (name: string) => {

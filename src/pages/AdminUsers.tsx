@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -22,38 +22,48 @@ interface UserRow {
   banned: boolean;
 }
 
+type AdminUsersAction =
+  | { action: 'list' }
+  | { action: 'delete'; user_id: string }
+  | { action: 'ban'; user_id: string; unban: boolean }
+  | { action: 'set_role'; user_id: string; role: string };
+
+type AdminUsersResponse = {
+  users?: UserRow[];
+};
+
 const AdminUsers = () => {
   const { session } = useAuth();
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const invokeAdmin = async (body: any) => {
+  const invokeAdmin = async (body: AdminUsersAction) => {
     const { data, error } = await supabase.functions.invoke('admin-users', { body });
     if (error) throw error;
-    return data;
+    return data as AdminUsersResponse;
   };
 
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
     setLoading(true);
     try {
       const data = await invokeAdmin({ action: 'list' });
       setUsers(data.users || []);
-    } catch (e: any) {
-      toast.error('Error cargando usuarios: ' + e.message);
+    } catch (error: unknown) {
+      toast.error(`Error cargando usuarios: ${error instanceof Error ? error.message : 'Error desconocido'}`);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  useEffect(() => { loadUsers(); }, []);
+  useEffect(() => { void loadUsers(); }, [loadUsers]);
 
   const handleDelete = async (userId: string, name: string) => {
     try {
       await invokeAdmin({ action: 'delete', user_id: userId });
       toast.success(`Usuario ${name} eliminado`);
       loadUsers();
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo eliminar el usuario');
     }
   };
 
@@ -62,8 +72,8 @@ const AdminUsers = () => {
       await invokeAdmin({ action: 'ban', user_id: userId, unban });
       toast.success(unban ? 'Usuario reactivado' : 'Usuario desactivado');
       loadUsers();
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo actualizar el estado del usuario');
     }
   };
 
@@ -72,8 +82,8 @@ const AdminUsers = () => {
       await invokeAdmin({ action: 'set_role', user_id: userId, role });
       toast.success('Rol actualizado');
       loadUsers();
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo actualizar el rol');
     }
   };
 

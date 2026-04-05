@@ -1,4 +1,4 @@
-const PROD_SUPABASE_PROJECT_IDS = ['srhkvthmzusfrbqtijlw'];
+const PROD_SUPABASE_PROJECT_IDS = ['edeprsrdumcnhixijlfu'];
 
 const hostname = window.location.hostname;
 const isLocalhost =

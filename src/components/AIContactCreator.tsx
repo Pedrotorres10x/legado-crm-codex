@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Sparkles, Send, Loader2, Check, X, Phone, Mail, MapPin, Users, Tag } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import ReactMarkdown from 'react-markdown';
@@ -28,6 +29,10 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
 }
+
+type ContactInsert = Database['public']['Tables']['contacts']['Insert'];
+type ContactType = Database['public']['Enums']['contact_type'];
+type PipelineStage = Database['public']['Enums']['pipeline_stage'];
 
 const typeLabels: Record<string, string> = { propietario: 'Propietario (cliente)', comprador: 'Comprador', comprador_cerrado: 'Comprador (cerrado)', vendedor_cerrado: 'Vendedor (cerrado)', ambos: 'Ambos', prospecto: 'Prospecto (dueño sin firmar)', statefox: 'Statefox', contacto: 'Contacto' };
 
@@ -71,9 +76,11 @@ const AIContactCreator = ({ onCreated, onCancel }: Props) => {
 
       const ext = data.extracted as ExtractedContact;
       if (extracted) {
-        const merged: any = { ...extracted };
+        const merged: ExtractedContact = { ...extracted };
         for (const [k, v] of Object.entries(ext)) {
-          if (v !== undefined && v !== null && v !== '') merged[k] = v;
+          if (v !== undefined && v !== null && v !== '') {
+            merged[k as keyof ExtractedContact] = v as never;
+          }
         }
         setExtracted(merged);
       } else {
@@ -96,19 +103,21 @@ const AIContactCreator = ({ onCreated, onCancel }: Props) => {
 
     const defaultStage = extracted.contact_type === 'comprador' ? 'nuevo' : extracted.contact_type === 'propietario' ? 'captado' : 'prospecto';
 
-    const { data: contactData, error } = await supabase.from('contacts').insert([{
+    const payload: ContactInsert = {
       full_name: extracted.full_name,
       email: extracted.email || null,
       phone: extracted.phone || null,
       phone2: extracted.phone2 || null,
       city: extracted.city || null,
       address: extracted.address || null,
-      contact_type: (extracted.contact_type || 'prospecto') as any,
+      contact_type: (extracted.contact_type || 'prospecto') as ContactType,
       notes: extracted.notes || null,
       tags: extracted.tags || [],
-      pipeline_stage: (extracted.pipeline_stage || defaultStage) as any,
+      pipeline_stage: (extracted.pipeline_stage || defaultStage) as PipelineStage,
       agent_id: user?.id,
-    }]).select('id').single();
+    };
+
+    const { data: contactData, error } = await supabase.from('contacts').insert([payload]).select('id').single();
 
     setSaving(false);
     if (error || !contactData) { toast.error('Error al guardar: ' + (error?.message || 'Sin datos')); return; }

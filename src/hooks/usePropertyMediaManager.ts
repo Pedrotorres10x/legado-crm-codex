@@ -14,15 +14,20 @@ type PropertyImageItem = {
   url?: string;
 };
 
+type PropertyMediaState = {
+  images?: string[] | null;
+  image_order?: PropertyImageOrderEntry[] | null;
+};
+
 type UsePropertyMediaManagerParams = {
   propertyId: string;
   supabaseUrl: string;
   images: PropertyImageItem[];
   mediaFiles: File[];
-  propertyRef: React.MutableRefObject<any>;
+  propertyRef: React.MutableRefObject<PropertyMediaState | null>;
   disableAutoSync: () => void;
-  saveField: (updates: Record<string, any>) => Promise<any>;
-  fetchMedia: () => Promise<any>;
+  saveField: (updates: Record<string, unknown>) => Promise<unknown>;
+  fetchMedia: () => Promise<File[]>;
   toast: (options: { title: string; description?: string; variant?: 'default' | 'destructive' }) => void;
 };
 

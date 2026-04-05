@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { FEED_BASE_URL, FOTOCASA_FN, PORTAL_CUTOVER_LAUNCH_FN, fetchWithTimeout, type PortalFeed } from '@/components/portals/portal-feed-shared';
+import { FEED_BASE_URL, FOTOCASA_FN, KYERO_COHORT_REFRESH_FN, PORTAL_CUTOVER_LAUNCH_FN, fetchWithTimeout, type PortalFeed } from '@/components/portals/portal-feed-shared';
 
 type PublicationLaunchPortalResult = {
   display_name: string;
@@ -78,6 +78,7 @@ export function usePortalFeedsManager() {
   const [loading, setLoading] = useState(true);
   const [forcingAll, setForcingAll] = useState(false);
   const [launchingPublication, setLaunchingPublication] = useState(false);
+  const [refreshingKyeroCohort, setRefreshingKyeroCohort] = useState(false);
   const [lastCronRuns, setLastCronRuns] = useState<Record<string, string>>({});
   const [lastLaunchSummary, setLastLaunchSummary] = useState<PublicationLaunchSummary | null>(null);
 
@@ -89,13 +90,25 @@ export function usePortalFeedsManager() {
   };
 
   const fetchLastCronRuns = async () => {
-    const { data: fotocasaLog } = await supabase.from('erp_sync_logs').select('created_at').eq('target', 'fotocasa').order('created_at', { ascending: false }).limit(1);
-    const { data: xmlLog } = await supabase.from('erp_sync_logs').select('created_at').eq('target', 'xml-import').order('created_at', { ascending: false }).limit(1);
-    const { data: resyncLog } = await supabase.from('erp_sync_logs').select('created_at').eq('target', 'resync-audit').order('created_at', { ascending: false }).limit(1);
+    const { data: fotocasaLog } = await supabase
+      .from('erp_sync_logs')
+      .select('created_at')
+      .eq('target', 'fotocasa')
+      .eq('event', 'sync_batch_summary')
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    const { data: portalRefreshLog } = await supabase
+      .from('erp_sync_logs')
+      .select('created_at')
+      .eq('target', 'portal-refresh')
+      .eq('event', 'refresh_cron')
+      .order('created_at', { ascending: false })
+      .limit(1);
 
     setLastCronRuns({
       fotocasa: fotocasaLog?.[0]?.created_at || '',
-      xml: xmlLog?.[0]?.created_at || resyncLog?.[0]?.created_at || '',
+      xml: portalRefreshLog?.[0]?.created_at || '',
     });
   };
 
@@ -276,11 +289,66 @@ export function usePortalFeedsManager() {
     }
   };
 
+  const refreshKyeroCohort = async () => {
+    setRefreshingKyeroCohort(true);
+
+    try {
+      let { data: sessionData } = await supabase.auth.getSession();
+      let accessToken = sessionData?.session?.access_token;
+      if (!accessToken) {
+        const refresh = await supabase.auth.refreshSession();
+        sessionData = refresh.data;
+        accessToken = sessionData?.session?.access_token;
+      }
+      if (!accessToken) {
+        throw new Error('Sesión no válida. Vuelve a iniciar sesión.');
+      }
+
+      const response = await fetchWithTimeout(
+        KYERO_COHORT_REFRESH_FN,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          },
+        },
+        60000,
+      );
+
+      const payload = await response.json().catch(() => null) as {
+        ok?: boolean;
+        error?: string;
+        selected_count?: number;
+        distinct_zones?: number;
+        distinct_cities?: number;
+      } | null;
+
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || 'No se pudo recalcular la muestra de Kyero');
+      }
+
+      toast.success('Muestra Kyero recalculada', {
+        description: `${payload.selected_count ?? 0} inmuebles · ${payload.distinct_zones ?? 0} zonas · ${payload.distinct_cities ?? 0} ciudades`,
+      });
+
+      await fetchFeeds();
+    } catch (error) {
+      toast.error('Error al recalcular la muestra de Kyero', {
+        description: error instanceof Error ? error.message : 'Error desconocido',
+      });
+    } finally {
+      setRefreshingKyeroCohort(false);
+    }
+  };
+
   return {
     feeds,
     loading,
     forcingAll,
     launchingPublication,
+    refreshingKyeroCohort,
     lastLaunchSummary,
     lastCronRuns,
     toggleActive,
@@ -289,5 +357,6 @@ export function usePortalFeedsManager() {
     forceFeed,
     forceAllFeeds,
     launchPublication,
+    refreshKyeroCohort,
   };
 }

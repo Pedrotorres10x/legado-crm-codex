@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders, json, handleCors } from '../_shared/cors.ts';
 import { sendWhatsApp } from '../_shared/greenapi.ts';
+import { isAutomationOutboundEnabled } from '../_shared/automation-outbound.ts';
 
 /**
  * Prospecting sequence engine for seller-side contacts.
@@ -24,7 +25,7 @@ interface SequenceRow {
   contact_id: string;
   agent_id: string | null;
   current_step: number;
-  metadata: Record<string, any>;
+  metadata: Record<string, unknown>;
 }
 
 Deno.serve(async (req) => {
@@ -38,6 +39,11 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const action = body.action || 'process_pending';
+    const automationEnabled = await isAutomationOutboundEnabled();
+
+    if (!automationEnabled) {
+      return json({ ok: true, processed: 0, enrolled: false, reason: 'automation_disabled' });
+    }
 
     // ── ENROLL ──────────────────────────────────────────────────────────
     if (action === 'enroll') {

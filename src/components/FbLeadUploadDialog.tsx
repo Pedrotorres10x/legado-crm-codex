@@ -10,7 +10,15 @@ export default function FbLeadUploadDialog() {
   const [open, setOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<{
+    duplicate?: boolean;
+    extracted?: {
+      full_name?: string;
+      phone?: string;
+      email?: string;
+      form_responses?: Array<{ question: string; answer: string }>;
+    };
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
@@ -74,9 +82,9 @@ export default function FbLeadUploadDialog() {
       setResult(data);
       queryClient.invalidateQueries({ queryKey: ['web-leads-simple'] });
       toast.success(data.duplicate ? 'Lead existente actualizado' : 'Lead de Facebook creado correctamente');
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      setError(err.message || 'Error al procesar la imagen');
+      setError(err instanceof Error ? err.message : 'Error al procesar la imagen');
       toast.error('Error al procesar el pantallazo');
     } finally {
       setUploading(false);
@@ -184,7 +192,7 @@ export default function FbLeadUploadDialog() {
                 )}
                 {result.extracted?.form_responses?.length > 0 && (
                   <div className="text-xs text-muted-foreground mt-2 space-y-1 border-t border-border pt-2">
-                    {result.extracted.form_responses.map((r: any, i: number) => (
+                    {result.extracted.form_responses.map((r, i: number) => (
                       <p key={i}><strong>{r.question}</strong> → {r.answer}</p>
                     ))}
                   </div>

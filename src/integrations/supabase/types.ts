@@ -1333,60 +1333,42 @@ export type Database = {
       interactions: {
         Row: {
           agent_id: string | null
-          ai_summary: string | null
           call_duration_seconds: number | null
-          call_sid: string | null
           call_status: string | null
           contact_id: string
           created_at: string
           description: string | null
-          follow_up_task_id: string | null
           id: string
           interaction_date: string
           interaction_type: Database["public"]["Enums"]["interaction_type"]
           property_id: string | null
-          recording_url: string | null
           subject: string | null
-          transcript: string | null
-          transcript_status: string | null
         }
         Insert: {
           agent_id?: string | null
-          ai_summary?: string | null
           call_duration_seconds?: number | null
-          call_sid?: string | null
           call_status?: string | null
           contact_id: string
           created_at?: string
           description?: string | null
-          follow_up_task_id?: string | null
           id?: string
           interaction_date?: string
           interaction_type?: Database["public"]["Enums"]["interaction_type"]
           property_id?: string | null
-          recording_url?: string | null
           subject?: string | null
-          transcript?: string | null
-          transcript_status?: string | null
         }
         Update: {
           agent_id?: string | null
-          ai_summary?: string | null
           call_duration_seconds?: number | null
-          call_sid?: string | null
           call_status?: string | null
           contact_id?: string
           created_at?: string
           description?: string | null
-          follow_up_task_id?: string | null
           id?: string
           interaction_date?: string
           interaction_type?: Database["public"]["Enums"]["interaction_type"]
           property_id?: string | null
-          recording_url?: string | null
           subject?: string | null
-          transcript?: string | null
-          transcript_status?: string | null
         }
         Relationships: [
           {
@@ -1394,13 +1376,6 @@ export type Database = {
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contacts"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "interactions_follow_up_task_id_fkey"
-            columns: ["follow_up_task_id"]
-            isOneToOne: false
-            referencedRelation: "tasks"
             referencedColumns: ["id"]
           },
           {
@@ -2079,8 +2054,6 @@ export type Database = {
           linkedin_url: string | null
           phone: string | null
           public_slug: string | null
-          twilio_caller_id: string | null
-          twilio_caller_id_verified: boolean
           updated_at: string
           user_id: string
           whatsapp: string | null
@@ -2101,8 +2074,6 @@ export type Database = {
           linkedin_url?: string | null
           phone?: string | null
           public_slug?: string | null
-          twilio_caller_id?: string | null
-          twilio_caller_id_verified?: boolean
           updated_at?: string
           user_id: string
           whatsapp?: string | null
@@ -2123,8 +2094,6 @@ export type Database = {
           linkedin_url?: string | null
           phone?: string | null
           public_slug?: string | null
-          twilio_caller_id?: string | null
-          twilio_caller_id_verified?: boolean
           updated_at?: string
           user_id?: string
           whatsapp?: string | null
@@ -2697,6 +2666,251 @@ export type Database = {
           },
         ]
       }
+      voice_call_runs: {
+        Row: {
+          campaign_contact_id: string
+          created_at: string
+          duration_seconds: number | null
+          ended_at: string | null
+          id: string
+          outcome_payload: Json
+          provider: string
+          provider_call_id: string | null
+          raw_status: string | null
+          recording_url: string | null
+          started_at: string | null
+          summary: string | null
+          transcript: string | null
+        }
+        Insert: {
+          campaign_contact_id: string
+          created_at?: string
+          duration_seconds?: number | null
+          ended_at?: string | null
+          id?: string
+          outcome_payload?: Json
+          provider?: string
+          provider_call_id?: string | null
+          raw_status?: string | null
+          recording_url?: string | null
+          started_at?: string | null
+          summary?: string | null
+          transcript?: string | null
+        }
+        Update: {
+          campaign_contact_id?: string
+          created_at?: string
+          duration_seconds?: number | null
+          ended_at?: string | null
+          id?: string
+          outcome_payload?: Json
+          provider?: string
+          provider_call_id?: string | null
+          raw_status?: string | null
+          recording_url?: string | null
+          started_at?: string | null
+          summary?: string | null
+          transcript?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voice_call_runs_campaign_contact_id_fkey"
+            columns: ["campaign_contact_id"]
+            isOneToOne: false
+            referencedRelation: "voice_campaign_contacts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voice_campaign_contacts: {
+        Row: {
+          assigned_agent_id: string | null
+          attempt_count: number
+          campaign_id: string
+          city: string | null
+          contact_id: string | null
+          created_at: string
+          display_name: string
+          handoff_task_id: string | null
+          handoff_to_human: boolean
+          id: string
+          last_attempt_at: string | null
+          next_attempt_at: string | null
+          notes: string | null
+          outcome_code: string | null
+          payload: Json
+          phone: string
+          positive_signal_score: number | null
+          priority: number
+          source_ref: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          assigned_agent_id?: string | null
+          attempt_count?: number
+          campaign_id: string
+          city?: string | null
+          contact_id?: string | null
+          created_at?: string
+          display_name: string
+          handoff_task_id?: string | null
+          handoff_to_human?: boolean
+          id?: string
+          last_attempt_at?: string | null
+          next_attempt_at?: string | null
+          notes?: string | null
+          outcome_code?: string | null
+          payload?: Json
+          phone: string
+          positive_signal_score?: number | null
+          priority?: number
+          source_ref?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          assigned_agent_id?: string | null
+          attempt_count?: number
+          campaign_id?: string
+          city?: string | null
+          contact_id?: string | null
+          created_at?: string
+          display_name?: string
+          handoff_task_id?: string | null
+          handoff_to_human?: boolean
+          id?: string
+          last_attempt_at?: string | null
+          next_attempt_at?: string | null
+          notes?: string | null
+          outcome_code?: string | null
+          payload?: Json
+          phone?: string
+          positive_signal_score?: number | null
+          priority?: number
+          source_ref?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voice_campaign_contacts_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "voice_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voice_campaign_contacts_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voice_campaign_contacts_handoff_task_id_fkey"
+            columns: ["handoff_task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voice_campaigns: {
+        Row: {
+          created_at: string
+          created_by: string
+          exclusion_criteria: Json
+          id: string
+          launched_at: string | null
+          name: string
+          provider: string
+          purpose_code: string
+          purpose_prompt: string | null
+          source_scope: string
+          status: string
+          success_criteria: Json
+          target_filter: Json
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          exclusion_criteria?: Json
+          id?: string
+          launched_at?: string | null
+          name: string
+          provider?: string
+          purpose_code: string
+          purpose_prompt?: string | null
+          source_scope?: string
+          status?: string
+          success_criteria?: Json
+          target_filter?: Json
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          exclusion_criteria?: Json
+          id?: string
+          launched_at?: string | null
+          name?: string
+          provider?: string
+          purpose_code?: string
+          purpose_prompt?: string | null
+          source_scope?: string
+          status?: string
+          success_criteria?: Json
+          target_filter?: Json
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      voice_contact_flags: {
+        Row: {
+          contact_id: string
+          do_not_call: boolean
+          hostile_flag: boolean
+          intermediary_flag: boolean
+          last_disposition: string | null
+          notes: string | null
+          updated_at: string
+          voice_allowed: boolean
+          wrong_number_flag: boolean
+        }
+        Insert: {
+          contact_id: string
+          do_not_call?: boolean
+          hostile_flag?: boolean
+          intermediary_flag?: boolean
+          last_disposition?: string | null
+          notes?: string | null
+          updated_at?: string
+          voice_allowed?: boolean
+          wrong_number_flag?: boolean
+        }
+        Update: {
+          contact_id?: string
+          do_not_call?: boolean
+          hostile_flag?: boolean
+          intermediary_flag?: boolean
+          last_disposition?: string | null
+          notes?: string | null
+          updated_at?: string
+          voice_allowed?: boolean
+          wrong_number_flag?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voice_contact_flags_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: true
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           id: string
@@ -2716,57 +2930,82 @@ export type Database = {
         Relationships: []
       }
       visits: {
-        Row: {
-          agent_id: string | null
-          confirmation_ip: string | null
-          confirmation_status: string
-          confirmation_token: string | null
-          confirmation_user_agent: string | null
-          confirmed_at: string | null
-          contact_id: string
-          created_at: string
-          id: string
-          notes: string | null
-          property_id: string
-          result: string | null
-          visit_date: string
-        }
-        Insert: {
-          agent_id?: string | null
-          confirmation_ip?: string | null
-          confirmation_status?: string
-          confirmation_token?: string | null
-          confirmation_user_agent?: string | null
-          confirmed_at?: string | null
-          contact_id: string
-          created_at?: string
-          id?: string
-          notes?: string | null
-          property_id: string
-          result?: string | null
-          visit_date: string
-        }
-        Update: {
-          agent_id?: string | null
-          confirmation_ip?: string | null
-          confirmation_status?: string
-          confirmation_token?: string | null
-          confirmation_user_agent?: string | null
-          confirmed_at?: string | null
-          contact_id?: string
-          created_at?: string
-          id?: string
-          notes?: string | null
-          property_id?: string
-          result?: string | null
-          visit_date?: string
-        }
+          Row: {
+            agent_id: string | null
+            confirmation_ip: string | null
+            confirmation_status: string
+            confirmation_token: string | null
+            confirmation_user_agent: string | null
+            confirmed_at: string | null
+            contact_id: string
+            created_at: string
+            id: string
+            notes: string | null
+            property_id: string
+            result: string | null
+            signature_contract_id: string | null
+            visit_date: string
+            visit_sheet_channel: string | null
+            visit_sheet_sent_at: string | null
+            visitor_declared_dni: string | null
+            visitor_declared_name: string | null
+            visitor_declaration_acknowledged_at: string | null
+          }
+          Insert: {
+            agent_id?: string | null
+            confirmation_ip?: string | null
+            confirmation_status?: string
+            confirmation_token?: string | null
+            confirmation_user_agent?: string | null
+            confirmed_at?: string | null
+            contact_id: string
+            created_at?: string
+            id?: string
+            notes?: string | null
+            property_id: string
+            result?: string | null
+            signature_contract_id?: string | null
+            visit_date: string
+            visit_sheet_channel?: string | null
+            visit_sheet_sent_at?: string | null
+            visitor_declared_dni?: string | null
+            visitor_declared_name?: string | null
+            visitor_declaration_acknowledged_at?: string | null
+          }
+          Update: {
+            agent_id?: string | null
+            confirmation_ip?: string | null
+            confirmation_status?: string
+            confirmation_token?: string | null
+            confirmation_user_agent?: string | null
+            confirmed_at?: string | null
+            contact_id?: string
+            created_at?: string
+            id?: string
+            notes?: string | null
+            property_id?: string
+            result?: string | null
+            signature_contract_id?: string | null
+            visit_date?: string
+            visit_sheet_channel?: string | null
+            visit_sheet_sent_at?: string | null
+            visitor_declared_dni?: string | null
+            visitor_declared_name?: string | null
+            visitor_declaration_acknowledged_at?: string | null
+          }
         Relationships: [
           {
             foreignKeyName: "visits_contact_id_fkey"
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visits_signature_contract_id_fkey"
+            columns: ["signature_contract_id"]
+            isOneToOne: false
+            referencedRelation: "generated_contracts"
             referencedColumns: ["id"]
           },
           {

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -38,6 +39,8 @@ interface Commission {
   created_at: string;
 }
 
+type CommissionUpdate = Database['public']['Tables']['commissions']['Update'];
+
 const statusColors: Record<string, string> = {
   borrador: 'bg-muted text-muted-foreground',
   aprobado: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
@@ -68,7 +71,8 @@ const AdminCommissions = () => {
   useEffect(() => { fetchAll(); }, []);
 
   const updateStatus = async (id: string, status: string) => {
-    await supabase.from('commissions').update({ status } as any).eq('id', id);
+    const payload: CommissionUpdate = { status };
+    await supabase.from('commissions').update(payload).eq('id', id);
     fetchAll();
     toast.success(`Estado actualizado a ${status}`);
 

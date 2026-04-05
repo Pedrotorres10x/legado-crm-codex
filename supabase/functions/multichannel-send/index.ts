@@ -2,6 +2,41 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, json, handleCors } from '../_shared/cors.ts';
 import { sendMessage } from '../_shared/send-message.ts';
 
+function containsUrl(text: string): boolean {
+  return /(?:https?:\/\/|www\.|wa\.me\/)/i.test(text);
+}
+
+function stripUrls(text: string): string {
+  return text
+    .replace(/https?:\/\/\S+/gi, '')
+    .replace(/www\.\S+/gi, '')
+    .replace(/wa\.me\/\S+/gi, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+async function hasPriorWhatsAppConversation(supabase: ReturnType<typeof createClient>, contactId: string): Promise<boolean> {
+  const [{ data: interaction }, { data: commLog }] = await Promise.all([
+    supabase
+      .from("interactions")
+      .select("id")
+      .eq("contact_id", contactId)
+      .eq("interaction_type", "whatsapp")
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("communication_logs")
+      .select("id")
+      .eq("contact_id", contactId)
+      .eq("channel", "whatsapp")
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  return Boolean(interaction || commLog);
+}
+
 Deno.serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
@@ -31,7 +66,20 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, serviceKey);
 
     const body = await req.json();
-    const { channel, contact_id, text, subject, html, source, property_id, demand_id, agent_id, reply_to, campaign } = body;
+    const {
+      channel,
+      contact_id,
+      text,
+      subject,
+      html,
+      source,
+      property_id,
+      demand_id,
+      agent_id,
+      reply_to,
+      campaign,
+      allow_first_whatsapp_links,
+    } = body;
 
     if (!channel || !contact_id || !text) {
       throw new Error("channel, contact_id, and text are required");
@@ -63,13 +111,24 @@ Deno.serve(async (req) => {
       throw new Error(`Contact has no ${channel === "whatsapp" ? "phone" : "email"} for ${channel} channel`);
     }
 
+    let finalText = text;
+    let firstWhatsappWithoutLinks: boolean | null = null;
+    if (channel === "whatsapp") {
+      const hasPriorWhatsApp = await hasPriorWhatsAppConversation(supabase, contact_id);
+      firstWhatsappWithoutLinks = !hasPriorWhatsApp;
+      if (!hasPriorWhatsApp && !allow_first_whatsapp_links && containsUrl(finalText)) {
+        finalText = stripUrls(finalText);
+        console.log("multichannel-send → stripped links from first WhatsApp for contact:", contact_id);
+      }
+    }
+
     // Send directly via local helpers
     console.log("multichannel-send → sending via", channel, "to:", destination);
     const result = await sendMessage({
       channel,
       to: destination,
       contactName: contact.full_name || undefined,
-      text,
+      text: finalText,
       subject,
       html,
       replyTo: reply_to,
@@ -80,7 +139,7 @@ Deno.serve(async (req) => {
     const errorMsg = sendOk ? null : (result.error || 'Send failed');
 
     // Record interaction in CRM (timeline entry)
-    const interactionType = channel === "whatsapp" ? "whatsapp" as any : "email" as any;
+    const interactionType = channel === "whatsapp" ? "whatsapp" : "email";
     await supabase.from("interactions").insert({
       contact_id,
       interaction_type: interactionType,
@@ -89,7 +148,7 @@ Deno.serve(async (req) => {
         : `WhatsApp enviado`,
       description: channel === "email"
         ? `Email enviado vía Brevo. Origen: ${source || "manual"}`
-        : `WhatsApp enviado vía Green API. Origen: ${source || "manual"}. Mensaje: ${text.slice(0, 200)}`,
+        : `WhatsApp enviado vía Green API. Origen: ${source || "manual"}. Mensaje: ${finalText.slice(0, 200)}`,
       agent_id: agent_id || null,
     });
 
@@ -100,7 +159,7 @@ Deno.serve(async (req) => {
       direction: "outbound",
       source: source || "manual",
       subject: channel === "email" ? (subject || null) : null,
-      body_preview: text?.slice(0, 500) || null,
+      body_preview: finalText?.slice(0, 500) || null,
       html_preview: channel === "email" ? (html?.slice(0, 1000) || null) : null,
       provider_msg_id: result.provider_message_id || null,
       status: logStatus,
@@ -108,7 +167,11 @@ Deno.serve(async (req) => {
       agent_id: agent_id || null,
       property_id: property_id || null,
       demand_id: demand_id || null,
-      metadata: { campaign: campaign || null },
+      metadata: {
+        campaign: campaign || null,
+        first_whatsapp_without_links: firstWhatsappWithoutLinks,
+        allow_first_whatsapp_links: Boolean(allow_first_whatsapp_links),
+      },
     });
 
     if (!sendOk) {
@@ -116,8 +179,9 @@ Deno.serve(async (req) => {
     }
 
     return json({ ok: true, provider_message_id: result.provider_message_id });
-  } catch (e: any) {
-    console.error("multichannel-send error:", e.message);
-    return json({ ok: false, error: e.message }, 500);
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : "unexpected_error";
+    console.error("multichannel-send error:", message);
+    return json({ ok: false, error: message }, 500);
   }
 });

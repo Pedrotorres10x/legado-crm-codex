@@ -1,6 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, json, handleCors } from "../_shared/cors.ts";
 import { callAI } from "../_shared/ai.ts";
+import { resolveAssignedAgentId } from "../_shared/agent-assignment.ts";
+import { sendPropertyInterestOpener } from "../_shared/match-whatsapp.ts";
+import { resolveContactLanguage } from "../_shared/contact-language.ts";
 
 /**
  * Extracts portal lead data from a screenshot of a portal notification email
@@ -43,6 +46,36 @@ REGLAS:
 - Si el anuncio dice "Piso en Torrevieja 120.000€", pon operation=venta, property_type=piso, cities=["Torrevieja"], max_price con +10% margen.
 - Si no puedes inferir un campo, déjalo null o vacío.`;
 
+interface PortalLeadExtractBody {
+  image_base64?: string;
+  mime_type?: string;
+}
+
+interface ExtractedDemand {
+  operation?: string | null;
+  property_type?: string | null;
+  cities?: string[];
+  zones?: string[];
+  min_bedrooms?: number | null;
+  min_bathrooms?: number | null;
+  min_price?: number | null;
+  max_price?: number | null;
+  min_surface?: number | null;
+  features?: string[];
+}
+
+interface ExtractedPortalLead {
+  portal?: string | null;
+  full_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  message?: string | null;
+  property_reference?: string | null;
+  property_title?: string | null;
+  language?: string | null;
+  demand?: ExtractedDemand;
+}
+
 Deno.serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
@@ -74,7 +107,7 @@ Deno.serve(async (req) => {
       const buf = await file.arrayBuffer();
       imageBase64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
     } else {
-      const body = await req.json();
+      const body = await req.json() as PortalLeadExtractBody;
       imageBase64 = body.image_base64;
       mimeType = body.mime_type || "image/png";
       if (!imageBase64) return json({ ok: false, error: "no_image" }, 400);
@@ -92,10 +125,10 @@ Deno.serve(async (req) => {
       },
     ], { max_tokens: 800 });
 
-    let extracted: any;
+    let extracted: ExtractedPortalLead;
     try {
       const raw = (aiResult.content || "").replace(/```json?\n?/g, "").replace(/```/g, "").trim();
-      extracted = JSON.parse(raw);
+      extracted = JSON.parse(raw) as ExtractedPortalLead;
     } catch {
       console.error("[ai-portal-lead-extract] AI parse failed:", aiResult.content);
       return json({ ok: false, error: "ai_parse_failed", raw: aiResult.content }, 422);
@@ -131,22 +164,26 @@ Deno.serve(async (req) => {
     // ── Deduplicate contact ─────────────────────────────────────────────────
     let contactId: string | null = null;
     let isDuplicate = false;
+    let existingPreferredLanguage: string | null = null;
 
     if (leadEmail) {
       const { data } = await supabase
-        .from("contacts").select("id, agent_id")
+        .from("contacts").select("id, agent_id, preferred_language")
         .ilike("email", leadEmail).limit(1).maybeSingle();
-      if (data) { contactId = data.id; isDuplicate = true; if (!propertyAgentId) propertyAgentId = data.agent_id; }
+      if (data) { contactId = data.id; isDuplicate = true; if (!propertyAgentId) propertyAgentId = data.agent_id; existingPreferredLanguage = data.preferred_language || null; }
     }
 
     if (!contactId && leadPhone) {
       const cleanPhone = leadPhone.replace(/[\s\-().]/g, "");
       const { data } = await supabase
-        .from("contacts").select("id, agent_id")
+        .from("contacts").select("id, agent_id, preferred_language")
         .or(`phone.eq.${cleanPhone},phone2.eq.${cleanPhone}`)
         .limit(1).maybeSingle();
-      if (data) { contactId = data.id; isDuplicate = true; if (!propertyAgentId) propertyAgentId = data.agent_id; }
+      if (data) { contactId = data.id; isDuplicate = true; if (!propertyAgentId) propertyAgentId = data.agent_id; existingPreferredLanguage = data.preferred_language || null; }
     }
+
+    const assignedAgentId = await resolveAssignedAgentId(supabase, propertyAgentId || user.id || null);
+    const preferredLanguage = resolveContactLanguage(extracted?.language || existingPreferredLanguage || null, leadMessage, extracted?.property_title || null, leadName, portalName);
 
     // ── Create contact if needed ────────────────────────────────────────────
     if (!contactId) {
@@ -160,15 +197,28 @@ Deno.serve(async (req) => {
           contact_type: "comprador",
           status: "nuevo",
           pipeline_stage: "nuevo",
+          preferred_language: preferredLanguage,
           tags,
-          agent_id: propertyAgentId || user.id,
+          agent_id: assignedAgentId,
           notes: `Lead desde portal: ${portalName}`,
-          gdpr_consent: false,
-          gdpr_legal_basis: "legitimate_interest",
+          gdpr_consent: true,
+          gdpr_consent_at: new Date().toISOString(),
+          gdpr_legal_basis: "explicit_consent",
         })
         .select("id").single();
       if (contactErr) throw contactErr;
       contactId = newContact.id;
+    } else {
+      await supabase
+        .from("contacts")
+        .update({
+          agent_id: assignedAgentId,
+          preferred_language: preferredLanguage,
+          gdpr_consent: true,
+          gdpr_consent_at: new Date().toISOString(),
+          gdpr_legal_basis: "explicit_consent",
+        })
+        .eq("id", contactId);
     }
 
     // ── Create interaction ──────────────────────────────────────────────────
@@ -185,17 +235,20 @@ Deno.serve(async (req) => {
       subject: `Lead desde ${portalName} (pantallazo)`,
       description,
       property_id: propertyId || null,
-      agent_id: user.id,
+      agent_id: assignedAgentId,
     });
 
     // ── Create demand ───────────────────────────────────────────────────────
+    let demandId: string | null = null;
+    let propertyForOpener: { id: string; title?: string | null; city?: string | null; province?: string | null } | null = null;
+
     if (propertyId) {
       const { data: prop } = await supabase
         .from("properties")
-        .select("city, property_type, operation, price")
+        .select("id, title, city, province, property_type, operation, price")
         .eq("id", propertyId).maybeSingle();
       if (prop) {
-        await supabase.from("demands").insert({
+        const { data: insertedDemand, error: demandError } = await supabase.from("demands").insert({
           contact_id: contactId,
           cities: prop.city ? [prop.city] : (aiDemand.cities?.length ? aiDemand.cities : []),
           zones: aiDemand.zones?.length ? aiDemand.zones : [],
@@ -208,10 +261,13 @@ Deno.serve(async (req) => {
           min_surface: aiDemand.min_surface || null,
           features: aiDemand.features?.length ? aiDemand.features : [],
           auto_match: true,
-        });
+        }).select("id").single();
+        if (demandError) throw demandError;
+        demandId = insertedDemand.id;
+        propertyForOpener = prop;
       }
     } else if (aiDemand.cities?.length || aiDemand.property_type || aiDemand.max_price) {
-      await supabase.from("demands").insert({
+      const { data: insertedDemand, error: demandError } = await supabase.from("demands").insert({
         contact_id: contactId,
         cities: aiDemand.cities || [],
         zones: aiDemand.zones || [],
@@ -224,6 +280,26 @@ Deno.serve(async (req) => {
         min_surface: aiDemand.min_surface || null,
         features: aiDemand.features?.length ? aiDemand.features : [],
         auto_match: true,
+      }).select("id").single();
+      if (demandError) throw demandError;
+      demandId = insertedDemand.id;
+    }
+
+    if (propertyForOpener && contactId) {
+      await sendPropertyInterestOpener({
+        supabase,
+        contact: {
+          id: contactId,
+          full_name: leadName,
+          phone: leadPhone,
+          agent_id: assignedAgentId,
+          gdpr_consent: true,
+        },
+        property: propertyForOpener,
+        demandId,
+        source: "ai-portal-lead-extract",
+        preferredLanguage,
+        languageSamples: [leadMessage, extracted?.property_title || null],
       });
     }
 
@@ -244,10 +320,11 @@ Deno.serve(async (req) => {
       portal: portalName,
       duplicate: isDuplicate,
       property_id: propertyId,
+      demand_id: demandId,
       extracted,
     });
-  } catch (err: any) {
-    console.error("[ai-portal-lead-extract] Error:", err.message || err);
+  } catch (err: unknown) {
+    console.error("[ai-portal-lead-extract] Error:", err instanceof Error ? err.message : err);
     return json({ ok: false, error: "Error al procesar el pantallazo del portal" }, 500);
   }
 });

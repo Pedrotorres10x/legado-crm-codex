@@ -1,7 +1,7 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Rss, Clock, Rocket } from 'lucide-react';
+import { Rss, Clock, Rocket, Target } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { FotocasaApiCard } from '@/components/portals/FotocasaApiCard';
@@ -15,6 +15,7 @@ const PortalFeedsManager = () => {
     loading,
     forcingAll,
     launchingPublication,
+    refreshingKyeroCohort,
     lastLaunchSummary,
     lastCronRuns,
     toggleActive,
@@ -23,6 +24,7 @@ const PortalFeedsManager = () => {
     forceFeed,
     forceAllFeeds,
     launchPublication,
+    refreshKyeroCohort,
   } = usePortalFeedsManager();
 
   if (loading) return <div className="py-8 text-center text-muted-foreground">Cargando portales...</div>;
@@ -35,6 +37,10 @@ const PortalFeedsManager = () => {
         <Badge variant="secondary" className="ml-auto">
           {feeds.filter((feed) => feed.is_active).length + 1} activos
         </Badge>
+        <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" disabled={refreshingKyeroCohort} onClick={refreshKyeroCohort}>
+          <Target className={`h-3.5 w-3.5 ${refreshingKyeroCohort ? 'animate-pulse' : ''}`} />
+          {refreshingKyeroCohort ? 'Recalculando muestra...' : 'Recalcular muestra Kyero'}
+        </Button>
         <Button size="sm" className="h-8 text-xs gap-1.5" disabled={launchingPublication} onClick={launchPublication}>
           <Rocket className={`h-3.5 w-3.5 ${launchingPublication ? 'animate-pulse' : ''}`} />
           {launchingPublication ? 'Publicando...' : 'Publicar ahora en portales'}
@@ -97,7 +103,7 @@ const PortalFeedsManager = () => {
             </div>
             <div className="flex items-center justify-between text-xs p-2 rounded-md bg-background">
               <div>
-                <span className="font-medium">Feeds XML</span>
+                <span className="font-medium">Refresco CRM para feeds XML</span>
                 <span className="text-muted-foreground ml-2">Cada 12h (00:00, 12:00 UTC)</span>
               </div>
               <span className="text-muted-foreground">

@@ -3,6 +3,7 @@ import React from 'react';
 type AppErrorBoundaryState = {
   hasError: boolean;
   errorMessage: string;
+  errorStack: string;
 };
 
 export default class AppErrorBoundary extends React.Component<
@@ -12,12 +13,14 @@ export default class AppErrorBoundary extends React.Component<
   state: AppErrorBoundaryState = {
     hasError: false,
     errorMessage: '',
+    errorStack: '',
   };
 
   static getDerivedStateFromError(error: Error): AppErrorBoundaryState {
     return {
       hasError: true,
       errorMessage: error?.message || 'Se ha producido un error inesperado.',
+      errorStack: error?.stack || '',
     };
   }
 
@@ -26,6 +29,14 @@ export default class AppErrorBoundary extends React.Component<
   }
 
   handleReload = () => {
+    if ("caches" in window) {
+      caches.keys()
+        .then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
+        .catch(() => undefined)
+        .finally(() => window.location.reload());
+      return;
+    }
+
     window.location.reload();
   };
 
@@ -47,6 +58,14 @@ export default class AppErrorBoundary extends React.Component<
             </p>
             <div className="rounded-lg bg-muted p-3 text-sm font-mono break-words">
               {this.state.errorMessage}
+            </div>
+            <div className="rounded-lg border border-border p-3 text-xs text-muted-foreground space-y-1">
+              <div><strong>Ruta:</strong> {window.location.pathname}</div>
+              {this.state.errorStack && (
+                <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-5">
+                  {this.state.errorStack}
+                </pre>
+              )}
             </div>
             <button
               type="button"

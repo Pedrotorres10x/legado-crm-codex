@@ -36,20 +36,38 @@ export type TransactionalContract = {
 };
 
 type SignerContact = { id: string; full_name: string; email?: string | null } | null;
+type SignerSearchResult = { id: string; full_name: string; phone?: string | null; email?: string | null };
+type BuyerContact = {
+  id: string;
+  full_name: string;
+  email?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  city?: string | null;
+  id_number?: string | null;
+} | null;
+type AgentProfile = { full_name?: string | null } | null;
+type PropertyOwnerContact = { id: string; full_name: string; email?: string | null } | null;
+type PropertyOwnerRow = { contact?: PropertyOwnerContact | null };
+type PropertyLike = {
+  id: string;
+  arras_buyer_id?: string | null;
+} & Record<string, unknown>;
+type ContractContentRow = { content: string | null };
 
 export function useClosingTransactionalContracts({
   property,
   propertyOwners,
 }: {
-  property: any;
-  propertyOwners: any[];
+  property: PropertyLike;
+  propertyOwners: PropertyOwnerRow[];
 }) {
   const { user } = useAuth();
   const { toast } = useToast();
   const [templates, setTemplates] = useState<ContractTemplate[]>([]);
   const [transactionalContracts, setTransactionalContracts] = useState<TransactionalContract[]>([]);
-  const [buyerContact, setBuyerContact] = useState<any | null>(null);
-  const [agentProfile, setAgentProfile] = useState<any | null>(null);
+  const [buyerContact, setBuyerContact] = useState<BuyerContact>(null);
+  const [agentProfile, setAgentProfile] = useState<AgentProfile>(null);
   const [generatingKind, setGeneratingKind] = useState<TransactionalTemplateKind | null>(null);
   const [signerCountOpen, setSignerCountOpen] = useState(false);
   const [linksDialogOpen, setLinksDialogOpen] = useState(false);
@@ -59,7 +77,7 @@ export function useClosingTransactionalContracts({
   const [generatedLinks, setGeneratedLinks] = useState<{ label: string; token: string }[]>([]);
   const [signerContacts, setSignerContacts] = useState<SignerContact[]>([]);
   const [signerSearchTerms, setSignerSearchTerms] = useState<string[]>([]);
-  const [signerSearchResults, setSignerSearchResults] = useState<Array<any[]>>([]);
+  const [signerSearchResults, setSignerSearchResults] = useState<SignerSearchResult[][]>([]);
   const [signerSearching, setSignerSearching] = useState<boolean[]>([]);
   const [revokingContractId, setRevokingContractId] = useState<string | null>(null);
 
@@ -88,18 +106,18 @@ export function useClosingTransactionalContracts({
           .order('created_at', { ascending: false }),
         property.arras_buyer_id
           ? supabase.from('contacts').select('id, full_name, email, phone, address, city, id_number').eq('id', property.arras_buyer_id).maybeSingle()
-          : Promise.resolve({ data: null } as any),
+          : Promise.resolve({ data: null as BuyerContact }),
         user?.id
           ? supabase.from('profiles').select('full_name').eq('user_id', user.id).maybeSingle()
-          : Promise.resolve({ data: null } as any),
+          : Promise.resolve({ data: null as AgentProfile }),
       ]);
 
       if (cancelled) return;
 
       setTemplates((templatesRes.data as ContractTemplate[]) || []);
       setTransactionalContracts((contractsRes.data as TransactionalContract[]) || []);
-      setBuyerContact(buyerRes.data || null);
-      setAgentProfile(profileRes.data || null);
+      setBuyerContact((buyerRes.data || null) as BuyerContact);
+      setAgentProfile((profileRes.data || null) as AgentProfile);
     };
 
     loadTransactionalContext();
@@ -179,10 +197,10 @@ export function useClosingTransactionalContracts({
 
       await refreshTransactionalContracts();
       toast({ title: `✅ Borrador de ${kind} generado` });
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: `Error generando ${kind}`,
-        description: error.message || 'No se pudo generar el borrador.',
+        description: error instanceof Error ? error.message : 'No se pudo generar el borrador.',
         variant: 'destructive',
       });
     } finally {
@@ -257,7 +275,7 @@ export function useClosingTransactionalContracts({
 
     setSignerSearchResults((prev) => {
       const next = [...prev];
-      next[index] = data || [];
+      next[index] = (data || []) as SignerSearchResult[];
       return next;
     });
     setSignerSearching((prev) => {
@@ -304,8 +322,9 @@ export function useClosingTransactionalContracts({
         .single();
 
       let contentHash: string | null = null;
-      if (contractData?.content) {
-        const encoded = new TextEncoder().encode(contractData.content);
+      const contractContent = contractData as ContractContentRow | null;
+      if (contractContent?.content) {
+        const encoded = new TextEncoder().encode(contractContent.content);
         const hashBuffer = await crypto.subtle.digest('SHA-256', encoded);
         contentHash = Array.from(new Uint8Array(hashBuffer)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
       }
@@ -315,7 +334,7 @@ export function useClosingTransactionalContracts({
         .update({
           signature_status: 'pendiente',
           ...(contentHash ? { content_hash: contentHash } : {}),
-        } as any)
+        })
         .eq('id', pendingContractId);
 
       if (contractError) throw contractError;
@@ -342,10 +361,10 @@ export function useClosingTransactionalContracts({
       setSignerCountOpen(false);
       setLinksDialogOpen(true);
       await refreshTransactionalContracts();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error enviando a firma',
-        description: error.message || 'No se pudo preparar la firma.',
+        description: error instanceof Error ? error.message : 'No se pudo preparar la firma.',
         variant: 'destructive',
       });
     } finally {
@@ -393,10 +412,10 @@ export function useClosingTransactionalContracts({
 
       await refreshTransactionalContracts();
       toast({ title: '🚫 Firma revocada' });
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error revocando firma',
-        description: error.message || 'No se pudo revocar la firma.',
+        description: error instanceof Error ? error.message : 'No se pudo revocar la firma.',
         variant: 'destructive',
       });
     } finally {

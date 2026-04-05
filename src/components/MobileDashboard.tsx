@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { Building2, Users, CalendarCheck, Phone, UserPlus, ShieldAlert, Radar, Share2 } from 'lucide-react';
+import { Building2, Users, CalendarCheck, UserPlus, ShieldAlert, Radar, Share2 } from 'lucide-react';
 import TodayPriorities from '@/components/dashboard/TodayPriorities';
 import DashboardNotifications from '@/components/DashboardNotifications';
 import { format, startOfDay, endOfDay } from 'date-fns';
@@ -13,6 +13,10 @@ import { getAgentKpiSummary, getAgentKpiTargets } from '@/lib/agent-kpis';
 import { getAgentAutonomyStatus, getAgentCommercialFocus } from '@/lib/property-stock-health';
 import { getAgentDailyPlaybook } from '@/lib/agent-daily-playbook';
 import { useAgentInfluenceCircle } from '@/hooks/useAgentInfluenceCircle';
+
+type PublicSlugRow = {
+  public_slug?: string | null;
+};
 
 const MobileDashboard = () => {
   const { user, canViewAll } = useAuth();
@@ -55,9 +59,9 @@ const MobileDashboard = () => {
         autoClosingTasksQ = autoClosingTasksQ.eq('agent_id', uid);
       }
 
-      const profilePromise = uid
-        ? supabase.from('profiles').select('public_slug').eq('user_id', uid).maybeSingle()
-        : Promise.resolve({ data: null } as any);
+      const profilePromise: Promise<{ data: PublicSlugRow | null }> = uid
+        ? supabase.from('profiles').select('public_slug').eq('user_id', uid).maybeSingle() as Promise<{ data: PublicSlugRow | null }>
+        : Promise.resolve({ data: null });
 
       const [props, contacts, tasks, autoClosingTasks, profileRes] = await Promise.all([
         propsQ,
@@ -197,7 +201,6 @@ const MobileDashboard = () => {
   };
 
   const quickActions = [
-    { label: 'Llamadas', icon: Phone, className: 'bg-green-500 hover:bg-green-600', to: '/comms?tab=calls' },
     { label: 'Alta contacto', icon: UserPlus, className: 'bg-primary hover:bg-primary/90', to: '/contacts?quickCreate=1' },
     { label: 'Alta inmueble', icon: Building2, className: 'bg-accent hover:bg-accent/90', to: '/properties?quickCreate=1' },
     {

@@ -5,11 +5,19 @@ import { Calendar, CheckCircle, Clock, Loader2, Sparkles } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
+type ContactVisit = {
+  id: string;
+  visit_date: string;
+  notes: string | null;
+  confirmation_status: string | null;
+  properties: { title: string | null } | null;
+};
+
 interface ContactsInsightsDialogsProps {
   visitsOpen: string | null;
   onVisitsOpenChange: (open: string | null) => void;
   visitsLoading: boolean;
-  contactVisits: any[];
+  contactVisits: ContactVisit[];
   summaryOpen: string | null;
   onSummaryOpenChange: (open: string | null) => void;
   summaryLoading: boolean;

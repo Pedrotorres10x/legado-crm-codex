@@ -12,9 +12,50 @@ const docTypeLabels: Record<string, string> = {
   certificado_energetico: 'Certificado Energético', otro: 'Otro',
 };
 
+type ExtractedField = {
+  label: string;
+  value: string | number;
+};
+
+type ExtractedOwner = {
+  name?: string | null;
+  id_number?: string | null;
+  percentage?: string | null;
+};
+
+type ExtractedDocumentData = {
+  document_type?: string;
+  summary?: string;
+  fields_found?: string[];
+  full_name?: string;
+  id_number?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  city?: string;
+  nationality?: string;
+  birth_date?: string;
+  property_address?: string;
+  property_city?: string;
+  property_province?: string;
+  property_zip_code?: string;
+  property_type?: string;
+  cadastral_reference?: string;
+  surface_area?: string | number;
+  built_area?: string | number;
+  bedrooms?: string | number;
+  bathrooms?: string | number;
+  floor?: string | number;
+  price?: string | number;
+  energy_cert?: string;
+  registro?: string;
+  cargas?: string;
+  titulares?: ExtractedOwner[];
+};
+
 interface DocumentScannerProps {
   context: 'contact' | 'property';
-  onExtracted: (data: any) => void;
+  onExtracted: (data: ExtractedDocumentData) => void;
   buttonLabel?: string;
 }
 
@@ -22,7 +63,7 @@ const DocumentScanner = ({ context, onExtracted, buttonLabel = 'Escanear documen
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [scanning, setScanning] = useState(false);
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<ExtractedDocumentData | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -83,7 +124,7 @@ const DocumentScanner = ({ context, onExtracted, buttonLabel = 'Escanear documen
     toast({ title: 'Datos aplicados ✅', description: 'Los campos se han rellenado automáticamente' });
   };
 
-  const contactFields = result ? [
+  const contactFields: ExtractedField[] = result ? [
     result.full_name && { label: 'Nombre', value: result.full_name },
     result.id_number && { label: 'Documento', value: result.id_number },
     result.phone && { label: 'Teléfono', value: result.phone },
@@ -92,9 +133,9 @@ const DocumentScanner = ({ context, onExtracted, buttonLabel = 'Escanear documen
     result.city && { label: 'Ciudad', value: result.city },
     result.nationality && { label: 'Nacionalidad', value: result.nationality },
     result.birth_date && { label: 'Fecha nacimiento', value: result.birth_date },
-  ].filter(Boolean) : [];
+  ].filter((field): field is ExtractedField => Boolean(field)) : [];
 
-  const propertyFields = result ? [
+  const propertyFields: ExtractedField[] = result ? [
     result.property_address && { label: 'Dirección', value: result.property_address },
     result.property_city && { label: 'Ciudad', value: result.property_city },
     result.property_province && { label: 'Provincia', value: result.property_province },
@@ -110,7 +151,7 @@ const DocumentScanner = ({ context, onExtracted, buttonLabel = 'Escanear documen
     result.energy_cert && { label: 'Certificado energético', value: result.energy_cert },
     result.registro && { label: 'Registro', value: result.registro },
     result.cargas && { label: 'Cargas', value: result.cargas },
-  ].filter(Boolean) : [];
+  ].filter((field): field is ExtractedField => Boolean(field)) : [];
 
   const hasContactData = result?.fields_found?.includes('contact');
   const hasPropertyData = result?.fields_found?.includes('property');
@@ -172,10 +213,10 @@ const DocumentScanner = ({ context, onExtracted, buttonLabel = 'Escanear documen
                         <CardTitle className="text-xs flex items-center gap-1"><User className="h-3 w-3" />Datos de contacto</CardTitle>
                       </CardHeader>
                       <CardContent className="py-2 px-3 space-y-1">
-                        {contactFields.map((f: any) => (
+                        {contactFields.map((field) => (
                           <div key={f.label} className="flex justify-between text-xs">
-                            <span className="text-muted-foreground">{f.label}</span>
-                            <span className="font-medium text-right max-w-[60%] truncate">{f.value}</span>
+                            <span className="text-muted-foreground">{field.label}</span>
+                            <span className="font-medium text-right max-w-[60%] truncate">{field.value}</span>
                           </div>
                         ))}
                       </CardContent>
@@ -188,10 +229,10 @@ const DocumentScanner = ({ context, onExtracted, buttonLabel = 'Escanear documen
                         <CardTitle className="text-xs flex items-center gap-1"><Home className="h-3 w-3" />Datos del inmueble</CardTitle>
                       </CardHeader>
                       <CardContent className="py-2 px-3 space-y-1">
-                        {propertyFields.map((f: any) => (
-                          <div key={f.label} className="flex justify-between text-xs">
-                            <span className="text-muted-foreground">{f.label}</span>
-                            <span className="font-medium text-right max-w-[60%] truncate">{f.value}</span>
+                        {propertyFields.map((field) => (
+                          <div key={field.label} className="flex justify-between text-xs">
+                            <span className="text-muted-foreground">{field.label}</span>
+                            <span className="font-medium text-right max-w-[60%] truncate">{field.value}</span>
                           </div>
                         ))}
                       </CardContent>
@@ -204,11 +245,11 @@ const DocumentScanner = ({ context, onExtracted, buttonLabel = 'Escanear documen
                         <CardTitle className="text-xs">Titulares</CardTitle>
                       </CardHeader>
                       <CardContent className="py-2 px-3 space-y-1">
-                        {result.titulares.map((t: any, i: number) => (
+                        {result.titulares.map((owner, i: number) => (
                           <div key={i} className="text-xs">
-                            <span className="font-medium">{t.name}</span>
-                            {t.id_number && <span className="text-muted-foreground ml-1">({t.id_number})</span>}
-                            {t.percentage && <span className="text-muted-foreground ml-1">· {t.percentage}</span>}
+                            <span className="font-medium">{owner.name}</span>
+                            {owner.id_number && <span className="text-muted-foreground ml-1">({owner.id_number})</span>}
+                            {owner.percentage && <span className="text-muted-foreground ml-1">· {owner.percentage}</span>}
                           </div>
                         ))}
                       </CardContent>

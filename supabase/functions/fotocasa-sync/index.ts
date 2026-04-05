@@ -15,6 +15,71 @@ import { corsHeaders, json, handleCors } from '../_shared/cors.ts';
 
 const FOTOCASA_BASE = 'https://imports.gw.fotocasa.pro';
 
+type RawTagValue = string | string[] | null | undefined;
+
+interface FotocasaProperty {
+  id: string;
+  crm_reference?: string | null;
+  reference?: string | null;
+  property_type?: string | null;
+  secondary_property_type?: string | null;
+  operation?: string | null;
+  zone?: string | null;
+  city?: string | null;
+  province?: string | null;
+  country?: string | null;
+  title?: string | null;
+  description?: string | null;
+  price?: number | null;
+  bedrooms?: number | null;
+  bathrooms?: number | null;
+  surface_area?: number | null;
+  built_area?: number | null;
+  has_terrace?: boolean | null;
+  has_pool?: boolean | null;
+  has_garage?: boolean | null;
+  has_garden?: boolean | null;
+  has_elevator?: boolean | null;
+  features?: string[] | null;
+  year_built?: number | null;
+  floor?: string | null;
+  zip_code?: string | null;
+  address?: string | null;
+  longitude?: number | null;
+  latitude?: number | null;
+  floor_plans?: string[] | null;
+  images?: string[] | null;
+  videos?: string[] | null;
+  virtual_tour_url?: string | null;
+  source_metadata?: { raw_tags?: Record<string, RawTagValue> | null } | null;
+  agent_id?: string | null;
+}
+
+interface AgentProfile {
+  user_id: string;
+  full_name: string | null;
+  email: string | null;
+  phone: string | null;
+}
+
+interface FotocasaPayload {
+  ExternalId: string;
+  AgencyReference: string;
+  TypeId: number;
+  SubTypeId: number;
+  ContactTypeId: number;
+  PropertyAddress: Array<Record<string, unknown>>;
+  Contact: Array<Record<string, unknown>>;
+  TransactionTypeId: number;
+  Features: FotocasaFeature[];
+  Documents: FotocasaDocument[];
+}
+
+interface FotocasaResponseItem {
+  ExternalId?: string;
+  Message?: string;
+}
+
 // ─── Type & SubType mapping ────────────────────────────────────────────────
 const TYPE_MAP: Record<string, number> = {
   piso: 1, casa: 2, chalet: 2, adosado: 2, atico: 1, duplex: 1, estudio: 1,
@@ -69,6 +134,164 @@ function cleanPhone(phone: string | null): string | null {
   return phone.replace(/[^0-9+]/g, '').replace(/^\+/, '').replace(/^0+/, '') || null;
 }
 
+function cleanPortalText(value: string | null | undefined): string {
+  if (!value) return '';
+
+  return value
+    .replace(/\r/g, '\n')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !/^https?:\/\//i.test(line))
+    .filter((line) => !/^not-available$/i.test(line))
+    .join('\n\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+}
+
+function looksMostlyEnglish(value: string): boolean {
+  const text = ` ${value.toLowerCase()} `;
+  const englishHits = [' the ', ' and ', ' with ', ' located ', ' property ', ' bedrooms ', ' bathrooms ', ' sea ', ' views ']
+    .filter((token) => text.includes(token)).length;
+  const spanishHits = [' el ', ' la ', ' con ', ' ubicado ', ' propiedad ', ' dormitorios ', ' banos ', ' baños ', ' vistas ']
+    .filter((token) => text.includes(token)).length;
+  return englishHits > spanishHits;
+}
+
+function extractLocalizedText(
+  container: string,
+  preferredLanguages: string[] = ['en', 'en_gb', 'en_us', 'english'],
+  fallbackToAnyLanguage = false,
+): string {
+  if (!container) return '';
+  if (!container.includes('<')) return cleanPortalText(container);
+
+  for (const lang of preferredLanguages) {
+    const match = container.match(new RegExp(`<${lang}[^>]*>([\\s\\S]*?)<\\/${lang}>`, 'i'));
+    if (match?.[1]) return cleanPortalText(match[1]);
+  }
+
+  if (!fallbackToAnyLanguage) return '';
+  const anyLanguageMatch = container.match(/<[a-z_]{2,10}[^>]*>([\s\S]*?)<\/[a-z_]{2,10}>/i);
+  return cleanPortalText(anyLanguageMatch?.[1] || container);
+}
+
+function readRawTagValue(prop: FotocasaProperty, keys: string[]): string {
+  const rawTags = prop?.source_metadata?.raw_tags;
+  if (!rawTags || typeof rawTags !== 'object') return '';
+
+  for (const key of keys) {
+    const value = rawTags[key];
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (typeof item === 'string' && item.trim()) return item.trim();
+      }
+    } else if (typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  return '';
+}
+
+function buildGeneratedEnglishTitle(prop: FotocasaProperty): string {
+  const typeMap: Record<string, string> = {
+    piso: 'Apartment',
+    casa: 'House',
+    chalet: 'Villa',
+    adosado: 'Townhouse',
+    atico: 'Penthouse',
+    duplex: 'Duplex',
+    estudio: 'Studio',
+    local: 'Commercial Property',
+    oficina: 'Office',
+    nave: 'Industrial Unit',
+    terreno: 'Plot',
+    garaje: 'Garage',
+    trastero: 'Storage Room',
+    otro: 'Property',
+  };
+  const rawType = typeof prop.property_type === 'string' ? prop.property_type.trim().toLowerCase() : 'otro';
+  const typeLabel = typeMap[rawType] || 'Property';
+  const area = cleanPortalText(prop.zone) || cleanPortalText(prop.city) || cleanPortalText(prop.province);
+  return area ? `${typeLabel} in ${area}` : typeLabel;
+}
+
+function buildGeneratedEnglishDescription(prop: FotocasaProperty): string {
+  const parts: string[] = [];
+  const bedrooms = Number(prop.bedrooms) > 0 ? `${prop.bedrooms} bedroom${Number(prop.bedrooms) === 1 ? '' : 's'}` : '';
+  const bathrooms = Number(prop.bathrooms) > 0 ? `${prop.bathrooms} bathroom${Number(prop.bathrooms) === 1 ? '' : 's'}` : '';
+  const surface = Number(prop.surface_area) > 0 ? `${Math.round(Number(prop.surface_area))} m2` : '';
+  const location = [cleanPortalText(prop.zone), cleanPortalText(prop.city), cleanPortalText(prop.province)]
+    .filter(Boolean)
+    .join(', ');
+  const summary = [bedrooms, bathrooms, surface].filter(Boolean).join(', ');
+
+  if (summary) parts.push(`${buildGeneratedEnglishTitle(prop)} with ${summary}.`);
+  else parts.push(`${buildGeneratedEnglishTitle(prop)} available${location ? ` in ${location}` : ''}.`);
+
+  const highlights: string[] = [];
+  if (prop.has_terrace) highlights.push('terrace');
+  if (prop.has_pool) highlights.push('pool');
+  if (prop.has_garage) highlights.push('garage');
+  if (prop.has_garden) highlights.push('garden');
+  if (prop.has_elevator) highlights.push('lift');
+  if (highlights.length > 0) parts.push(`Key features include ${highlights.join(', ')}.`);
+
+  parts.push(location ? `Located in ${location}. Contact us for further details.` : 'Contact us for further details.');
+  return cleanPortalText(parts.join(' '));
+}
+
+function resolvePortalCopy(prop: FotocasaProperty): { title: string; description: string } {
+  const currentTitle = cleanPortalText(prop.title);
+  const currentDescription = cleanPortalText(prop.description);
+
+  const englishTitleFromRaw = cleanPortalText(
+    extractLocalizedText(readRawTagValue(prop, ['title_en', 'name_en', 'headline_en', 'title', 'titulo', 'name', 'headline']))
+  );
+  const englishDescriptionFromRaw = cleanPortalText(
+    extractLocalizedText(readRawTagValue(prop, ['description_en', 'desc_en', 'description_english', 'description', 'desc', 'descripcion', 'comments']))
+  );
+
+  const title = englishTitleFromRaw
+    || (currentTitle && looksMostlyEnglish(currentTitle) ? currentTitle : '');
+
+  const description = englishDescriptionFromRaw
+    || (currentDescription && looksMostlyEnglish(currentDescription) ? currentDescription : '');
+
+  return { title, description };
+}
+
+interface EnglishTranslations {
+  [propertyId: string]: { title_en: string; description_en: string };
+}
+
+type TranslationProgressHook = (() => Promise<void>) | null;
+
+function buildFallbackEnglishCopy(prop: FotocasaProperty) {
+  const existing = resolvePortalCopy(prop);
+  const title_en = existing.title || buildGeneratedEnglishTitle(prop);
+  const description_en = existing.description || buildGeneratedEnglishDescription(prop);
+  return {
+    title_en: cleanPortalText(title_en),
+    description_en: cleanPortalText(description_en),
+  };
+}
+
+async function translatePropertiesToEnglish(
+  properties: FotocasaProperty[],
+  onProgress: TranslationProgressHook = null,
+): Promise<EnglishTranslations> {
+  const result: EnglishTranslations = {};
+  for (const prop of properties) {
+    result[prop.id] = buildFallbackEnglishCopy(prop);
+    if (onProgress) await onProgress();
+  }
+
+  return result;
+}
+
 // ─── Feature builder ────────────────────────────────────────────────────────
 interface FotocasaFeature {
   FeatureId: number;
@@ -77,7 +300,7 @@ interface FotocasaFeature {
   TextValue?: string;
 }
 
-function buildFeatures(prop: any): FotocasaFeature[] {
+function buildFeatures(prop: FotocasaProperty): FotocasaFeature[] {
   const features: FotocasaFeature[] = [];
 
   // Surface (required)
@@ -195,7 +418,7 @@ interface FotocasaDocument {
   SortingId: number;
 }
 
-function buildDocuments(prop: any): FotocasaDocument[] {
+function buildDocuments(prop: FotocasaProperty): FotocasaDocument[] {
   const docs: FotocasaDocument[] = [];
   let sort = 1;
 
@@ -226,13 +449,13 @@ function buildDocuments(prop: any): FotocasaDocument[] {
 }
 
 // ─── Build full Fotocasa payload ─────────────────────────────────────────
-function buildPayload(prop: any, agentProfile: any): any {
+function buildPayload(prop: FotocasaProperty, agentProfile: AgentProfile | null): FotocasaPayload {
   const externalId = prop.crm_reference || prop.reference || prop.id;
   const typeId = TYPE_MAP[prop.property_type] || 1;
   const subTypeId = SUBTYPE_MAP[prop.property_type] || 9;
   const transactionTypeId = TRANSACTION_MAP[prop.operation] || 1;
 
-  const payload: any = {
+  const payload: FotocasaPayload = {
     ExternalId: externalId,
     AgencyReference: externalId,
     TypeId: typeId,
@@ -287,31 +510,52 @@ function buildPayload(prop: any, agentProfile: any): any {
 // ─── Fotocasa API calls ─────────────────────────────────────────────────
 const FOTOCASA_X_SOURCE = '2ded6138-34f6-4bd1-86ec-6ee74f185b77';
 const FOTOCASA_REQUEST_TIMEOUT_MS = 25000;
-const FOTOCASA_DEFAULT_BATCH_SIZE = 20;
+const FOTOCASA_DEFAULT_BATCH_SIZE = 10;
 const FOTOCASA_CONCURRENCY = 4;
 const FOTOCASA_BULK_LOCK_KEY = 'fotocasa_bulk_sync';
 const FOTOCASA_BULK_LOCK_TTL_MS = 30 * 60 * 1000;
+const FOTOCASA_STALE_HEARTBEAT_MS = 15 * 60 * 1000;
+
+interface FotocasaBulkSyncMetadata {
+  action?: string;
+  sync_run_id?: string;
+  offset?: number;
+  batch_size?: number;
+  [key: string]: unknown;
+}
+
+function parseBulkSyncMetadata(metadata: unknown): FotocasaBulkSyncMetadata {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return {};
+  }
+
+  return metadata as FotocasaBulkSyncMetadata;
+}
 
 async function acquireBulkSyncLock(
   supabase: ReturnType<typeof createClient>,
   action: string,
   syncRunId: string,
+  offset: number,
+  batchSize: number,
 ) {
   const nowIso = new Date().toISOString();
   const expiresIso = new Date(Date.now() + FOTOCASA_BULK_LOCK_TTL_MS).toISOString();
 
   const { data: current, error: readError } = await supabase
     .from('portal_sync_state')
-    .select('sync_key, status, started_at, expires_at, metadata')
+    .select('sync_key, status, started_at, heartbeat_at, expires_at, metadata')
     .eq('sync_key', FOTOCASA_BULK_LOCK_KEY)
     .maybeSingle();
 
   if (readError) throw readError;
 
   const expired = !current?.expires_at || new Date(current.expires_at).getTime() <= Date.now();
-  const currentRunId = current?.metadata?.sync_run_id;
-  const isSameRunContinuation = current?.status === 'running' && !expired && currentRunId === syncRunId;
-  if (current?.status === 'running' && !expired && !isSameRunContinuation) {
+  const staleHeartbeat = !current?.heartbeat_at
+    || new Date(current.heartbeat_at).getTime() <= Date.now() - FOTOCASA_STALE_HEARTBEAT_MS;
+  const recoveringStaleLock = current?.status === 'running' && (expired || staleHeartbeat);
+
+  if (current?.status === 'running' && !recoveringStaleLock) {
     return { acquired: false, current };
   }
 
@@ -320,29 +564,35 @@ async function acquireBulkSyncLock(
     .upsert({
       sync_key: FOTOCASA_BULK_LOCK_KEY,
       status: 'running',
-      started_at: current?.status === 'running' && !expired ? current.started_at : nowIso,
+      started_at: recoveringStaleLock && current?.started_at ? current.started_at : nowIso,
       heartbeat_at: nowIso,
       expires_at: expiresIso,
-      metadata: { action, sync_run_id: syncRunId },
+      metadata: { action, sync_run_id: syncRunId, offset, batch_size: batchSize },
       finished_at: null,
     });
 
   if (upsertError) throw upsertError;
 
-  return { acquired: true };
+  return {
+    acquired: true,
+    recovered: recoveringStaleLock,
+    previous: current,
+  };
 }
 
 async function touchBulkSyncLock(
   supabase: ReturnType<typeof createClient>,
   action: string,
   syncRunId: string,
+  offset: number,
+  batchSize: number,
 ) {
   await supabase
     .from('portal_sync_state')
     .update({
       heartbeat_at: new Date().toISOString(),
       expires_at: new Date(Date.now() + FOTOCASA_BULK_LOCK_TTL_MS).toISOString(),
-      metadata: { action, sync_run_id: syncRunId },
+      metadata: { action, sync_run_id: syncRunId, offset, batch_size: batchSize },
     })
     .eq('sync_key', FOTOCASA_BULK_LOCK_KEY);
 }
@@ -351,6 +601,8 @@ async function releaseBulkSyncLock(
   supabase: ReturnType<typeof createClient>,
   action: string,
   syncRunId: string,
+  offset: number,
+  batchSize: number,
 ) {
   await supabase
     .from('portal_sync_state')
@@ -359,12 +611,48 @@ async function releaseBulkSyncLock(
       heartbeat_at: new Date().toISOString(),
       finished_at: new Date().toISOString(),
       expires_at: null,
-      metadata: { action, sync_run_id: syncRunId },
+      metadata: { action, sync_run_id: syncRunId, offset, batch_size: batchSize },
     })
     .eq('sync_key', FOTOCASA_BULK_LOCK_KEY);
 }
 
-async function fotocasaRequest(method: string, path: string, apiKey: string, body?: any) {
+function queueNextFotocasaBatch(
+  supabaseUrl: string,
+  serviceKey: string,
+  batchSize: number,
+  nextOffset: number,
+  syncRunId: string,
+) {
+  const promise = fetch(`${supabaseUrl}/functions/v1/fotocasa-sync`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${serviceKey}`,
+    },
+    body: JSON.stringify({
+      action: 'sync_all',
+      batch_size: batchSize,
+      offset: nextOffset,
+      sync_run_id: syncRunId,
+    }),
+  }).then(async (response) => {
+    if (response.ok) return;
+    const responseBody = await response.text().catch(() => '');
+    console.error(`[fotocasa] chained batch ${nextOffset} failed with HTTP ${response.status}: ${responseBody}`);
+  }).catch((error) => {
+    console.error(`[fotocasa] chained batch ${nextOffset} dispatch failed: ${String(error)}`);
+  });
+
+  const edgeRuntime = globalThis.EdgeRuntime as { waitUntil?: (promise: Promise<unknown>) => void } | undefined;
+  if (edgeRuntime?.waitUntil) {
+    edgeRuntime.waitUntil(promise);
+    return;
+  }
+
+  void promise;
+}
+
+async function fotocasaRequest(method: string, path: string, apiKey: string, body?: unknown) {
   const url = `${FOTOCASA_BASE}/${path}`;
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -408,6 +696,22 @@ async function fotocasaRequest(method: string, path: string, apiKey: string, bod
   }
 }
 
+async function deleteFotocasaPropertyByExternalId(externalId: string, apiKey: string) {
+  const base64Id = btoa(String(externalId));
+  return await fotocasaRequest('DELETE', `api/v2/property/${base64Id}`, apiKey);
+}
+
+async function readBulkSyncState(supabase: ReturnType<typeof createClient>) {
+  const { data, error } = await supabase
+    .from('portal_sync_state')
+    .select('sync_key, status, started_at, heartbeat_at, expires_at, metadata')
+    .eq('sync_key', FOTOCASA_BULK_LOCK_KEY)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+}
+
 // ─── Main handler ─────────────────────────────────────────────────────────
 Deno.serve(async (req) => {
   const cors = handleCors(req);
@@ -417,25 +721,49 @@ Deno.serve(async (req) => {
   let bulkLockAcquired = false;
   let currentAction = 'sync_all';
   let currentSyncRunId = '';
+  let currentOffset = 0;
+  let currentBatchSize = FOTOCASA_DEFAULT_BATCH_SIZE;
 
   try {
     // Auth: require service role key or valid JWT
     const authHeader = req.headers.get('Authorization');
     const internalKey = req.headers.get('x-internal-key');
+    const apikeyHeader = req.headers.get('apikey');
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+
+    const bootstrapClient = createClient(supabaseUrl, serviceKey);
+    const { data: runtimeSettings } = await bootstrapClient
+      .from('settings')
+      .select('value')
+      .eq('key', 'service_role_key')
+      .maybeSingle();
+
+    const settingsServiceRoleKey =
+      typeof runtimeSettings?.value === 'string' && runtimeSettings.value.trim()
+        ? runtimeSettings.value.trim()
+        : null;
 
     let authorized = false;
 
     // Allow service-role bearer token (from DB triggers & cron)
-    if (authHeader === `Bearer ${serviceKey}`) {
+    if (
+      authHeader === `Bearer ${serviceKey}` ||
+      authHeader === `Bearer ${settingsServiceRoleKey}` ||
+      apikeyHeader === serviceKey ||
+      apikeyHeader === settingsServiceRoleKey ||
+      internalKey === serviceKey ||
+      internalKey === settingsServiceRoleKey
+    ) {
       authorized = true;
     }
 
     // Allow valid user JWT (from frontend admin calls)
     if (!authorized && authHeader?.startsWith('Bearer ')) {
       const anonClient = createClient(
-        Deno.env.get('SUPABASE_URL')!,
-        Deno.env.get('SUPABASE_ANON_KEY')!,
+        supabaseUrl,
+        anonKey,
         { global: { headers: { Authorization: authHeader } } }
       );
       const token = authHeader.replace('Bearer ', '');
@@ -453,10 +781,7 @@ Deno.serve(async (req) => {
       return json({ error: 'FOTOCASA_API_KEY not configured' }, 500);
     }
 
-    supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-    );
+    supabase = bootstrapClient;
 
     const body = await req.json().catch(() => ({}));
     const action = body.action || 'sync_all';
@@ -464,10 +789,115 @@ Deno.serve(async (req) => {
     currentSyncRunId = typeof body.sync_run_id === 'string' && body.sync_run_id.trim()
       ? body.sync_run_id.trim()
       : crypto.randomUUID();
+    const startOffset = Math.max(0, Number(body.offset || 0));
+    const batchSize = Math.max(1, Number(body.batch_size || FOTOCASA_DEFAULT_BATCH_SIZE));
+    currentOffset = startOffset;
+    currentBatchSize = batchSize;
     const isBulkAction = action === 'sync_all' || action === 'delete_stale';
 
+    if (action === 'watchdog') {
+      const currentState = await readBulkSyncState(supabase);
+      if (!currentState) {
+        return json({
+          ok: true,
+          action: 'watchdog',
+          status: 'idle',
+          recovered: false,
+          reason: 'no_bulk_sync_state',
+        });
+      }
+
+      const metadata = parseBulkSyncMetadata(currentState.metadata);
+      const staleByHeartbeat = !currentState.heartbeat_at
+        || new Date(currentState.heartbeat_at).getTime() <= Date.now() - FOTOCASA_STALE_HEARTBEAT_MS;
+      const staleByExpiry = !currentState.expires_at
+        || new Date(currentState.expires_at).getTime() <= Date.now();
+      const shouldRecover = currentState.status === 'running' && (staleByHeartbeat || staleByExpiry);
+
+      if (!shouldRecover) {
+        return json({
+          ok: true,
+          action: 'watchdog',
+          status: currentState.status,
+          recovered: false,
+          heartbeat_at: currentState.heartbeat_at,
+          expires_at: currentState.expires_at,
+          metadata,
+        });
+      }
+
+      const resumeAction = metadata.action === 'delete_stale' ? 'delete_stale' : 'sync_all';
+      const resumeOffset = Math.max(0, Number(metadata.offset ?? 0));
+      const resumeBatchSize = Math.max(1, Number(metadata.batch_size ?? batchSize));
+      const resumeSyncRunId = typeof metadata.sync_run_id === 'string' && metadata.sync_run_id.trim()
+        ? metadata.sync_run_id.trim()
+        : crypto.randomUUID();
+
+      await supabase
+        .from('portal_sync_state')
+        .update({
+          status: 'idle',
+          heartbeat_at: new Date().toISOString(),
+          finished_at: new Date().toISOString(),
+          expires_at: null,
+          metadata: {
+            ...metadata,
+            action: 'watchdog_reset',
+            resume_action: resumeAction,
+            resume_offset: resumeOffset,
+            batch_size: resumeBatchSize,
+            sync_run_id: resumeSyncRunId,
+          },
+        })
+        .eq('sync_key', FOTOCASA_BULK_LOCK_KEY);
+
+      await supabase.from('erp_sync_logs').insert({
+        target: 'fotocasa',
+        event: 'sync_watchdog_recovered',
+        status: 'ok',
+        http_status: 202,
+        payload: {
+          previous_status: currentState.status,
+          previous_heartbeat_at: currentState.heartbeat_at,
+          previous_expires_at: currentState.expires_at,
+          resume_action: resumeAction,
+          resume_offset: resumeOffset,
+          batch_size: resumeBatchSize,
+          sync_run_id: resumeSyncRunId,
+        },
+      });
+
+      const resumeResponse = await fetch(`${supabaseUrl}/functions/v1/fotocasa-sync`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${serviceKey}`,
+        },
+        body: JSON.stringify({
+          action: resumeAction,
+          batch_size: resumeBatchSize,
+          offset: resumeOffset,
+          sync_run_id: resumeSyncRunId,
+        }),
+      });
+
+      const resumePayload = await resumeResponse.json().catch(() => null);
+      return json({
+        ok: resumeResponse.ok,
+        action: 'watchdog',
+        status: 'recovered',
+        recovered: true,
+        resume_action: resumeAction,
+        resume_offset: resumeOffset,
+        batch_size: resumeBatchSize,
+        sync_run_id: resumeSyncRunId,
+        dispatch_status: resumeResponse.status,
+        dispatch_payload: resumePayload,
+      }, { status: resumeResponse.ok ? 200 : resumeResponse.status });
+    }
+
     if (isBulkAction) {
-      const lock = await acquireBulkSyncLock(supabase, action, currentSyncRunId);
+      const lock = await acquireBulkSyncLock(supabase, action, currentSyncRunId, startOffset, batchSize);
       if (!lock.acquired) {
         return json({
           ok: true,
@@ -477,6 +907,38 @@ Deno.serve(async (req) => {
         });
       }
       bulkLockAcquired = true;
+      if (lock.recovered) {
+        const previousMetadata = parseBulkSyncMetadata(lock.previous?.metadata);
+        await supabase.from('erp_sync_logs').insert({
+          target: 'fotocasa',
+          event: 'sync_stale_lock_recovered',
+          status: 'ok',
+          http_status: 202,
+          payload: {
+            action,
+            sync_run_id: currentSyncRunId,
+            previous_started_at: lock.previous?.started_at,
+            previous_heartbeat_at: lock.previous?.heartbeat_at,
+            previous_expires_at: lock.previous?.expires_at,
+            previous_metadata: previousMetadata,
+            offset: startOffset,
+            batch_size: batchSize,
+          },
+        });
+      }
+      await supabase.from('erp_sync_logs').insert({
+        target: 'fotocasa',
+        event: 'sync_started',
+        status: 'ok',
+        http_status: 202,
+        payload: {
+          action,
+          sync_run_id: currentSyncRunId,
+          offset: startOffset,
+          batch_size: batchSize,
+        },
+      });
+      await touchBulkSyncLock(supabase, action, currentSyncRunId, startOffset, batchSize);
     }
 
     // ── List published ads ──────────────────────────────────────────────
@@ -490,7 +952,7 @@ Deno.serve(async (req) => {
       const externalIds: string[] = body.external_ids || [];
       if (externalIds.length === 0) return json({ error: 'external_ids required' }, 400);
 
-      const purgeResults: any[] = [];
+      const purgeResults: Array<Record<string, unknown>> = [];
       for (const extId of externalIds) {
         const base64Id = btoa(String(extId));
         const { ok: delOk, status: delStatus } = await fotocasaRequest('DELETE', `api/v2/property/${base64Id}`, apiKey);
@@ -579,7 +1041,8 @@ Deno.serve(async (req) => {
 
     // ── Delete stale ads (standalone action) ───────────────────────────
     if (action === 'delete_stale') {
-      await touchBulkSyncLock(supabase, action, currentSyncRunId);
+      await touchBulkSyncLock(supabase, action, currentSyncRunId, startOffset, batchSize);
+      currentOffset = startOffset;
       // Fetch existing ads from Fotocasa
       const { ok: staleListOk, data: staleExistingAds } = await fotocasaRequest('GET', 'api/property', apiKey);
       const staleExistingIds = new Set<string>();
@@ -602,10 +1065,10 @@ Deno.serve(async (req) => {
       console.log(`[fotocasa] delete_stale: ${staleExistingIds.size} ads currently on Fotocasa`);
 
       // Fetch ALL valid external IDs from CRM
-      let allIds: string[] = [];
+      const allIds: string[] = [];
       let pgOffset = 0;
       while (true) {
-        await touchBulkSyncLock(supabase, action, currentSyncRunId);
+        await touchBulkSyncLock(supabase, action, currentSyncRunId, startOffset, batchSize);
         const { data: idBatch } = await supabase
           .from('properties')
           .select('id, crm_reference, reference, secondary_property_type, property_type')
@@ -626,9 +1089,9 @@ Deno.serve(async (req) => {
       }
       const syncedExternalIds = new Set(allIds);
 
-      const staleDeleteResults: any[] = [];
+      const staleDeleteResults: Array<Record<string, unknown>> = [];
       for (const existingId of staleExistingIds) {
-        await touchBulkSyncLock(supabase, action, currentSyncRunId);
+        await touchBulkSyncLock(supabase, action, currentSyncRunId, startOffset, batchSize);
         if (!syncedExternalIds.has(existingId)) {
           const base64Id = btoa(String(existingId));
           console.log(`[fotocasa] AUTO-DELETE externalId="${existingId}" (no longer disponible)`);
@@ -664,17 +1127,14 @@ Deno.serve(async (req) => {
         deleted: deletedCount,
         results: staleDeleteResults,
       });
-      await releaseBulkSyncLock(supabase, action, currentSyncRunId);
+      await releaseBulkSyncLock(supabase, action, currentSyncRunId, startOffset, batchSize);
       bulkLockAcquired = false;
       return result;
     }
 
     // ── Sync one or all ─────────────────────────────────────────────────
-    let properties: any[] = [];
+    let properties: FotocasaProperty[] = [];
     let fetchedBaseCount = 0;
-    const batchSize = Math.max(1, Number(body.batch_size || FOTOCASA_DEFAULT_BATCH_SIZE));
-    const startOffset = Math.max(0, Number(body.offset || 0));
-
     if (action === 'sync_one' && body.property_id) {
       const { data, error: fetchErr } = await supabase
         .from('properties')
@@ -682,7 +1142,7 @@ Deno.serve(async (req) => {
         .eq('id', body.property_id);
       if (fetchErr) return json({ error: fetchErr.message }, 500);
       // Skip international properties
-      properties = (data || []).filter((p: any) => !p.country || p.country === 'España');
+      properties = ((data || []) as FotocasaProperty[]).filter((p) => !p.country || p.country === 'España');
       fetchedBaseCount = properties.length;
       if (properties.length === 0) {
         console.log(`[fotocasa] Skipping sync_one: property is international`);
@@ -707,7 +1167,7 @@ Deno.serve(async (req) => {
     }
 
     // Duplicate properties with secondary_property_type (same logic as XML feeds)
-    const extras: any[] = [];
+    const extras: FotocasaProperty[] = [];
     for (const p of properties) {
       if (p.secondary_property_type && p.secondary_property_type !== p.property_type) {
         extras.push({
@@ -724,6 +1184,26 @@ Deno.serve(async (req) => {
       properties = [...properties, ...extras];
     }
 
+    const translations = await translatePropertiesToEnglish(
+      properties,
+      isBulkAction
+        ? async () => {
+            await touchBulkSyncLock(supabase!, action, currentSyncRunId, startOffset, batchSize);
+          }
+        : null,
+    );
+    properties = properties.map((prop) => {
+      const translation = translations[prop.id];
+      if (!translation?.title_en || !translation?.description_en) {
+        throw new Error(`[fotocasa-sync] Missing English copy for property ${prop.id}`);
+      }
+      return {
+        ...prop,
+        title: translation.title_en,
+        description: translation.description_en,
+      };
+    });
+
     // Count total for pagination info
     const { count: totalCount } = await supabase
       .from('properties')
@@ -734,14 +1214,14 @@ Deno.serve(async (req) => {
       .or('country.is.null,country.eq.España');
 
     // Pre-fetch agent profiles for contact info
-    const agentIds = [...new Set((properties || []).map((p: any) => p.agent_id).filter(Boolean))];
+    const agentIds = [...new Set((properties || []).map((p) => p.agent_id).filter(Boolean))];
     const { data: profiles } = await supabase
       .from('profiles')
       .select('user_id, full_name, email, phone')
       .in('user_id', agentIds.length > 0 ? agentIds : ['__none__']);
 
-    const profileMap: Record<string, any> = {};
-    (profiles || []).forEach((p: any) => { profileMap[p.user_id] = p; });
+    const profileMap: Record<string, AgentProfile> = {};
+    ((profiles || []) as AgentProfile[]).forEach((p) => { profileMap[p.user_id] = p; });
 
     // Check which properties already exist in Fotocasa
     const { ok: listOk, data: existingAds } = await fotocasaRequest('GET', 'api/property', apiKey);
@@ -763,15 +1243,16 @@ Deno.serve(async (req) => {
       } catch { /* ignore */ }
     }
 
-    const results: any[] = [];
+    const results: Array<Record<string, unknown>> = [];
 
     // Process properties in parallel chunks of 5 for speed
     for (let i = 0; i < (properties || []).length; i += FOTOCASA_CONCURRENCY) {
       if (isBulkAction) {
-        await touchBulkSyncLock(supabase, action, currentSyncRunId);
+        currentOffset = startOffset + i;
+        await touchBulkSyncLock(supabase, action, currentSyncRunId, currentOffset, batchSize);
       }
       const chunk = properties.slice(i, i + FOTOCASA_CONCURRENCY);
-      const chunkResults = await Promise.all(chunk.map(async (prop: any) => {
+      const chunkResults = await Promise.all(chunk.map(async (prop) => {
         const agent = profileMap[prop.agent_id] || null;
         const payload = buildPayload(prop, agent);
         const externalId = payload.ExternalId;
@@ -798,6 +1279,47 @@ Deno.serve(async (req) => {
           data = retry.data;
         }
 
+        const fotocasaMessage = typeof data?.Message === 'string' ? data.Message : '';
+        const missingExternalIdAfterPutRetry =
+          !ok
+          && method === 'PUT (retry-after-post-fail)'
+          && status === 400
+          && /no existe un inmueble con el externalId informado/i.test(fotocasaMessage);
+
+        if (missingExternalIdAfterPutRetry) {
+          console.log(`[fotocasa] PUT retry says externalId is missing for ${externalId}; retrying POST one last time...`);
+          const finalRetry = await fotocasaRequest('POST', 'api/property', apiKey, payload);
+          method = 'POST (final-retry-after-missing-externalId)';
+          ok = finalRetry.ok;
+          status = finalRetry.status;
+          data = finalRetry.data;
+        }
+
+        const duplicateExternalIdError =
+          !ok
+          && status === 400
+          && /existe más de un inmueble con el id informado/i.test(fotocasaMessage || String(data?.Message || ''));
+
+        if (duplicateExternalIdError) {
+          console.log(`[fotocasa] Duplicate remote ads detected for ${externalId}; deleting duplicate remote entries and retrying POST...`);
+          const purgeResult = await deleteFotocasaPropertyByExternalId(externalId, apiKey);
+          await supabase.from('erp_sync_logs').insert({
+            target: 'fotocasa',
+            event: 'property_duplicate_purged',
+            status: purgeResult.ok ? 'ok' : 'error',
+            http_status: purgeResult.status,
+            response_body: JSON.stringify(purgeResult.data),
+            error_message: purgeResult.ok ? null : purgeResult.data?.Message || `HTTP ${purgeResult.status}`,
+            payload: { property_id: prop.id, external_id: externalId, method: 'DELETE (auto-purge-duplicate)' },
+          });
+
+          const finalRetry = await fotocasaRequest('POST', 'api/property', apiKey, payload);
+          method = 'POST (retry-after-duplicate-purge)';
+          ok = finalRetry.ok;
+          status = finalRetry.status;
+          data = finalRetry.data;
+        }
+
         await supabase.from('erp_sync_logs').insert({
           target: 'fotocasa',
           event: method.startsWith('POST') ? 'property_created' : 'property_updated',
@@ -820,16 +1342,13 @@ Deno.serve(async (req) => {
       results.push(...chunkResults);
     }
 
-    const deleteResults: any[] = [];
+    const deleteResults: Array<Record<string, unknown>> = [];
 
     const succeeded = results.filter(r => r.ok).length;
     const failed = results.filter(r => !r.ok).length;
     const deleted = deleteResults.filter(r => r.ok).length;
     const hasMore = action === 'sync_all' && fetchedBaseCount === batchSize;
     const nextOffset = hasMore ? startOffset + batchSize : null;
-
-    // Chaining is handled by DB trigger (chain_fotocasa_sync) via pg_net
-    // when the sync_batch_summary row is inserted below with has_more=true
 
     // Log summary for this batch
     await supabase.from('erp_sync_logs').insert({
@@ -848,6 +1367,27 @@ Deno.serve(async (req) => {
       },
     });
 
+    if (bulkLockAcquired) {
+      await releaseBulkSyncLock(supabase, action, currentSyncRunId, startOffset, batchSize);
+      bulkLockAcquired = false;
+    }
+
+    if (action === 'sync_all' && hasMore && nextOffset !== null) {
+      await supabase.from('erp_sync_logs').insert({
+        target: 'fotocasa',
+        event: 'sync_batch_queued',
+        status: 'ok',
+        http_status: 202,
+        payload: {
+          current_offset: startOffset,
+          next_offset: nextOffset,
+          batch_size: batchSize,
+          sync_run_id: currentSyncRunId,
+        },
+      });
+      queueNextFotocasaBatch(supabaseUrl, serviceKey, batchSize, nextOffset, currentSyncRunId);
+    }
+
     const result = json({
       ok: true,
       action,
@@ -864,15 +1404,11 @@ Deno.serve(async (req) => {
       delete_results: deleteResults,
       results,
     });
-    if (bulkLockAcquired) {
-      await releaseBulkSyncLock(supabase, action, currentSyncRunId);
-      bulkLockAcquired = false;
-    }
     return result;
   } catch (err) {
     console.error('[fotocasa-sync] error:', err);
     if (bulkLockAcquired && supabase) {
-      await releaseBulkSyncLock(supabase, currentAction, currentSyncRunId);
+      await releaseBulkSyncLock(supabase, currentAction, currentSyncRunId, currentOffset, currentBatchSize);
     }
     return json({ error: String(err) }, 500);
   }
