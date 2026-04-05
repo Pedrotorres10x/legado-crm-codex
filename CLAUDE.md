@@ -29,7 +29,7 @@ CRM inmobiliario para **Legado Inmobiliaria**. Gestiona el ciclo completo de la 
 - **Campañas** — email/WhatsApp/SMS multicanal con segmentación
 - **Portales** — sync con Fotocasa y otros portales inmobiliarios
 - **Comunicaciones** — llamadas Twilio, email Brevo, WhatsApp Green API
-- **IA** — 81 Edge Functions: extracción de datos, resumen de llamadas, scoring, matching, búsqueda semántica
+- **IA** — 74 Edge Functions: extracción de datos, resumen de llamadas, scoring, matching, búsqueda semántica
 - **Admin** — KPIs, evaluación de agentes, radar legal, salud del ecosistema
 
 ## Estructura de directorios
@@ -44,7 +44,7 @@ src/
 └── integrations/supabase/  # Cliente y tipos generados
 
 supabase/
-├── functions/      # 81 Edge Functions en Deno/TypeScript
+├── functions/      # 74 Edge Functions en Deno/TypeScript
 ├── migrations/     # Migraciones de esquema PostgreSQL
 └── config.toml     # Configuración de funciones (verify_jwt)
 ```
@@ -75,6 +75,15 @@ npm run test         # Tests con Vitest
 supabase db push     # Aplicar migraciones pendientes
 supabase functions deploy <nombre>  # Desplegar una Edge Function
 ```
+
+## Workflow con IA
+
+Este proyecto usa dos agentes de IA en paralelo:
+
+- **GitHub Copilot** (VS Code) — sugerencias inline, autocompletado, features nuevas rápidas
+- **Claude Code** (terminal) — auditorías, refactors complejos, PRs, debugging profundo, migraciones
+
+Cada uno trabaja en ramas separadas (`claude/*`) y los cambios se integran via PR a `main`.
 
 ## Permisos bash (sin confirmación)
 

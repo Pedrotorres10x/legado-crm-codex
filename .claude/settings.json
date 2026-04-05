@@ -20,8 +20,10 @@
     "deny": [
       "Bash(rm *)",
       "Bash(sudo *)",
+      "Read(.env)",
       "Read(**/.env)",
-      "Read(**/.env.*)"
+      "Read(**/.env.*)",
+      "Read(.env.*)"
     ]
   }
 }
