@@ -200,6 +200,7 @@ Deno.serve(async (req) => {
         continue;
       }
 
+      // eslint-disable-next-line no-control-regex
       const sanitize = (s: string | null | undefined, maxLen = 100) =>
         (s ?? '').replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, maxLen);
 
