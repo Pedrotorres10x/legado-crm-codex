@@ -42,31 +42,42 @@ const AdminAgentEvaluationOverview = () => {
       const start = subMonths(now, 3);
       const startISO = start.toISOString();
 
-      const [{ data: roles }, { data: profiles }, { data: interactions }, { data: contacts }, { data: properties }, { data: visits }, { data: offers }] =
+      // Phase 1: get agent IDs first so we can filter all subsequent queries
+      const { data: roles } = await supabase.from('user_roles').select('user_id').eq('role', 'agent');
+      if (cancelled) return;
+
+      const agentIds = ((roles as any[]) || []).map((r) => r.user_id);
+      if (agentIds.length === 0) { setRows([]); setLoading(false); return; }
+
+      // Phase 2: fetch only data belonging to agents
+      const [{ data: profiles }, { data: interactions }, { data: contacts }, { data: properties }, { data: visits }, { data: offers }] =
         await Promise.all([
-          supabase.from('user_roles').select('user_id').eq('role', 'agent'),
-          supabase.from('profiles').select('user_id, full_name').order('full_name'),
+          supabase.from('profiles').select('user_id, full_name').in('user_id', agentIds).order('full_name'),
           supabase
             .from('interactions')
             .select('agent_id, interaction_type, interaction_date, contact_id, property_id')
+            .in('agent_id', agentIds)
             .gte('interaction_date', startISO),
           supabase
             .from('contacts')
-            .select('agent_id, status, updated_at, contact_type, tags, source_ref'),
+            .select('agent_id, status, updated_at, contact_type, tags, source_ref')
+            .in('agent_id', agentIds),
           supabase
             .from('properties')
-            .select('agent_id, created_at, arras_status, arras_date, status'),
+            .select('agent_id, created_at, arras_status, arras_date, status')
+            .in('agent_id', agentIds),
           supabase
             .from('visits')
             .select('agent_id, result')
+            .in('agent_id', agentIds)
             .lte('visit_date', now.toISOString()),
-          supabase.from('offers').select('agent_id, status'),
+          supabase.from('offers').select('agent_id, status').in('agent_id', agentIds),
         ]);
 
       if (cancelled) return;
 
-      const roleIds = new Set(((roles as any[]) || []).map((role) => role.user_id));
-      const agentProfiles = ((profiles as AgentProfile[]) || []).filter((profile) => roleIds.has(profile.user_id) && profile.full_name);
+      const agentIdSet = new Set(agentIds);
+      const agentProfiles = ((profiles as AgentProfile[]) || []).filter((profile) => agentIdSet.has(profile.user_id) && profile.full_name);
 
       const nextRows = agentProfiles
         .map((profile) => {

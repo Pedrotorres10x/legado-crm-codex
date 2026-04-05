@@ -1,10 +1,16 @@
 /**
  * Shared CORS headers and JSON response helper for all Edge Functions.
  * Import: import { corsHeaders, json } from '../_shared/cors.ts';
+ *
+ * Set ALLOWED_ORIGIN env var in production to restrict to your domain,
+ * e.g. ALLOWED_ORIGIN=https://app.legado.es
+ * Defaults to '*' for local development.
  */
 
+const allowedOrigin = Deno.env.get('ALLOWED_ORIGIN') ?? '*';
+
 export const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': allowedOrigin,
   'Access-Control-Allow-Headers':
     'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version, x-api-key, x-faktura-key, x-webhook-secret, x-multichannel-key, x-portal-key, x-brevo-key, x-greenapi-key',
 };
