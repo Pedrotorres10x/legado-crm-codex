@@ -200,9 +200,10 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // eslint-disable-next-line no-control-regex
+      /* eslint-disable no-control-regex */
       const sanitize = (s: string | null | undefined, maxLen = 100) =>
         (s ?? '').replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, maxLen);
+      /* eslint-enable no-control-regex */
 
       const dynamicVariables = {
         campaign_id: campaign.id,
