@@ -17,12 +17,12 @@ const TYPE_FAMILIES: Record<string, string[]> = {
 };
 
 export const MATCHING_PILLARS = {
-  geography: 35,
-  operation: 20,
+  geography: 28,
+  operation: 18,
   propertyFamily: 20,
-  budget: 15,
+  budget: 22,
   bedrooms: 7,
-  surface: 3,
+  surface: 5,
 } as const;
 
 function normalizeType(value?: string | null) {

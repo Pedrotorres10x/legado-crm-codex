@@ -148,6 +148,24 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Call fatigue: batch-count calls in the last 30 days per campaign_contact
+    const callCountByCampaignContact = new Map<string, number>();
+    if (queueRows.length > 0) {
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: callRunsData } = await service
+        .from('voice_call_runs')
+        .select('campaign_contact_id')
+        .in('campaign_contact_id', queueRows.map((r) => r.id))
+        .gte('started_at', thirtyDaysAgo);
+
+      for (const run of (callRunsData ?? []) as { campaign_contact_id: string }[]) {
+        callCountByCampaignContact.set(
+          run.campaign_contact_id,
+          (callCountByCampaignContact.get(run.campaign_contact_id) ?? 0) + 1,
+        );
+      }
+    }
+
     if (!queueRows?.length) {
       return json({ ok: true, dispatched: 0, skipped: 0, message: 'No pending contacts in campaign' });
     }
@@ -197,6 +215,13 @@ Deno.serve(async (req) => {
           campaign_contact_id: row.id,
           reason: 'intermediary',
         });
+        continue;
+      }
+
+      // Call fatigue: max 3 attempts in last 30 days
+      const recentCalls = callCountByCampaignContact.get(row.id) ?? 0;
+      if (recentCalls >= 3) {
+        skipped.push({ campaign_contact_id: row.id, reason: 'call_fatigue' });
         continue;
       }
 
