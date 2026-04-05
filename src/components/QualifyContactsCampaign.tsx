@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import DOMPurify from 'dompurify';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -256,7 +257,7 @@ const QualifyContactsCampaign = () => {
                 <p className="text-sm font-medium">Asunto: {previewData.message.subject}</p>
                 <div
                   className="border rounded-lg overflow-hidden max-h-96 overflow-y-auto"
-                  dangerouslySetInnerHTML={{ __html: previewData.message.html }}
+                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(previewData.message.html) }}
                 />
               </div>
             ) : (
