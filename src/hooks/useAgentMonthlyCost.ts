@@ -21,7 +21,7 @@ export const useAgentMonthlyCost = () => {
   const updateCost = async (newCost: number) => {
     const { error } = await supabase
       .from('settings')
-      .update({ value: newCost as any, updated_at: new Date().toISOString() })
+      .update({ value: newCost, updated_at: new Date().toISOString() })
       .eq('key', 'agent_monthly_cost');
     if (!error) setCost(newCost);
     return !error;

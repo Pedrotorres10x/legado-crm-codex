@@ -5,6 +5,59 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+type ImageOrderEntry = {
+  name?: string;
+  label?: string;
+  source?: string;
+  url?: string;
+  path?: string;
+};
+
+type PropertyImageMigrationRow = {
+  id: string;
+  images: string[] | null;
+  image_order: unknown;
+};
+
+function normalizeUrl(value: string): string {
+  return value.split('?')[0];
+}
+
+function rewriteImageOrder(
+  imageOrder: unknown,
+  migratedUrlMap: Map<string, { newUrl: string; fileName: string }>,
+): unknown {
+  if (!Array.isArray(imageOrder)) return imageOrder;
+
+  return imageOrder.map((item) => {
+    if (!item || typeof item !== 'object') return item;
+
+    const entry = item as ImageOrderEntry;
+    const name = typeof entry.name === 'string' ? entry.name : null;
+    const url = typeof entry.url === 'string' ? entry.url : null;
+    const path = typeof entry.path === 'string' ? entry.path : null;
+
+    const directUrl = name?.startsWith('xmlurl_')
+      ? name.replace('xmlurl_', '')
+      : name?.startsWith('http')
+        ? name
+        : url ?? path;
+
+    if (!directUrl) return item;
+
+    const migrated = migratedUrlMap.get(normalizeUrl(directUrl));
+    if (!migrated) return item;
+
+    return {
+      ...entry,
+      name: migrated.fileName,
+      source: 'storage',
+      url: undefined,
+      path: undefined,
+    };
+  });
+}
+
 /**
  * Batch migration: downloads external images (medianewbuild, etc.) to our own
  * storage bucket and rewrites the `images` array in each property.
@@ -41,19 +94,20 @@ Deno.serve(async (req) => {
     if (error) throw error;
 
     // Filter to only those with external URLs
-    const withExternal = (properties || []).filter((p: any) =>
+    const withExternal = ((properties || []) as PropertyImageMigrationRow[]).filter((p) =>
       p.images?.some((url: string) => !url.includes(supabaseUrl))
     );
 
     const toProcess = withExternal.slice(0, batchSize);
     let totalMigrated = 0;
     let totalFailed = 0;
-    const results: any[] = [];
+    const results: Array<{ id: string; migrated: number; failed: number; total: number }> = [];
 
     for (const prop of toProcess) {
       const newImages: string[] = [];
       let migrated = 0;
       let failed = 0;
+      const migratedUrlMap = new Map<string, { newUrl: string; fileName: string }>();
 
       for (const imgUrl of (prop.images || [])) {
         // Already our storage URL → keep
@@ -109,6 +163,7 @@ Deno.serve(async (req) => {
 
           const newUrl = `${supabaseUrl}/storage/v1/object/public/property-media/${storagePath}`;
           newImages.push(newUrl);
+          migratedUrlMap.set(normalizeUrl(imgUrl), { newUrl, fileName });
           migrated++;
         } catch (err) {
           console.error(`[migrate] fetch error for ${imgUrl}:`, err);
@@ -118,9 +173,10 @@ Deno.serve(async (req) => {
 
       // Update property images array
       if (migrated > 0) {
+        const rewrittenImageOrder = rewriteImageOrder(prop.image_order, migratedUrlMap);
         const { error: updateErr } = await supabase
           .from('properties')
-          .update({ images: newImages })
+          .update({ images: newImages, image_order: rewrittenImageOrder })
           .eq('id', prop.id);
 
         if (updateErr) {

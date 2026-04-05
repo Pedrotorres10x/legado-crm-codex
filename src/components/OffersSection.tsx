@@ -31,9 +31,27 @@ const STATUS_CONFIG: Record<string, { label: string; variant: 'default' | 'secon
 };
 
 interface OffersSectionProps {
-  offers: any[];
+  offers: Array<{
+    id: string;
+    property_id: string;
+    amount: number;
+    counter_amount?: number | null;
+    status: string;
+    offer_type?: string | null;
+    notes?: string | null;
+    conditions?: string | null;
+    expiry_date?: string | null;
+    created_at: string;
+    properties?: {
+      title?: string | null;
+    } | null;
+  }>;
   contactId: string;
-  contactProperties: any[];
+  contactProperties: Array<{
+    id: string;
+    title?: string | null;
+    address?: string | null;
+  }>;
   onReload: () => void;
 }
 
@@ -71,7 +89,7 @@ const OffersSection = ({ offers, contactId, contactProperties, onReload }: Offer
     setDialogOpen(true);
   };
 
-  const openEdit = (o: any) => {
+  const openEdit = (o: OffersSectionProps['offers'][number]) => {
     setEditId(o.id);
     setForm({
       property_id: o.property_id || '',
@@ -92,7 +110,7 @@ const OffersSection = ({ offers, contactId, contactProperties, onReload }: Offer
       return;
     }
     setSaving(true);
-    const payload: any = {
+    const payload: Record<string, string | number | null | undefined> = {
       contact_id: contactId,
       property_id: form.property_id,
       amount: parseFloat(form.amount),
@@ -124,7 +142,7 @@ const OffersSection = ({ offers, contactId, contactProperties, onReload }: Offer
   };
 
   const updateStatus = async (offerId: string, newStatus: string) => {
-    const payload: any = { status: newStatus };
+    const payload: Record<string, string> = { status: newStatus };
     if (newStatus === 'aceptada' || newStatus === 'rechazada' || newStatus === 'retirada') {
       payload.response_date = new Date().toISOString();
     }

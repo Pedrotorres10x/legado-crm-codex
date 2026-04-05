@@ -7,11 +7,33 @@ import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
 
+type PortalLeadExtracted = {
+  portal?: string;
+  full_name?: string;
+  phone?: string;
+  email?: string;
+  message?: string;
+  property_reference?: string;
+  demand?: {
+    cities?: string[];
+    property_type?: string;
+    operation?: string;
+    max_price?: number;
+    min_bedrooms?: number;
+    features?: string[];
+  };
+};
+
 export default function PortalLeadUploadDialog() {
   const [open, setOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<{
+    ok?: boolean;
+    duplicate?: boolean;
+    property_id?: string | null;
+    extracted?: PortalLeadExtracted;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
@@ -62,9 +84,9 @@ export default function PortalLeadUploadDialog() {
       queryClient.invalidateQueries({ queryKey: ['web-leads-simple'] });
       queryClient.invalidateQueries({ queryKey: ['contacts'] });
       toast.success(data.duplicate ? 'Lead existente actualizado' : 'Lead de portal creado con demanda');
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      setError(err.message || 'Error al procesar la imagen');
+      setError(err instanceof Error ? err.message : 'Error al procesar la imagen');
       toast.error('Error al procesar el pantallazo');
     } finally { setUploading(false); }
   };

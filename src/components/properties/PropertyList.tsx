@@ -2,10 +2,16 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Building2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { PropertyCard, PropertyListView } from './PropertyCard';
+import type { HealthInfo } from '@/hooks/useHealthColors';
+
+type PropertyListItem = {
+  id: string;
+  [key: string]: unknown;
+};
 
 interface PropertyListProps {
-  properties: any[];
-  healthColors: Record<string, any>;
+  properties: PropertyListItem[];
+  healthColors: Record<string, HealthInfo | undefined>;
   viewMode: 'grid' | 'list' | 'mobile';
   currentPage: number;
   totalCount: number;

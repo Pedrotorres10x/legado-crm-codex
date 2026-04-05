@@ -19,11 +19,19 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = () => useContext(AuthContext);
 
 const isLocalAdminOverride = () => {
   if (typeof window === 'undefined') return false;
-  return window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  const { hostname, protocol } = window.location;
+  return (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '0.0.0.0' ||
+    protocol === 'file:' ||
+    hostname === ''
+  );
 };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -32,6 +40,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isCoordinadora, setIsCoordinadora] = useState(false);
+
+  const clearLocalSession = () => {
+    setSession(null);
+    setUser(null);
+    setIsAdmin(false);
+    setIsCoordinadora(false);
+
+    if (typeof window === 'undefined') return;
+
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < window.localStorage.length; i += 1) {
+      const key = window.localStorage.key(i);
+      if (!key) continue;
+      if (key.startsWith('sb-') || key === 'workspace_persona') {
+        keysToRemove.push(key);
+      }
+    }
+
+    keysToRemove.forEach((key) => window.localStorage.removeItem(key));
+
+    try {
+      window.sessionStorage.clear();
+    } catch {
+      // Ignore sessionStorage cleanup failures.
+    }
+  };
 
   const checkRoles = async (userId: string) => {
     if (isLocalAdminOverride()) {
@@ -102,8 +136,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signOut = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
+    try {
+      const { error } = await supabase.auth.signOut({ scope: 'local' });
+      if (error) throw error;
+    } catch {
+      // Some embedded browsers/native shells keep the local session even if
+      // Supabase signOut fails or the auth event never arrives.
+    } finally {
+      clearLocalSession();
+      if (typeof window !== 'undefined') {
+        const appUrl = new URL('/', window.location.origin);
+        appUrl.searchParams.set('logout', String(Date.now()));
+        window.location.replace(appUrl.toString());
+      }
+    }
   };
 
   const localAdminOverride = isLocalAdminOverride();

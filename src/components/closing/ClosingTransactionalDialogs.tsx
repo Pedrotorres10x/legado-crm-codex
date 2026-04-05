@@ -5,6 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Link, Loader2, Search, Send, User, X } from 'lucide-react';
 
 type SignerContact = { id: string; full_name: string; email?: string | null } | null;
+type SearchContact = { id: string; full_name: string; email?: string | null; phone?: string | null };
 
 interface ClosingTransactionalDialogsProps {
   signerCountOpen: boolean;
@@ -15,8 +16,8 @@ interface ClosingTransactionalDialogsProps {
   setSignerContacts: React.Dispatch<React.SetStateAction<SignerContact[]>>;
   signerSearchTerms: string[];
   setSignerSearchTerms: React.Dispatch<React.SetStateAction<string[]>>;
-  signerSearchResults: Array<any[]>;
-  setSignerSearchResults: React.Dispatch<React.SetStateAction<Array<any[]>>>;
+  signerSearchResults: SearchContact[][];
+  setSignerSearchResults: React.Dispatch<React.SetStateAction<SearchContact[][]>>;
   signerSearching: boolean[];
   searchContacts: (term: string, index: number) => void;
   sendTransactionalToSign: () => void;
@@ -136,7 +137,7 @@ const ClosingTransactionalDialogs = ({
                       </div>
                       {(signerSearchResults[index]?.length || 0) > 0 && (
                         <div className="absolute z-50 mt-1 max-h-40 w-full overflow-y-auto rounded-lg border bg-popover shadow-lg">
-                          {signerSearchResults[index].map((contact: any) => {
+                          {signerSearchResults[index].map((contact) => {
                             const alreadyUsed = signerContacts.some((selected, selectedIndex) => selectedIndex !== index && selected?.id === contact.id);
                             return (
                               <button

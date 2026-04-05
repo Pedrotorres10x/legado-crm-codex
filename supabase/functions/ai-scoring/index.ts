@@ -2,6 +2,12 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { corsHeaders, json, handleCors } from '../_shared/cors.ts';
 import { callAI, AIError } from '../_shared/ai.ts';
 
+interface ScoreToolCall {
+  function: {
+    arguments: string;
+  };
+}
+
 Deno.serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
@@ -69,7 +75,7 @@ Responde SOLO con este JSON:
     });
 
     let result;
-    const toolCall = aiResult.tool_calls?.[0] as any;
+    const toolCall = aiResult.tool_calls?.[0] as ScoreToolCall | undefined;
     if (toolCall) {
       result = JSON.parse(toolCall.function.arguments);
     } else {

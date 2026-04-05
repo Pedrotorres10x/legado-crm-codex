@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   Calendar, MessageSquare, AlertTriangle,
@@ -26,6 +27,54 @@ export interface Notification {
   priority?: number;
   action?: () => void;
 }
+
+type MatchLossRow = Pick<Database['public']['Tables']['matches']['Row'], 'notes'>;
+type OfferLossRow = Pick<Database['public']['Tables']['offers']['Row'], 'notes'>;
+type StockPropertyRow = Pick<
+  Database['public']['Tables']['properties']['Row'],
+  'id' | 'title' | 'status' | 'mandate_type' | 'mandate_end' | 'xml_id' | 'source' | 'price' | 'images' | 'description'
+>;
+type PostSalePropertyRow = Pick<Database['public']['Tables']['properties']['Row'], 'id'>;
+type CommissionSummaryRow = Pick<
+  Database['public']['Tables']['commissions']['Row'],
+  'property_id' | 'status' | 'agency_commission'
+>;
+type InvoiceSummaryRow = Pick<
+  Database['public']['Tables']['contact_invoices']['Row'],
+  'property_id' | 'status' | 'amount'
+>;
+type HighInterestRow = Pick<
+  Database['public']['Tables']['interactions']['Row'],
+  'id' | 'contact_id' | 'description' | 'interaction_date'
+> & {
+  contacts?: { full_name: string | null } | null;
+};
+type VisitNotificationRow = Pick<
+  Database['public']['Tables']['visits']['Row'],
+  'id' | 'visit_date' | 'property_id' | 'contact_id' | 'confirmation_status' | 'result'
+> & {
+  properties?: { title: string | null } | null;
+  contacts?: { full_name: string | null } | null;
+};
+type ClosingPropertyRow = Pick<
+  Database['public']['Tables']['properties']['Row'],
+  | 'id'
+  | 'title'
+  | 'status'
+  | 'legal_risk_level'
+  | 'reservation_date'
+  | 'arras_status'
+  | 'arras_date'
+  | 'arras_amount'
+  | 'arras_buyer_id'
+  | 'deed_date'
+  | 'deed_notary'
+>;
+type ClosingAnalysisRow = {
+  property: ClosingPropertyRow;
+  pendingSignatureCount: number;
+  blockers: string[];
+};
 
 export function useNotifications() {
   const { user } = useAuth();
@@ -85,14 +134,14 @@ export function useNotifications() {
     const stockCount = availablePropsCount || 0;
     const toquesHoy = kpiSummary.toquesHorusHoy;
     const inboundPending = inboundLeads.filter((lead) => lead.agent_id === user.id && lead.needs_follow_up).length;
-    const topMatchLossReason = buildTopReasons(((matchLosses as any[]) || []).map((row) => extractMatchDiscardReason(row.notes)))[0]?.[0] || null;
-    const topOfferLossReason = buildTopReasons(((offerLosses as any[]) || []).map((row) => extractOfferLossReason(row.notes)))[0]?.[0] || null;
+    const topMatchLossReason = buildTopReasons((((matchLosses as MatchLossRow[]) || []).map((row) => extractMatchDiscardReason(row.notes))))[0]?.[0] || null;
+    const topOfferLossReason = buildTopReasons((((offerLosses as OfferLossRow[]) || []).map((row) => extractOfferLossReason(row.notes))))[0]?.[0] || null;
     const dominantCommercialReason = topOfferLossReason || topMatchLossReason;
-    const availableStock = ((stockRows as any[]) || []).filter((property) => isAvailablePropertyStock(property));
+    const availableStock = (((stockRows as StockPropertyRow[]) || []).filter((property) => isAvailablePropertyStock(property)));
     const expiredMandates = availableStock.filter((property) => isMandateExpired(property));
     const weakListings = availableStock.filter((property) => !hasPublishBasics(property));
     const distributionPending = availableStock.filter((property) => hasPublishBasics(property) && !hasDistributionReady(property));
-    const postSaleProperties = ((postSaleRows as any[]) || []) as Array<{ id: string }>;
+    const postSaleProperties = ((postSaleRows as PostSalePropertyRow[]) || []);
 
     let postSalePendingCount = 0;
     if (postSaleProperties.length > 0) {
@@ -102,13 +151,13 @@ export function useNotifications() {
         supabase.from('contact_invoices').select('property_id, status, amount').in('property_id', propertyIds),
       ]);
 
-      const commissionMap = new Map<string, any>();
-      for (const row of (postSaleCommissions as any[]) || []) {
+      const commissionMap = new Map<string, CommissionSummaryRow>();
+      for (const row of (postSaleCommissions as CommissionSummaryRow[]) || []) {
         if (!commissionMap.has(row.property_id)) commissionMap.set(row.property_id, row);
       }
 
-      const invoiceMap = new Map<string, any[]>();
-      for (const row of (postSaleInvoices as any[]) || []) {
+      const invoiceMap = new Map<string, InvoiceSummaryRow[]>();
+      for (const row of (postSaleInvoices as InvoiceSummaryRow[]) || []) {
         const current = invoiceMap.get(row.property_id) || [];
         current.push(row);
         invoiceMap.set(row.property_id, current);
@@ -374,8 +423,8 @@ export function useNotifications() {
 
 
     // High interest
-    highInterestAlerts?.forEach(alert => {
-      const contactName = (alert as any).contacts?.full_name || 'Contacto';
+    (highInterestAlerts as HighInterestRow[] | null)?.forEach((alert) => {
+      const contactName = alert.contacts?.full_name || 'Contacto';
       results.push({
         id: `high-interest-${alert.id}`,
         type: 'high_interest',
@@ -389,14 +438,14 @@ export function useNotifications() {
     });
 
     // Upcoming visits
-    upcoming?.forEach(v => {
+    (upcoming as VisitNotificationRow[] | null)?.forEach((v) => {
       const date = new Date(v.visit_date);
       const when = isToday(date) ? 'Hoy' : isTomorrow(date) ? 'Mañana' : format(date, "EEEE", { locale: es });
       results.push({
         id: `upcoming-${v.id}`,
         type: 'upcoming_visit',
         title: `📅 Visita ${when} a las ${format(date, 'HH:mm')}`,
-        description: `${(v as any).properties?.title} — ${(v as any).contacts?.full_name}`,
+        description: `${v.properties?.title} — ${v.contacts?.full_name}`,
         icon: Calendar,
         color: isToday(date) ? 'text-orange-500' : 'text-primary',
         priority: 6,
@@ -405,13 +454,13 @@ export function useNotifications() {
     });
 
     // Unconfirmed
-    const unconfirmed = upcoming?.filter(v => v.confirmation_status === 'pendiente') || [];
-    unconfirmed.forEach(v => {
+    const unconfirmed = ((upcoming as VisitNotificationRow[] | null)?.filter((v) => v.confirmation_status === 'pendiente')) || [];
+    unconfirmed.forEach((v) => {
       results.push({
         id: `unconfirmed-${v.id}`,
         type: 'unconfirmed',
         title: '⚠️ Visita sin confirmar',
-        description: `${(v as any).contacts?.full_name} no ha confirmado la visita a ${(v as any).properties?.title}`,
+        description: `${v.contacts?.full_name} no ha confirmado la visita a ${v.properties?.title}`,
         icon: AlertTriangle,
         color: 'text-warning',
         priority: 5,
@@ -420,12 +469,12 @@ export function useNotifications() {
     });
 
     // No feedback
-    noFeedback?.forEach(v => {
+    (noFeedback as VisitNotificationRow[] | null)?.forEach((v) => {
       results.push({
         id: `nofeedback-${v.id}`,
         type: 'no_feedback',
         title: '📝 Feedback pendiente',
-        description: `Visita del ${format(new Date(v.visit_date), "dd MMM", { locale: es })} a ${(v as any).properties?.title} con ${(v as any).contacts?.full_name}`,
+        description: `Visita del ${format(new Date(v.visit_date), "dd MMM", { locale: es })} a ${v.properties?.title} con ${v.contacts?.full_name}`,
         icon: MessageSquare,
         color: 'text-info',
         priority: 7,
@@ -433,7 +482,7 @@ export function useNotifications() {
       });
     });
 
-    const enrichedClosing = await Promise.all((closingProperties || []).map(async (property: any) => {
+    const enrichedClosing = await Promise.all(((closingProperties as ClosingPropertyRow[] | null) || []).map(async (property) => {
       const [docsRes, signaturesRes, ownersRes] = await Promise.all([
         supabase.from('property_documents').select('doc_type').eq('property_id', property.id),
         supabase
@@ -443,8 +492,8 @@ export function useNotifications() {
         supabase.from('property_owners').select('id', { count: 'exact', head: true }).eq('property_id', property.id),
       ]);
 
-      const uploadedDocTypes = Array.from(new Set((docsRes.data || []).map((doc: any) => doc.doc_type).filter(Boolean)));
-      const pendingSignatureCount = (signaturesRes.data || []).filter((doc: any) => doc.generated_contracts?.signature_status === 'pendiente').length;
+      const uploadedDocTypes = Array.from(new Set((docsRes.data || []).map((doc) => doc.doc_type).filter(Boolean)));
+      const pendingSignatureCount = (signaturesRes.data || []).filter((doc) => doc.generated_contracts?.signature_status === 'pendiente').length;
       const ownerCount = ownersRes.count || 0;
       const analysis = buildClosingOperationalBlockers({
         property,
@@ -457,7 +506,7 @@ export function useNotifications() {
         property,
         pendingSignatureCount,
         blockers: analysis.blockers,
-      };
+      } satisfies ClosingAnalysisRow;
     }));
 
     try {

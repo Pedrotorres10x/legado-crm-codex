@@ -28,6 +28,12 @@ const contactTool = {
   },
 };
 
+interface ContactExtractToolCall {
+  function: {
+    arguments: string;
+  };
+}
+
 Deno.serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
@@ -56,7 +62,7 @@ ${current_data ? `DATOS PREVIOS YA EXTRAÍDOS (actualízalos con nueva info):\n$
       tool_choice: { type: 'function', function: { name: 'extract_contact' } },
     });
 
-    const toolCall = aiResult.tool_calls?.[0] as any;
+    const toolCall = aiResult.tool_calls?.[0] as ContactExtractToolCall | undefined;
     if (!toolCall) throw new Error('No tool call in response');
     const extracted = JSON.parse(toolCall.function.arguments);
 

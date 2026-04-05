@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { Link2, Plus, Trash2, GripVertical, Save, ExternalLink, Instagram, Facebook, Linkedin, Eye, BarChart3, MousePointerClick, Users, Globe } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { LINK_IN_BIO_PUBLIC_URL } from '@/lib/publicUrls';
 
 interface BioLink {
   id: string;
@@ -44,6 +45,12 @@ interface BioConfig {
   social: SocialLink[];
 }
 
+type BioConfigValue = {
+  company?: Partial<CompanyInfo>;
+  links?: Array<Partial<BioLink>>;
+  social?: SocialLink[];
+};
+
 const defaultConfig: BioConfig = {
   company: { name: '', subtitle: '', tagline: '', description: '', yearsExperience: 0, propertiesSold: 0, happyClients: 0, address: '', phone: '', email: '' },
   links: [],
@@ -56,6 +63,7 @@ const socialIcons: Record<string, typeof Instagram> = { Instagram, Facebook, Lin
 interface BioEvent {
   id: string;
   event_type: string;
+  session_id?: string | null;
   agent_slug: string;
   link_id: string | null;
   link_url: string | null;
@@ -93,7 +101,7 @@ const BioAnalytics = () => {
   const stats = useMemo(() => {
     const pageviews = events.filter(e => e.event_type === 'pageview').length;
     const clicks = events.filter(e => e.event_type === 'click').length;
-    const sessions = new Set(events.map(e => (e as any).session_id)).size;
+    const sessions = new Set(events.map((event) => event.session_id).filter(Boolean)).size;
 
     // Top links
     const linkCounts: Record<string, number> = {};
@@ -222,10 +230,18 @@ const AdminLinkInBio = () => {
         .eq('key', 'link_in_bio_config')
         .maybeSingle();
       if (data?.value) {
-        const v = data.value as any;
+        const v = data.value as BioConfigValue;
         setConfig({
           company: { ...defaultConfig.company, ...v.company },
-          links: (v.links || []).map((l: any) => ({ ...l, visible: l.visible !== false })),
+          links: (v.links || []).map((link, index) => ({
+            id: link.id || `link-${index}`,
+            title: link.title || '',
+            description: link.description || '',
+            url: link.url || '',
+            icon: link.icon || 'Link2',
+            variant: link.variant || 'primary',
+            visible: link.visible !== false,
+          })),
           social: v.social || [],
         });
       }
@@ -300,7 +316,7 @@ const AdminLinkInBio = () => {
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" asChild>
-            <a href="https://linkinbiolegado.lovable.app" target="_blank" rel="noopener noreferrer">
+            <a href={LINK_IN_BIO_PUBLIC_URL} target="_blank" rel="noopener noreferrer">
               <Eye className="h-4 w-4 mr-1.5" />Ver Bio
             </a>
           </Button>

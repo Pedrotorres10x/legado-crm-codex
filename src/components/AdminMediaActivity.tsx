@@ -22,6 +22,13 @@ interface AgentAlert {
   name: string;
   count: number;
 }
+type MediaAccessLogRow = {
+  id: string;
+  user_id: string;
+  property_id: string;
+  action: string;
+  created_at: string;
+};
 
 const AdminMediaActivity = () => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -35,16 +42,18 @@ const AdminMediaActivity = () => {
         .from('media_access_logs')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(100) as any;
+        .limit(100);
 
       if (!rawLogs || rawLogs.length === 0) {
         setLoading(false);
         return;
       }
 
+      const mediaLogs = rawLogs as MediaAccessLogRow[];
+
       // Fetch profiles and properties for display
-      const userIds = [...new Set(rawLogs.map((l: any) => l.user_id))] as string[];
-      const propertyIds = [...new Set(rawLogs.map((l: any) => l.property_id))] as string[];
+      const userIds = [...new Set(mediaLogs.map((log) => log.user_id))];
+      const propertyIds = [...new Set(mediaLogs.map((log) => log.property_id))];
 
       const [profilesRes, propertiesRes] = await Promise.all([
         supabase.from('profiles').select('user_id, full_name').in('user_id', userIds),
@@ -54,20 +63,20 @@ const AdminMediaActivity = () => {
       const profileMap = new Map((profilesRes.data || []).map(p => [p.user_id, p.full_name]));
       const propertyMap = new Map((propertiesRes.data || []).map(p => [p.id, p.title]));
 
-      const enriched = rawLogs.map((l: any) => ({
-        ...l,
-        profile_name: profileMap.get(l.user_id) || 'Desconocido',
-        property_title: propertyMap.get(l.property_id) || 'Propiedad eliminada',
+      const enriched: LogEntry[] = mediaLogs.map((log) => ({
+        ...log,
+        profile_name: profileMap.get(log.user_id) || 'Desconocido',
+        property_title: propertyMap.get(log.property_id) || 'Propiedad eliminada',
       }));
 
       setLogs(enriched);
 
       // Detect suspicious activity: agents with >20 views in last hour
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-      const recentLogs = rawLogs.filter((l: any) => l.created_at >= oneHourAgo);
+      const recentLogs = mediaLogs.filter((log) => log.created_at >= oneHourAgo);
       const countByAgent: Record<string, number> = {};
-      for (const l of recentLogs) {
-        countByAgent[l.user_id] = (countByAgent[l.user_id] || 0) + 1;
+      for (const log of recentLogs) {
+        countByAgent[log.user_id] = (countByAgent[log.user_id] || 0) + 1;
       }
 
       const suspiciousAgents: AgentAlert[] = Object.entries(countByAgent)

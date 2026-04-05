@@ -40,6 +40,12 @@ const propertyTool = {
   },
 };
 
+interface PropertyExtractToolCall {
+  function: {
+    arguments: string;
+  };
+}
+
 Deno.serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
@@ -79,7 +85,7 @@ ${current_data ? `DATOS PREVIOS YA EXTRAÍDOS (actualízalos con la nueva info d
       tool_choice: { type: 'function', function: { name: 'extract_property' } },
     });
 
-    const toolCall = aiResult.tool_calls?.[0] as any;
+    const toolCall = aiResult.tool_calls?.[0] as PropertyExtractToolCall | undefined;
     if (!toolCall) throw new Error('No tool call in response');
     const extracted = JSON.parse(toolCall.function.arguments);
 

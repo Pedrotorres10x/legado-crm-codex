@@ -6,7 +6,7 @@
 export const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers':
-    'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version, x-api-key, x-faktura-key, x-webhook-secret, x-multichannel-key, x-portal-key, x-brevo-key, x-greenapi-key',
+    'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version, x-api-key, x-faktura-key, x-webhook-secret, x-multichannel-key, x-portal-key, x-brevo-key, x-greenapi-key, x-outlook-key',
 };
 
 /** Return a JSON Response with CORS headers. */

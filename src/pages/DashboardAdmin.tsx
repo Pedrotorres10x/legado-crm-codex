@@ -1,18 +1,19 @@
-import { useEffect, useState, lazy, Suspense } from 'react';
+import { useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, Euro, TrendingUp, Shield, Target, Clock, Settings, Check, Percent, Megaphone, GitMerge, Eye, Coins, HeartPulse, ScrollText, Phone, Activity, Satellite, Plug, Link2 } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { Users, Shield, Target, Clock, Megaphone, GitMerge, Eye, Coins, HeartPulse, ScrollText, Phone, Activity, Satellite, Plug, Link2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { getSemesterRange, fmt as fmtCurrency } from '@/lib/commissions';
+import { getSemesterRange } from '@/lib/commissions';
 import { useAgentMonthlyCost } from '@/hooks/useAgentMonthlyCost';
-import { toast } from 'sonner';
-import { useLocation } from 'react-router-dom';
+import { useDashboardAdminState } from '@/hooks/useDashboardAdminState';
+import { useLocation, useNavigate } from 'react-router-dom';
 import CommercialProcessCard from '@/components/dashboard/CommercialProcessCard';
 import AdminDailyPlaybookCard from '@/components/AdminDailyPlaybookCard';
 import AISectionGuide from '@/components/ai/AISectionGuide';
+import DashboardAdminHeader from '@/components/dashboard/DashboardAdminHeader';
+import DashboardAdminSettingsPanels from '@/components/dashboard/DashboardAdminSettingsPanels';
+import DashboardAdminSummaryStats from '@/components/dashboard/DashboardAdminSummaryStats';
 
 // Lazy-loaded admin sections
 const AdminAgentCosts    = lazy(() => import('@/components/AdminAgentCosts'));
@@ -101,64 +102,35 @@ const scrollAdminSectionIntoView = (targetId: string) => {
 
 const DashboardAdmin = () => {
   const location = useLocation();
-  const [stats, setStats] = useState({ totalAgents: 0, totalAgency: 0, totalPaid: 0, pendingApproval: 0 });
+  const navigate = useNavigate();
   const { cost, updateCost } = useAgentMonthlyCost();
-  const [editingCost, setEditingCost] = useState(false);
-  const [costInput, setCostInput] = useState('');
-  const [kpiTargets, setKpiTargets] = useState({ ventas_ano: 10, captaciones_mes: 2, citas_semana: 2, toques_horus_dia: 4 });
-  const [kpiEditing, setKpiEditing] = useState(false);
-  const [kpiForm, setKpiForm] = useState({ ventas_ano: '10', captaciones_mes: '2', citas_semana: '2', toques_horus_dia: '4' });
-  const [matchConfig, setMatchConfig] = useState({ send_hour: '09:00', price_margin: 25 });
-  const [matchEditing, setMatchEditing] = useState(false);
-  const [matchForm, setMatchForm] = useState({ send_hour: '09:00', price_margin: '25' });
   const [adminTab, setAdminTab] = useState('dashboard');
 
-  const semester = getSemesterRange();
-
-  useEffect(() => {
-    const fetchAdminStats = async () => {
-      const [rolesRes, agencyRes, paidRes, pendingRes, kpiRes, matchRes] = await Promise.all([
-        supabase.from('user_roles').select('id', { count: 'exact', head: true }).eq('role', 'agent'),
-        supabase.from('commissions').select('agency_commission').in('status', ['aprobado', 'pagado']).gte('created_at', semester.start.toISOString()),
-        supabase.from('commissions').select('agent_total').eq('status', 'pagado').gte('created_at', semester.start.toISOString()),
-        supabase.from('commissions').select('id', { count: 'exact', head: true }).eq('status', 'borrador'),
-        supabase.from('settings').select('value').eq('key', 'kpi_targets').maybeSingle(),
-        supabase.from('settings').select('value').eq('key', 'match_config').maybeSingle(),
-      ]);
-
-      if (kpiRes.data?.value) {
-        const v = kpiRes.data.value as any;
-        const targets = {
-          ventas_ano: v.ventas_ano ?? 10,
-          captaciones_mes: v.captaciones_mes ?? 2,
-          citas_semana: v.citas_semana ?? 2,
-          toques_horus_dia: v.toques_horus_dia ?? 4,
-        };
-        setKpiTargets(targets);
-        setKpiForm({
-          ventas_ano: targets.ventas_ano.toString(),
-          captaciones_mes: targets.captaciones_mes.toString(),
-          citas_semana: targets.citas_semana.toString(),
-          toques_horus_dia: targets.toques_horus_dia.toString(),
-        });
-      }
-
-      if (matchRes.data?.value) {
-        const mc = matchRes.data.value as any;
-        const cfg = { send_hour: mc.send_hour ?? '09:00', price_margin: mc.price_margin ?? 25 };
-        setMatchConfig(cfg);
-        setMatchForm({ send_hour: cfg.send_hour, price_margin: cfg.price_margin.toString() });
-      }
-
-      setStats({
-        totalAgents: rolesRes.count || 0,
-        totalAgency: ((agencyRes.data as any[]) || []).reduce((s: number, r: any) => s + (r.agency_commission || 0), 0),
-        totalPaid: ((paidRes.data as any[]) || []).reduce((s: number, r: any) => s + (r.agent_total || 0), 0),
-        pendingApproval: pendingRes.count || 0,
-      });
-    };
-    fetchAdminStats();
-  }, []);
+  const semester = useMemo(() => getSemesterRange(), []);
+  const {
+    stats,
+    editingCost,
+    setEditingCost,
+    costInput,
+    setCostInput,
+    kpiTargets,
+    kpiEditing,
+    setKpiEditing,
+    kpiForm,
+    setKpiForm,
+    matchConfig,
+    matchEditing,
+    setMatchEditing,
+    matchForm,
+    setMatchForm,
+    handleSaveCost,
+    handleSaveKpis,
+    handleSaveMatchConfig,
+  } = useDashboardAdminState({
+    semesterStartIso: semester.start.toISOString(),
+    cost,
+    updateCost,
+  });
 
   useEffect(() => {
     if (!location.hash) return;
@@ -180,37 +152,6 @@ const DashboardAdmin = () => {
     scrollToTarget();
   }, [location.hash, adminTab]);
 
-  const handleSaveCost = async () => {
-    const val = Number(costInput);
-    if (!val || val <= 0) { toast.error('Introduce un valor válido'); return; }
-    const ok = await updateCost(val);
-    if (ok) { toast.success(`Coste fijo actualizado a ${fmtCurrency(val)}/mes`); setEditingCost(false); }
-    else toast.error('Error al guardar');
-  };
-
-  const handleSaveKpis = async () => {
-    const targets = {
-      ventas_ano: Number(kpiForm.ventas_ano) || 10,
-      captaciones_mes: Number(kpiForm.captaciones_mes) || 2,
-      citas_semana: Number(kpiForm.citas_semana) || 2,
-      toques_horus_dia: Number(kpiForm.toques_horus_dia) || 4,
-    };
-    const { error } = await supabase.from('settings').upsert({ key: 'kpi_targets', value: targets as any }, { onConflict: 'key' });
-    if (error) { toast.error('Error al guardar KPIs'); return; }
-    setKpiTargets(targets);
-    setKpiEditing(false);
-    toast.success('Objetivos KPI actualizados');
-  };
-
-  const handleSaveMatchConfig = async () => {
-    const cfg = { send_hour: matchForm.send_hour || '09:00', price_margin: Math.max(1, Math.min(100, Number(matchForm.price_margin) || 25)) };
-    const { error } = await supabase.from('settings').upsert({ key: 'match_config', value: cfg as any }, { onConflict: 'key' });
-    if (error) { toast.error('Error al guardar configuración'); return; }
-    setMatchConfig(cfg);
-    setMatchEditing(false);
-    toast.success('Configuración de envío actualizada');
-  };
-
   return (
     <div className="space-y-6">
       <AISectionGuide
@@ -226,23 +167,17 @@ const DashboardAdmin = () => {
         ]}
       />
 
-      {/* Header with cost config */}
-      <div className="flex items-center justify-between">
-        <p className="text-muted-foreground">Vista gerencial — {semester.label}</p>
-        <div className="flex items-center gap-2">
-          {editingCost ? (
-            <>
-              <Input type="number" className="w-28 h-9" value={costInput} onChange={e => setCostInput(e.target.value)} placeholder="€/mes" autoFocus onKeyDown={e => e.key === 'Enter' && handleSaveCost()} />
-              <Button size="sm" onClick={handleSaveCost}><Check className="h-4 w-4" /></Button>
-              <Button size="sm" variant="ghost" onClick={() => setEditingCost(false)}>Cancelar</Button>
-            </>
-          ) : (
-            <Button size="sm" variant="outline" onClick={() => { setCostInput(cost.toString()); setEditingCost(true); }}>
-              <Settings className="h-4 w-4 mr-1.5" />Coste fijo: {fmtCurrency(cost)}/mes
-            </Button>
-          )}
-        </div>
-      </div>
+      <DashboardAdminHeader
+        semesterLabel={semester.label}
+        cost={cost}
+        editingCost={editingCost}
+        costInput={costInput}
+        setCostInput={setCostInput}
+        setEditingCost={setEditingCost}
+        onSaveCost={handleSaveCost}
+        onOpenDemands={() => navigate('/demands')}
+        onOpenBuyersWithoutDemand={() => navigate('/buyers-without-demand')}
+      />
 
       <Tabs value={adminTab} onValueChange={setAdminTab}>
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -303,32 +238,12 @@ const DashboardAdmin = () => {
           <Suspense fallback={SuspenseFallback}><AdminAgentRecordRichness /></Suspense>
           <Suspense fallback={SuspenseFallback}><AdminCommercialBottlenecks /></Suspense>
           <Suspense fallback={SuspenseFallback}><AdminCommercialCoherence /></Suspense>
-          <div className="grid gap-4 sm:grid-cols-4">
-            <Card className="border-0 shadow-[var(--shadow-card)]">
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10"><Users className="h-5 w-5 text-primary" /></div>
-                <div><p className="text-2xl font-bold">{stats.totalAgents}</p><p className="text-xs text-muted-foreground">Asesores activos</p></div>
-              </CardContent>
-            </Card>
-            <Card className="border-0 shadow-[var(--shadow-card)]">
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-success/10"><Euro className="h-5 w-5 text-success" /></div>
-                <div><p className="text-2xl font-bold">{fmtCurrency(stats.totalAgency)}</p><p className="text-xs text-muted-foreground">Generado agencia (semestre)</p></div>
-              </CardContent>
-            </Card>
-            <Card className="border-0 shadow-[var(--shadow-card)]">
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent/10"><TrendingUp className="h-5 w-5 text-accent" /></div>
-                <div><p className="text-2xl font-bold">{fmtCurrency(stats.totalPaid)}</p><p className="text-xs text-muted-foreground">Pagado a asesores</p></div>
-              </CardContent>
-            </Card>
-            <Card className="border-0 shadow-[var(--shadow-card)]">
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-warning/10"><Shield className="h-5 w-5 text-warning" /></div>
-                <div><p className="text-2xl font-bold">{stats.pendingApproval}</p><p className="text-xs text-muted-foreground">Pendientes aprobación</p></div>
-              </CardContent>
-            </Card>
-          </div>
+          <DashboardAdminSummaryStats
+            totalAgents={stats.totalAgents}
+            totalAgency={stats.totalAgency}
+            totalPaid={stats.totalPaid}
+            pendingApproval={stats.pendingApproval}
+          />
           <Suspense fallback={SuspenseFallback}><AdminKpiBoard /></Suspense>
           <Suspense fallback={SuspenseFallback}><AdminInboundRadar /></Suspense>
           <Suspense fallback={SuspenseFallback}><AdminStockRadar /></Suspense>
@@ -344,91 +259,20 @@ const DashboardAdmin = () => {
 
         {/* ── KPIs & Match config ── */}
         <TabsContent value="kpis" className="mt-4 space-y-6">
-          <Card className="border-0 shadow-[var(--shadow-card)]">
-            <CardHeader><CardTitle className="flex items-center gap-2"><Target className="h-5 w-5 text-primary" />Objetivos KPI del equipo</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm text-muted-foreground">Estos objetivos marcan la cadencia comercial sana del equipo: actividad diaria, visitas de captación, exclusivas al mes y ritmo anual de arras.</p>
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Ventas / año</label>
-                  {kpiEditing
-                    ? <Input type="number" min={0} value={kpiForm.ventas_ano} onChange={e => setKpiForm({ ...kpiForm, ventas_ano: e.target.value })} />
-                    : <p className="text-2xl font-bold">{kpiTargets.ventas_ano}</p>}
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Captaciones / mes</label>
-                  {kpiEditing
-                    ? <Input type="number" min={0} value={kpiForm.captaciones_mes} onChange={e => setKpiForm({ ...kpiForm, captaciones_mes: e.target.value })} />
-                    : <p className="text-2xl font-bold">{kpiTargets.captaciones_mes}</p>}
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Citas captación / semana</label>
-                  {kpiEditing
-                    ? <Input type="number" min={0} value={kpiForm.citas_semana} onChange={e => setKpiForm({ ...kpiForm, citas_semana: e.target.value })} />
-                    : <p className="text-2xl font-bold">{kpiTargets.citas_semana}</p>}
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Toques Horus / día</label>
-                  {kpiEditing
-                    ? <Input type="number" min={0} value={kpiForm.toques_horus_dia} onChange={e => setKpiForm({ ...kpiForm, toques_horus_dia: e.target.value })} />
-                    : <p className="text-2xl font-bold">{kpiTargets.toques_horus_dia}</p>}
-                </div>
-              </div>
-              <div className="flex gap-2">
-                {kpiEditing ? (
-                  <>
-                    <Button onClick={handleSaveKpis}><Check className="h-4 w-4 mr-1" />Guardar</Button>
-                    <Button variant="ghost" onClick={() => setKpiEditing(false)}>Cancelar</Button>
-                  </>
-                ) : (
-                  <Button variant="outline" onClick={() => {
-                    setKpiForm({
-                      ventas_ano: kpiTargets.ventas_ano.toString(),
-                      captaciones_mes: kpiTargets.captaciones_mes.toString(),
-                      citas_semana: kpiTargets.citas_semana.toString(),
-                      toques_horus_dia: kpiTargets.toques_horus_dia.toString(),
-                    });
-                    setKpiEditing(true);
-                  }}>
-                    <Settings className="h-4 w-4 mr-1.5" />Editar objetivos
-                  </Button>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-0 shadow-[var(--shadow-card)]">
-            <CardHeader><CardTitle className="flex items-center gap-2"><Clock className="h-5 w-5 text-primary" />Configuración de envío diario</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm text-muted-foreground">Hora de envío automático y margen de tolerancia de precio para cruces.</p>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium flex items-center gap-1.5"><Clock className="h-4 w-4" />Hora de envío</label>
-                  {matchEditing
-                    ? <Input type="time" value={matchForm.send_hour} onChange={e => setMatchForm({ ...matchForm, send_hour: e.target.value })} />
-                    : <p className="text-2xl font-bold">{matchConfig.send_hour}h</p>}
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium flex items-center gap-1.5"><Percent className="h-4 w-4" />Margen de precio (±%)</label>
-                  {matchEditing
-                    ? <Input type="number" min={1} max={100} value={matchForm.price_margin} onChange={e => setMatchForm({ ...matchForm, price_margin: e.target.value })} />
-                    : <p className="text-2xl font-bold">±{matchConfig.price_margin}%</p>}
-                </div>
-              </div>
-              <div className="flex gap-2">
-                {matchEditing ? (
-                  <>
-                    <Button onClick={handleSaveMatchConfig}><Check className="h-4 w-4 mr-1" />Guardar</Button>
-                    <Button variant="ghost" onClick={() => setMatchEditing(false)}>Cancelar</Button>
-                  </>
-                ) : (
-                  <Button variant="outline" onClick={() => { setMatchForm({ send_hour: matchConfig.send_hour, price_margin: matchConfig.price_margin.toString() }); setMatchEditing(true); }}>
-                    <Settings className="h-4 w-4 mr-1.5" />Editar configuración
-                  </Button>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+          <DashboardAdminSettingsPanels
+            kpiTargets={kpiTargets}
+            kpiEditing={kpiEditing}
+            kpiForm={kpiForm}
+            setKpiForm={setKpiForm}
+            setKpiEditing={setKpiEditing}
+            onSaveKpis={handleSaveKpis}
+            matchConfig={matchConfig}
+            matchEditing={matchEditing}
+            matchForm={matchForm}
+            setMatchForm={setMatchForm}
+            setMatchEditing={setMatchEditing}
+            onSaveMatchConfig={handleSaveMatchConfig}
+          />
         </TabsContent>
 
         <TabsContent value="announcements"  className="mt-4"><Suspense fallback={SuspenseFallback}><AdminAnnouncements /></Suspense></TabsContent>

@@ -5,6 +5,16 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+interface PropertyImageRow {
+  id: string;
+  images: string[] | null;
+  image_order: string[] | null;
+}
+
+interface StorageFile {
+  name: string;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -25,13 +35,13 @@ Deno.serve(async (req) => {
     let synced = 0;
     let skipped = 0;
 
-    for (const prop of properties || []) {
+    for (const prop of (properties || []) as PropertyImageRow[]) {
       // List files in storage for this property
       const { data: files } = await supabase.storage
         .from("property-media")
         .list(prop.id, { limit: 200 });
 
-      const imageFiles = (files || []).filter((f: any) =>
+      const imageFiles = ((files || []) as StorageFile[]).filter((f) =>
         /\.(jpg|jpeg|png|webp|gif|avif)$/i.test(f.name)
       );
 
@@ -42,7 +52,7 @@ Deno.serve(async (req) => {
 
       const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
       const storageUrls = imageFiles.map(
-        (f: any) => `${supabaseUrl}/storage/v1/object/public/property-media/${prop.id}/${f.name}`
+        (f) => `${supabaseUrl}/storage/v1/object/public/property-media/${prop.id}/${f.name}`
       );
 
       const currentImages: string[] = prop.images || [];

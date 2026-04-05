@@ -16,12 +16,15 @@ const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 type BuyerAnalysis = {
   contact: { id: string; full_name: string; email: string | null; phone: string | null; contact_type: string; status: string };
-  demands: any[];
+  demands: Array<{
+    property_type?: string | null;
+    cities?: string[] | null;
+  }>;
   matchCount: number;
   pendingMatches: number;
   interestedMatches: number;
-  recentMatches: { property: any; status: string; compatibility: number }[];
-  recentVisits: any[];
+  recentMatches: { property: { id?: string; title?: string | null } | null; status: string; compatibility: number }[];
+  recentVisits: Array<{ id: string; visit_date?: string | null }>;
   daysSinceContact: number;
   newPropertiesCount: number;
   hasEmail: boolean;
@@ -45,7 +48,7 @@ const Reengagement = () => {
   const [editBody, setEditBody] = useState('');
   const [editWhatsapp, setEditWhatsapp] = useState('');
 
-  const callFunction = async (body: any) => {
+  const callFunction = async <T,>(body: Record<string, unknown>): Promise<T> => {
     const resp = await fetch(`${SUPABASE_URL}/functions/v1/ai-reengagement`, {
       method: 'POST',
       headers: {
@@ -56,21 +59,22 @@ const Reengagement = () => {
     });
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error || 'Error en la función');
-    return data;
+    return data as T;
   };
 
   const analyzeBuyers = async () => {
     setAnalyzing(true);
     try {
-      const data = await callFunction({ action: 'analyze' });
+      const data = await callFunction<{ buyers?: BuyerAnalysis[] }>({ action: 'analyze' });
       setBuyers(data.buyers || []);
       if (data.buyers?.length === 0) {
         toast({ title: 'Sin compradores activos', description: 'No hay compradores con demandas activas para reactivar.' });
       } else {
         toast({ title: `${data.buyers.length} compradores analizados` });
       }
-    } catch (e: any) {
-      toast({ title: 'Error', description: e.message, variant: 'destructive' });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Error desconocido';
+      toast({ title: 'Error', description: message, variant: 'destructive' });
     }
     setAnalyzing(false);
   };
@@ -78,14 +82,15 @@ const Reengagement = () => {
   const generateMessages = async (contactId: string) => {
     setGenerating(contactId);
     try {
-      const data = await callFunction({ action: 'generate', contact_id: contactId });
+      const data = await callFunction<GeneratedMessages>({ action: 'generate', contact_id: contactId });
       setCurrentMessages(data);
       setEditSubject(data.messages.email_subject);
       setEditBody(data.messages.email_body);
       setEditWhatsapp(data.messages.whatsapp_message);
       setMessageDialog(true);
-    } catch (e: any) {
-      toast({ title: 'Error generando mensajes', description: e.message, variant: 'destructive' });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Error generando mensajes';
+      toast({ title: 'Error generando mensajes', description: message, variant: 'destructive' });
     }
     setGenerating(null);
   };
@@ -109,8 +114,9 @@ const Reengagement = () => {
       });
       if (error || !data?.ok) throw new Error(data?.error || error?.message || 'Error enviando email');
       toast({ title: '📧 Email enviado', description: `Email enviado a ${currentMessages.contact.email}` });
-    } catch (e: any) {
-      toast({ title: 'Error enviando email', description: e.message, variant: 'destructive' });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Error enviando email';
+      toast({ title: 'Error enviando email', description: message, variant: 'destructive' });
     }
     setSendingEmail(false);
   };
@@ -131,8 +137,9 @@ const Reengagement = () => {
       });
       if (error || !data?.ok) throw new Error(data?.error || error?.message || 'Error enviando WhatsApp');
       toast({ title: '✅ WhatsApp enviado', description: `Mensaje enviado a ${currentMessages.contact.full_name}` });
-    } catch (e: any) {
-      toast({ title: 'Error WhatsApp', description: e.message, variant: 'destructive' });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Error WhatsApp';
+      toast({ title: 'Error WhatsApp', description: message, variant: 'destructive' });
     }
   };
 

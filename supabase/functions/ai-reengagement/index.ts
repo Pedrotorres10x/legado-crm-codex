@@ -2,6 +2,44 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { corsHeaders, json, handleCors } from '../_shared/cors.ts';
 import { callAI, AIError } from '../_shared/ai.ts';
 
+interface ReengagementBody {
+  action: string;
+  contact_id?: string;
+  email?: string;
+  subject?: string;
+  html_content?: string;
+}
+
+interface ReengagementMatchRow {
+  id: string;
+  status: string | null;
+  compatibility: number | null;
+  created_at: string;
+  property_id: string | null;
+  properties?: {
+    title?: string | null;
+    city?: string | null;
+    price?: number | null;
+    bedrooms?: number | null;
+    surface_area?: number | null;
+    images?: string[] | null;
+  } | null;
+}
+
+interface ReengagementPropertyRow {
+  title: string | null;
+  city: string | null;
+  price: number | null;
+  bedrooms?: number | null;
+  surface_area?: number | null;
+}
+
+interface ReengagementToolCall {
+  function?: {
+    arguments?: string;
+  };
+}
+
 Deno.serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
@@ -11,7 +49,7 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const body = await req.json();
+    const body = await req.json() as ReengagementBody;
     const { action, contact_id } = body;
 
     // ACTION: analyze
@@ -107,20 +145,20 @@ Deno.serve(async (req) => {
 
       const { data: demands } = await supabase.from("demands").select("*").eq("contact_id", contact_id).eq("is_active", true);
       const demandIds = (demands || []).map(d => d.id);
-      let matches: any[] = [];
+      let matches: ReengagementMatchRow[] = [];
       if (demandIds.length > 0) {
         const { data } = await supabase.from("matches").select("*, properties(title, city, price, bedrooms, surface_area, images)").in("demand_id", demandIds).order("created_at", { ascending: false }).limit(5);
-        matches = data || [];
+        matches = (data ?? []) as ReengagementMatchRow[];
       }
 
       const { data: visits } = await supabase.from("visits").select("*, properties(title, city)").eq("contact_id", contact_id).order("visit_date", { ascending: false }).limit(5);
       const { data: interactions } = await supabase.from("interactions").select("*").eq("contact_id", contact_id).order("interaction_date", { ascending: false }).limit(5);
 
       const demandCities = (demands || []).flatMap(d => d.cities || []);
-      let newProperties: any[] = [];
+      let newProperties: ReengagementPropertyRow[] = [];
       if (demandCities.length > 0) {
         const { data } = await supabase.from("properties").select("title, city, price, bedrooms, surface_area").eq("status", "disponible").in("city", demandCities).gte("created_at", new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()).limit(5);
-        newProperties = data || [];
+        newProperties = (data ?? []) as ReengagementPropertyRow[];
       }
 
       const prompt = `Eres Alicia, de Legado Inmobiliaria. Tu personalidad: amiga experta en el sector inmobiliario, CERO comercial, cercana y natural. Nunca presionas ni usas urgencia artificial. Hablas como una amiga que sabe mucho del mercado y quiere ayudar de verdad.
@@ -170,7 +208,7 @@ Personaliza según el historial real del contacto.`;
         tool_choice: { type: 'function', function: { name: 'reengagement_messages' } },
       });
 
-      const toolCall = aiResult.tool_calls?.[0] as any;
+      const toolCall = aiResult.tool_calls?.[0] as ReengagementToolCall | undefined;
       if (!toolCall?.function?.arguments) throw new Error('No se pudo generar los mensajes');
       const messages = JSON.parse(toolCall.function.arguments);
 

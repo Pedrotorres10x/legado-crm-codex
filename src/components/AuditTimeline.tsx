@@ -27,6 +27,39 @@ interface TimelineEvent {
   entity_id?: string;
 }
 
+type ProfileRow = {
+  user_id: string;
+  full_name: string | null;
+};
+
+type UserRoleRow = {
+  user_id: string;
+};
+
+type AuditLogRow = {
+  id: string;
+  table_name: string;
+  record_id: string;
+  action: string;
+  field_name: string | null;
+  old_value: string | null;
+  new_value: string | null;
+  record_snapshot?: {
+    title?: string | null;
+    full_name?: string | null;
+  } | null;
+  user_id: string | null;
+  created_at: string;
+};
+
+type MediaAccessLogRow = {
+  id: string;
+  action: string;
+  user_id: string | null;
+  created_at: string;
+  property_id?: string | null;
+};
+
 const AuditTimeline = () => {
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [profiles, setProfiles] = useState<Record<string, string>>({});
@@ -43,14 +76,14 @@ const AuditTimeline = () => {
     // Fetch profiles first
     const { data: profs } = await supabase.from('profiles').select('user_id, full_name');
     const nameMap: Record<string, string> = {};
-    (profs || []).forEach((p: any) => { nameMap[p.user_id] = p.full_name; });
+    ((profs || []) as ProfileRow[]).forEach((profile) => { nameMap[profile.user_id] = profile.full_name || 'Sin nombre'; });
     setProfiles(nameMap);
 
     // Fetch agents list
     const { data: roles } = await supabase.from('user_roles').select('user_id');
-    const agentList = (roles || []).map((r: any) => ({
-      id: r.user_id,
-      name: nameMap[r.user_id] || r.user_id.slice(0, 8),
+    const agentList = ((roles || []) as UserRoleRow[]).map((role) => ({
+      id: role.user_id,
+      name: nameMap[role.user_id] || role.user_id.slice(0, 8),
     }));
     setAgents(agentList.filter((a, i, arr) => arr.findIndex(x => x.id === a.id) === i));
 
@@ -63,7 +96,7 @@ const AuditTimeline = () => {
     const timeline: TimelineEvent[] = [];
 
     // Audit log entries
-    for (const e of (auditRes.data || []) as any[]) {
+    for (const e of (auditRes.data || []) as AuditLogRow[]) {
       const fieldLabels: Record<string, string> = {
         status: 'Estado', agent_id: 'Agente', owner_id: 'Propietario',
         contact_type: 'Tipo contacto', pipeline_stage: 'Etapa pipeline',
@@ -106,7 +139,7 @@ const AuditTimeline = () => {
     }
 
     // Media access logs
-    for (const m of (mediaRes.data || []) as any[]) {
+    for (const m of (mediaRes.data || []) as MediaAccessLogRow[]) {
       const isDoc = m.action.startsWith('doc_');
       const docName = isDoc ? m.action.replace('doc_download:', '').replace(/^\d+_/, '') : null;
       timeline.push({

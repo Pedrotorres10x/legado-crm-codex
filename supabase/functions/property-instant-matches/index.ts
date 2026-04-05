@@ -1,10 +1,31 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  bedroomMatches,
+  MATCHING_PILLARS,
+  operationMatches,
+  propertyTypeMatches,
+  scoreBedroomFit,
+  scoreBudgetFit,
+} from "../_shared/matching.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
 };
+
+interface DemandContactSummary {
+  agent_id: string | null;
+  full_name: string | null;
+}
+
+interface MatchInsertRow {
+  property_id: string;
+  demand_id: string;
+  agent_id: string | null;
+  compatibility: number;
+  status: string;
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -53,7 +74,7 @@ Deno.serve(async (req) => {
 
   // Match algorithm
   let matchCount = 0;
-  const matchesToCreate: any[] = [];
+  const matchesToCreate: MatchInsertRow[] = [];
 
   for (const demand of demands) {
     // Skip if already matched
@@ -69,49 +90,44 @@ Deno.serve(async (req) => {
     let maxScore = 0;
 
     // Operation
-    maxScore += 30;
-    if (
-      !demand.operation ||
-      demand.operation === property.operation ||
-      property.operation === "ambas" ||
-      demand.operation === "ambas"
-    ) score += 30;
+    maxScore += MATCHING_PILLARS.operation;
+    if (operationMatches(demand.operation, property.operation)) score += MATCHING_PILLARS.operation;
 
     // Property type
-    maxScore += 20;
-    const allowedTypes = demand.property_types?.length
-      ? demand.property_types
-      : demand.property_type
-      ? [demand.property_type]
-      : [];
-    if (allowedTypes.length === 0 || allowedTypes.includes(property.property_type)) score += 20;
+    maxScore += MATCHING_PILLARS.propertyFamily;
+    if (propertyTypeMatches(demand.property_type, demand.property_types, property.property_type)) {
+      score += MATCHING_PILLARS.propertyFamily;
+    }
 
     // Price
-    maxScore += 20;
+    maxScore += MATCHING_PILLARS.budget;
     if (property.price !== null) {
-      const inMin = !demand.min_price || property.price >= demand.min_price;
-      const inMax = !demand.max_price || property.price <= demand.max_price * 1.1; // 10% tolerance
-      if (inMin && inMax) score += 20;
-      else if (inMin || inMax) score += 10;
+      const budget = scoreBudgetFit(demand.min_price, demand.max_price, property.price, 0.1);
+      if (!budget.ok) continue;
+      score += Math.round(MATCHING_PILLARS.budget * budget.score);
     }
 
     // Bedrooms
-    maxScore += 10;
-    if (!demand.min_bedrooms || (property.bedrooms ?? 0) >= demand.min_bedrooms) score += 10;
+    maxScore += MATCHING_PILLARS.bedrooms;
+    if (bedroomMatches(demand.min_bedrooms, property.bedrooms)) {
+      score += Math.round(MATCHING_PILLARS.bedrooms * scoreBedroomFit(demand.min_bedrooms, property.bedrooms));
+    }
 
     // Surface
-    maxScore += 10;
-    if (!demand.min_surface || (property.surface_area ?? 0) >= demand.min_surface) score += 10;
+    maxScore += MATCHING_PILLARS.surface;
+    if (!demand.min_surface || (property.surface_area ?? 0) >= demand.min_surface) score += MATCHING_PILLARS.surface;
 
     // City
-    maxScore += 10;
+    maxScore += MATCHING_PILLARS.geography;
     const demandCities = (demand.cities || []).map((c: string) => c.toLowerCase());
-    if (demandCities.length === 0 || (property.city && demandCities.includes(property.city.toLowerCase()))) score += 10;
+    if (demandCities.length === 0 || (property.city && demandCities.includes(property.city.toLowerCase()))) {
+      score += MATCHING_PILLARS.geography;
+    }
 
     const compatibility = Math.round((score / maxScore) * 100);
     if (compatibility < 50) continue; // Skip poor matches
 
-    const contact = demand.contacts as any;
+    const contact = demand.contacts as DemandContactSummary | null;
     matchesToCreate.push({
       property_id: property.id,
       demand_id: demand.id,

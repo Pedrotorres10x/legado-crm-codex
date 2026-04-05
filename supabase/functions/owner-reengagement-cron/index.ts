@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendWhatsApp } from '../_shared/greenapi.ts';
+import { isAutomationOutboundEnabled } from '../_shared/automation-outbound.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -71,6 +72,13 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
+    const automationEnabled = await isAutomationOutboundEnabled();
+    if (!automationEnabled) {
+      return new Response(JSON.stringify({ message: "Automatizacion saliente desactivada", sent: 0 }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, serviceKey);
@@ -99,7 +107,8 @@ Deno.serve(async (req) => {
       .select("contact_id, message_type, year")
       .eq("year", currentYear);
 
-    const sentSet = new Set((sentThisYear || []).map((s: any) => `${s.contact_id}:${s.message_type}:${s.year}`));
+    const sentRows = (sentThisYear || []) as Array<{ contact_id: string; message_type: string; year: number }>;
+    const sentSet = new Set(sentRows.map((s) => `${s.contact_id}:${s.message_type}:${s.year}`));
 
     const messagesToSend: { contact_id: string; message_type: string; year: number; message: string; phone: string; full_name: string }[] = [];
 

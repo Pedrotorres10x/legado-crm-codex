@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,16 @@ import { Brain, BookOpen, GitBranch, Activity, Plus, Trash2, Zap, RefreshCw } fr
 
 const AI_FUNCTIONS = ["ai-chat", "ai-description", "ai-search", "ai-summary", "ai-scoring", "ai-reengagement", "portal-lead-inbound"];
 const KB_CATEGORIES = ["legal", "pricing", "zones", "process", "faq", "market", "portals", "commissions"];
+
+type AIKnowledgeBaseInsert = Database["public"]["Tables"]["ai_knowledge_base"]["Insert"];
+type AIKnowledgeBaseRow = Database["public"]["Tables"]["ai_knowledge_base"]["Row"];
+type AIMemoryRow = Database["public"]["Tables"]["ai_memory"]["Row"];
+type AIPromptVersionRow = Database["public"]["Tables"]["ai_prompt_versions"]["Row"];
+type AIInteractionRow = Database["public"]["Tables"]["ai_interactions"]["Row"];
+type FunctionStats = Record<string, { count: number; avgDuration: number }>;
+type ImprovementResult = {
+  results?: Record<string, unknown>;
+};
 
 export default function AdminAILearning() {
   const { toast } = useToast();
@@ -70,7 +81,7 @@ export default function AdminAILearning() {
         .select("function_name, duration_ms, quality_score", { count: "exact" })
         .gte("created_at", weekAgo);
 
-      const byFunction: Record<string, { count: number; avgDuration: number }> = {};
+      const byFunction: FunctionStats = {};
       for (const row of data || []) {
         const fn = row.function_name;
         if (!byFunction[fn]) byFunction[fn] = { count: 0, avgDuration: 0 };
@@ -86,7 +97,7 @@ export default function AdminAILearning() {
 
   // ── Mutations ────────────────────────────────────────────────────────────
   const addKBEntry = useMutation({
-    mutationFn: async (entry: any) => {
+    mutationFn: async (entry: AIKnowledgeBaseInsert) => {
       const { error } = await supabase.from("ai_knowledge_base").insert(entry);
       if (error) throw error;
     },
@@ -131,7 +142,7 @@ export default function AdminAILearning() {
       if (error) throw error;
       return data;
     },
-    onSuccess: (data) => {
+    onSuccess: (data: ImprovementResult | null) => {
       queryClient.invalidateQueries({ queryKey: ["ai-prompt-versions"] });
       queryClient.invalidateQueries({ queryKey: ["ai-memory"] });
       toast({ title: "Análisis completado", description: `Funciones analizadas: ${Object.keys(data?.results || {}).length}` });
@@ -151,19 +162,19 @@ export default function AdminAILearning() {
         </Card>
         <Card>
           <CardContent className="pt-4">
-            <div className="text-2xl font-bold">{memories.filter((m: any) => m.is_active).length}</div>
+            <div className="text-2xl font-bold">{memories.filter((m: AIMemoryRow) => m.is_active).length}</div>
             <p className="text-xs text-muted-foreground">Memorias activas</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4">
-            <div className="text-2xl font-bold">{kbEntries.filter((k: any) => k.is_active).length}</div>
+            <div className="text-2xl font-bold">{kbEntries.filter((k: AIKnowledgeBaseRow) => k.is_active).length}</div>
             <p className="text-xs text-muted-foreground">Entradas KB</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4">
-            <div className="text-2xl font-bold">{promptVersions.filter((p: any) => p.is_active).length}</div>
+            <div className="text-2xl font-bold">{promptVersions.filter((p: AIPromptVersionRow) => p.is_active).length}</div>
             <p className="text-xs text-muted-foreground">Prompts activos</p>
           </CardContent>
         </Card>
@@ -186,13 +197,13 @@ export default function AdminAILearning() {
 
         {/* ── Knowledge Base ─────────────────────────────────────────────── */}
         <TabsContent value="knowledge" className="space-y-4">
-          <KBEntryDialog onSave={(entry: any) => addKBEntry.mutate(entry)} />
+          <KBEntryDialog onSave={(entry) => addKBEntry.mutate(entry)} />
 
           {kbLoading ? (
             <p className="text-muted-foreground">Cargando...</p>
           ) : (
             <div className="space-y-3">
-              {kbEntries.map((entry: any) => (
+              {kbEntries.map((entry: AIKnowledgeBaseRow) => (
                 <Card key={entry.id}>
                   <CardHeader className="pb-2">
                     <div className="flex items-center justify-between">
@@ -226,7 +237,7 @@ export default function AdminAILearning() {
             <p className="text-muted-foreground">Cargando...</p>
           ) : (
             <div className="space-y-2">
-              {memories.map((mem: any) => (
+              {memories.map((mem: AIMemoryRow) => (
                 <Card key={mem.id} className={!mem.is_active ? "opacity-50" : ""}>
                   <CardContent className="py-3 flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
@@ -255,7 +266,7 @@ export default function AdminAILearning() {
             <p className="text-muted-foreground">Cargando...</p>
           ) : (
             <div className="space-y-3">
-              {promptVersions.map((pv: any) => (
+              {promptVersions.map((pv: AIPromptVersionRow) => (
                 <Card key={pv.id} className={pv.is_active ? "border-primary" : ""}>
                   <CardHeader className="pb-2">
                     <div className="flex items-center justify-between">
@@ -293,7 +304,7 @@ export default function AdminAILearning() {
         <TabsContent value="activity" className="space-y-4">
           {stats?.byFunction && Object.keys(stats.byFunction).length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {Object.entries(stats.byFunction).map(([fn, data]: [string, any]) => (
+              {Object.entries(stats.byFunction).map(([fn, data]: [string, FunctionStats[string]]) => (
                 <Card key={fn}>
                   <CardContent className="pt-4">
                     <div className="flex justify-between items-center">
@@ -317,7 +328,7 @@ export default function AdminAILearning() {
 }
 
 // ── Dialog to add KB entry ─────────────────────────────────────────────────
-function KBEntryDialog({ onSave }: { onSave: (entry: any) => void }) {
+function KBEntryDialog({ onSave }: { onSave: (entry: AIKnowledgeBaseInsert) => void }) {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");

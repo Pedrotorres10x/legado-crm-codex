@@ -23,16 +23,46 @@ type UsePropertyDetailCoreParams = {
   toast: ToastFn;
 };
 
+type PropertyMediaFile = {
+  url: string;
+  name: string;
+  type: 'image' | 'video';
+};
+
+type PropertyDetailRecord = Record<string, unknown> & {
+  id: string;
+  title: string | null;
+  price: number | null;
+  city: string | null;
+  property_type: string | null;
+  operation: string | null;
+  status: string | null;
+  crm_reference?: string | null;
+  reference?: string | null;
+  bedrooms?: number | null;
+  bathrooms?: number | null;
+  surface_area?: number | null;
+  images?: string[] | null;
+  image_order?: PropertyImageOrderEntry[] | null;
+  virtual_tour_url?: string | null;
+};
+
+type AutoCatastroDocRow = {
+  id: string;
+  file_name: string | null;
+  file_url: string | null;
+};
+
 export const usePropertyDetailCore = ({ id, userId, toast }: UsePropertyDetailCoreParams) => {
-  const [property, setProperty] = useState<any>(null);
+  const [property, setProperty] = useState<PropertyDetailRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
-  const [mediaFiles, setMediaFiles] = useState<{ url: string; name: string; type: 'image' | 'video' }[]>([]);
+  const [mediaFiles, setMediaFiles] = useState<PropertyMediaFile[]>([]);
   const [virtualTour, setVirtualTour] = useState('');
   const [savingTour, setSavingTour] = useState(false);
   const [savingField, setSavingField] = useState(false);
 
-  const propertyRef = useRef<any>(null);
+  const propertyRef = useRef<PropertyDetailRecord | null>(null);
   const mediaFilesRef = useRef<typeof mediaFiles>([]);
   const skipAutoSync = useRef(false);
 
@@ -56,11 +86,11 @@ export const usePropertyDetailCore = ({ id, userId, toast }: UsePropertyDetailCo
     });
   }, [id]);
 
-  const saveField = useCallback(async (updates: Record<string, any>) => {
+  const saveField = useCallback(async (updates: Partial<PropertyDetailRecord>) => {
     if (!id) return;
 
     setSavingField(true);
-    const { error } = await supabase.from('properties').update(updates as any).eq('id', id);
+    const { error } = await supabase.from('properties').update(updates).eq('id', id);
 
     if (error) {
       toast({ title: 'Error guardando', description: error.message, variant: 'destructive' });
@@ -68,7 +98,7 @@ export const usePropertyDetailCore = ({ id, userId, toast }: UsePropertyDetailCo
       return;
     }
 
-    setProperty((prev: any) => ({ ...prev, ...updates }));
+    setProperty((prev) => (prev ? { ...prev, ...updates } : prev));
 
     const latestProp = { ...propertyRef.current, ...updates };
     if (updates.status === 'vendido' && propertyRef.current?.status !== 'vendido') {
@@ -109,8 +139,9 @@ export const usePropertyDetailCore = ({ id, userId, toast }: UsePropertyDetailCo
 
     const { data } = await supabase.from('properties').select('*').eq('id', id).single();
     if (data) {
-      setProperty(data);
-      setVirtualTour((data as any).virtual_tour_url || '');
+      const propertyData = data as PropertyDetailRecord;
+      setProperty(propertyData);
+      setVirtualTour(propertyData.virtual_tour_url || '');
     }
     setLoading(false);
   }, [id]);
@@ -126,7 +157,7 @@ export const usePropertyDetailCore = ({ id, userId, toast }: UsePropertyDetailCo
     return files;
   }, [id]);
 
-  const syncCatastroSnapshot = useCallback(async (reference: string, catastroData: Record<string, any>) => {
+  const syncCatastroSnapshot = useCallback(async (reference: string, catastroData: Record<string, unknown>) => {
     if (!id) return;
 
     const blob = new Blob([buildCatastroSnapshotContent(reference, catastroData)], { type: 'text/plain' });
@@ -140,8 +171,8 @@ export const usePropertyDetailCore = ({ id, userId, toast }: UsePropertyDetailCo
       .eq('doc_type', 'catastro')
       .ilike('file_name', 'ficha_catastral_%');
 
-    const oldStoragePaths = (existingAutoDocs || [])
-      .map((doc: any) => doc.file_url?.split('/property-documents/')[1])
+    const oldStoragePaths = ((existingAutoDocs || []) as AutoCatastroDocRow[])
+      .map((doc) => doc.file_url?.split('/property-documents/')[1])
       .filter((path: string | undefined): path is string => Boolean(path));
 
     if (oldStoragePaths.length > 0) {
@@ -155,7 +186,7 @@ export const usePropertyDetailCore = ({ id, userId, toast }: UsePropertyDetailCo
       await supabase
         .from('property_documents')
         .delete()
-        .in('id', existingAutoDocs!.map((doc: any) => doc.id));
+        .in('id', ((existingAutoDocs || []) as AutoCatastroDocRow[]).map((doc) => doc.id));
     }
 
     const { error: uploadError } = await supabase.storage.from('property-documents').upload(storagePath, blob, {
@@ -198,7 +229,7 @@ export const usePropertyDetailCore = ({ id, userId, toast }: UsePropertyDetailCo
 
   const logMediaAccess = useCallback(async (action: string) => {
     if (!id || !userId) return;
-    await supabase.from('media_access_logs').insert({ user_id: userId, property_id: id, action } as any);
+    await supabase.from('media_access_logs').insert({ user_id: userId, property_id: id, action });
   }, [id, userId]);
 
   useEffect(() => {
@@ -275,7 +306,7 @@ export const usePropertyDetailCore = ({ id, userId, toast }: UsePropertyDetailCo
         .map((result) => result.value);
 
       const latestProp = propertyRef.current;
-      const currentOrder: { name: string; label: string; source: string }[] = latestProp?.image_order || [];
+      const currentOrder: Array<{ name: string; label: string; source: string }> = latestProp?.image_order || [];
       const existingNames = new Set(currentOrder.map((entry) => entry.name));
       const newOrderEntries = newFileNames
         .filter((name) => !existingNames.has(name))
@@ -324,7 +355,7 @@ export const usePropertyDetailCore = ({ id, userId, toast }: UsePropertyDetailCo
     setSavingTour(true);
     const { error } = await supabase
       .from('properties')
-      .update({ virtual_tour_url: virtualTour || null } as any)
+      .update({ virtual_tour_url: virtualTour || null })
       .eq('id', id);
 
     if (error) {

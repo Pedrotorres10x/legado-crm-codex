@@ -8,9 +8,22 @@ import HealthDot from '@/components/HealthDot';
 import { differenceInDays } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import type { TablesUpdate } from '@/integrations/supabase/types';
+
+type PipelineContact = {
+  id: string;
+  full_name: string;
+  pipeline_stage: string | null;
+  updated_at: string | null;
+  email: string | null;
+  phone: string | null;
+  city: string | null;
+  contact_type: string | null;
+  tags?: string[] | null;
+};
 
 interface PipelineKanbanProps {
-  contacts: any[];
+  contacts: PipelineContact[];
   stages: { key: string; label: string; color: string }[];
   onUpdate: () => void;
   healthColors?: Record<string, HealthInfo>;
@@ -37,7 +50,7 @@ const DEFAULT_THRESHOLDS: Record<string, number> = {
   'escritura': 14,
 };
 
-const getDaysInStage = (contact: any): number | null => {
+const getDaysInStage = (contact: PipelineContact): number | null => {
   if (!contact.updated_at) return null;
   return differenceInDays(new Date(), new Date(contact.updated_at));
 };
@@ -46,10 +59,11 @@ const PipelineKanban = ({ contacts, stages, onUpdate, healthColors, stageDuratio
   const { toast } = useToast();
 
   const moveContact = async (contactId: string, newStage: string) => {
-    const { error } = await supabase.from('contacts').update({ pipeline_stage: newStage as any }).eq('id', contactId);
+    const payload: TablesUpdate<'contacts'> = { pipeline_stage: newStage };
+    const { error } = await supabase.from('contacts').update(payload).eq('id', contactId);
     if (error) { toast({ title: 'Error', description: error.message, variant: 'destructive' }); return; }
     // Notify ERP of pipeline stage change
-    const contact = contacts.find((c: any) => c.id === contactId);
+    const contact = contacts.find((c) => c.id === contactId);
     if (contact) {
       import('@/lib/erp-sync').then(({ notifyERP }) => {
         notifyERP('contact_updated', {
@@ -72,7 +86,7 @@ const PipelineKanban = ({ contacts, stages, onUpdate, healthColors, stageDuratio
   return (
     <div className="flex gap-3 overflow-x-auto pb-4">
       {stages.map(stage => {
-        const stageContacts = contacts.filter(c => (c as any).pipeline_stage === stage.key);
+        const stageContacts = contacts.filter((c) => c.pipeline_stage === stage.key);
         const stagnantCount = stageContacts.filter(c => {
           const days = getDaysInStage(c);
           const threshold = thresholds[stage.key] ?? 14;

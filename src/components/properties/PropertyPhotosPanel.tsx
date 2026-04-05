@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import * as AccordionUI from '@/components/ui/accordion';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -177,7 +178,7 @@ const PropertyPhotosPanel = ({
                           alt={img.label || img.name}
                           className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105 pointer-events-none"
                           draggable={false}
-                          style={{ WebkitUserDrag: 'none' } as any}
+                          style={{ WebkitUserDrag: 'none' } as CSSProperties}
                         />
                         <div className="absolute inset-0 pointer-events-none flex items-center justify-center overflow-hidden opacity-[0.15]">
                           <div className="rotate-[-35deg] whitespace-nowrap text-foreground font-bold text-sm tracking-widest select-none">

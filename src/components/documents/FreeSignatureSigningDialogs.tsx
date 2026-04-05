@@ -5,6 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Ban, CheckCircle, Copy, Link, Loader2, PenTool, Send, Users } from 'lucide-react';
 
 type SignerContact = { id: string; full_name: string } | null;
+type SearchContact = { id: string; full_name: string; phone?: string | null };
 
 interface FreeSignatureSigningDialogsProps {
   signerCountOpen: boolean;
@@ -14,7 +15,7 @@ interface FreeSignatureSigningDialogsProps {
   signerContacts: SignerContact[];
   signerSearchTerms: string[];
   setSignerSearchTerms: React.Dispatch<React.SetStateAction<string[]>>;
-  signerSearchResults: Array<any[]>;
+  signerSearchResults: SearchContact[][];
   signerSearching: boolean[];
   searchContacts: (term: string, index: number) => void;
   selectContactForSigner: (index: number, contact: { id: string; full_name: string }) => void;
@@ -124,7 +125,7 @@ const FreeSignatureSigningDialogs = ({
                       )}
                       {(signerSearchResults[index]?.length ?? 0) > 0 && (
                         <div className="absolute z-50 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-border bg-popover shadow-lg">
-                          {signerSearchResults[index].map((contact: any) => (
+                          {signerSearchResults[index].map((contact) => (
                             <button
                               key={contact.id}
                               className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-accent"

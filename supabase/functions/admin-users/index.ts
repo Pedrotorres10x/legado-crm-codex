@@ -1,6 +1,37 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders, json, handleCors } from '../_shared/cors.ts';
 
+interface AdminUsersBody {
+  action?: 'list' | 'delete' | 'ban' | 'set_role';
+  user_id?: string;
+  role?: string;
+  unban?: boolean;
+}
+
+interface UserRoleRow {
+  user_id: string;
+  role: string;
+}
+
+interface ProfileRow {
+  user_id: string;
+  full_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  avatar_url?: string | null;
+}
+
+interface AuthAdminUser {
+  id: string;
+  email?: string | null;
+  created_at?: string;
+  last_sign_in_at?: string | null;
+  banned_until?: string | null;
+  user_metadata?: {
+    full_name?: string | null;
+  } | null;
+}
+
 /**
  * admin-users — List, delete, and manage roles for users
  * Requires admin role.
@@ -27,7 +58,7 @@ Deno.serve(async (req) => {
   const { data: isAdmin } = await supabase.rpc('has_role', { _user_id: user.id, _role: 'admin' });
   if (!isAdmin) return json({ error: 'Admin only' }, 403);
 
-  const body = await req.json().catch(() => ({}));
+  const body = await req.json().catch(() => ({} as AdminUsersBody)) as AdminUsersBody;
   const action = body.action || 'list';
 
   // ── List users ──
@@ -38,17 +69,17 @@ Deno.serve(async (req) => {
     // Get all roles
     const { data: roles } = await supabase.from('user_roles').select('user_id, role');
     const roleMap: Record<string, string[]> = {};
-    (roles || []).forEach((r: any) => {
+    ((roles || []) as UserRoleRow[]).forEach((r) => {
       if (!roleMap[r.user_id]) roleMap[r.user_id] = [];
       roleMap[r.user_id].push(r.role);
     });
 
     // Get profiles
     const { data: profiles } = await supabase.from('profiles').select('user_id, full_name, email, phone, avatar_url');
-    const profileMap: Record<string, any> = {};
-    (profiles || []).forEach((p: any) => { profileMap[p.user_id] = p; });
+    const profileMap: Record<string, ProfileRow> = {};
+    ((profiles || []) as ProfileRow[]).forEach((p) => { profileMap[p.user_id] = p; });
 
-    const result = users.map((u: any) => ({
+    const result = (users as AuthAdminUser[]).map((u) => ({
       id: u.id,
       email: u.email,
       created_at: u.created_at,

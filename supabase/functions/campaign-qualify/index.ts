@@ -16,6 +16,91 @@ import { corsHeaders, json, handleCors } from '../_shared/cors.ts';
 const FOLLOWUP_CADENCE_DAYS = [3, 5, 7];
 const MAX_ATTEMPTS = 4;
 
+type SupabaseClient = ReturnType<typeof createClient>;
+
+interface CampaignQualifyBody {
+  batch_size?: number;
+  preview?: boolean;
+  mode?: "initial" | "followup";
+  stats_only?: boolean;
+}
+
+interface QualifyContact {
+  id: string;
+  full_name: string | null;
+  phone: string | null;
+  phone2: string | null;
+  email: string | null;
+  city: string | null;
+  nationality: string | null;
+  notes: string | null;
+  preferred_language: string | null;
+  tags: string[] | null;
+  contact_type: string | null;
+  agent_id: string | null;
+}
+
+interface QualifyCommunicationLog {
+  created_at: string;
+  metadata: {
+    message_preview?: string;
+  } | null;
+}
+
+interface QualifyReadyContact extends QualifyContact {
+  _attemptNumber: number;
+  _previousMessages: string[];
+}
+
+interface QualifyInteraction {
+  subject: string | null;
+  description: string | null;
+  interaction_type: string | null;
+}
+
+interface QualifyDemand {
+  operation: string | null;
+  property_type: string | null;
+  cities: string[] | null;
+  zones: string[] | null;
+  min_price: number | null;
+  max_price: number | null;
+}
+
+interface QualifyProperty {
+  title: string | null;
+  city: string | null;
+  zone: string | null;
+  price: number | null;
+  operation_type: string | null;
+  property_type: string | null;
+}
+
+interface QualifyContext {
+  interactions: QualifyInteraction[];
+  demands: QualifyDemand[];
+  properties: QualifyProperty[];
+}
+
+interface AiClassifyResponse {
+  ok?: boolean;
+  error?: string;
+  text?: string;
+  subject?: string;
+  html?: string;
+}
+
+interface MultichannelSendPayload {
+  channel: "whatsapp" | "email";
+  contact_id: string;
+  text?: string;
+  source: string;
+  reply_to?: string;
+  campaign: string;
+  subject?: string;
+  html?: string;
+}
+
 Deno.serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
@@ -50,7 +135,7 @@ Deno.serve(async (req) => {
       return json({ error: 'Forbidden: admin or coordinadora role required' }, 403);
     }
 
-    const body = await req.json();
+    const body = await req.json() as CampaignQualifyBody;
     const batchSize = Math.min(body.batch_size || 200, 200);
     const preview = body.preview === true;
     const mode = body.mode || "initial";
@@ -64,14 +149,15 @@ Deno.serve(async (req) => {
     }
 
     return await handleInitial(supabase, supabaseUrl, serviceKey, batchSize, preview);
-  } catch (e: any) {
-    console.error("campaign-qualify error:", e.message);
-    return json({ ok: false, error: e.message }, 500);
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+    console.error("campaign-qualify error:", message);
+    return json({ ok: false, error: message }, 500);
   }
 });
 
 /** Get campaign statistics */
-async function getStats(supabase: any) {
+async function getStats(supabase: SupabaseClient) {
   const [
     { count: totalEligible },
     { count: pendingSend },
@@ -127,12 +213,12 @@ async function getStats(supabase: any) {
 
 /** Handle initial outreach */
 async function handleInitial(
-  supabase: any, supabaseUrl: string, serviceKey: string,
+  supabase: SupabaseClient, supabaseUrl: string, serviceKey: string,
   batchSize: number, preview: boolean
 ) {
   const { data: contacts, error } = await supabase
     .from("contacts")
-    .select("id, full_name, phone, phone2, email, city, nationality, notes, tags, contact_type, agent_id")
+    .select("id, full_name, phone, phone2, email, city, nationality, notes, preferred_language, tags, contact_type, agent_id")
     .in("contact_type", ["propietario", "contacto"])
     .not("tags", "cs", "{qualify-pendiente}")
     .not("tags", "cs", "{qualify-done}")
@@ -162,12 +248,12 @@ async function handleInitial(
 
 /** Handle follow-ups */
 async function handleFollowups(
-  supabase: any, supabaseUrl: string, serviceKey: string,
+  supabase: SupabaseClient, supabaseUrl: string, serviceKey: string,
   batchSize: number, preview: boolean
 ) {
   const { data: pendingContacts, error } = await supabase
     .from("contacts")
-    .select("id, full_name, phone, phone2, email, city, nationality, notes, tags, contact_type, agent_id")
+    .select("id, full_name, phone, phone2, email, city, nationality, notes, preferred_language, tags, contact_type, agent_id")
     .contains("tags", ["qualify-pendiente"])
     .in("contact_type", ["propietario", "contacto"])
     .limit(500);
@@ -177,7 +263,7 @@ async function handleFollowups(
     return json({ ok: true, message: "No hay seguimientos pendientes", sent: 0 });
   }
 
-  const contactsReady: any[] = [];
+  const contactsReady: QualifyReadyContact[] = [];
   const now = new Date();
 
   for (const contact of pendingContacts) {
@@ -203,7 +289,9 @@ async function handleFollowups(
     const requiredDays = FOLLOWUP_CADENCE_DAYS[attemptNumber - 1] || 7;
 
     if (daysSinceLast >= requiredDays) {
-      const previousMessages = logs.map((l: any) => l.metadata?.message_preview || "").filter(Boolean);
+      const previousMessages = ((logs ?? []) as QualifyCommunicationLog[])
+        .map((l) => l.metadata?.message_preview || "")
+        .filter(Boolean);
       contactsReady.push({ ...contact, _attemptNumber: attemptNumber + 1, _previousMessages: previousMessages });
     }
 
@@ -226,8 +314,9 @@ async function handleFollowups(
       await sendMessage(supabase, supabaseUrl, serviceKey, contact, contact._attemptNumber, contact._previousMessages);
       sent++;
       if (sent < contactsReady.length) await new Promise(r => setTimeout(r, 2000));
-    } catch (e: any) {
-      errors.push(`${contact.full_name}: ${e.message}`);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      errors.push(`${contact.full_name}: ${message}`);
     }
   }
 
@@ -236,8 +325,8 @@ async function handleFollowups(
 
 /** Generate preview */
 async function generatePreview(
-  supabase: any, supabaseUrl: string, serviceKey: string,
-  contact: any, attemptNumber: number, previousMessages: string[], remaining: number | null
+  supabase: SupabaseClient, supabaseUrl: string, serviceKey: string,
+  contact: QualifyContact, attemptNumber: number, previousMessages: string[], remaining: number | null
 ) {
   const channel = contact.phone ? "whatsapp" : "email";
   const context = await loadContactContext(supabase, contact);
@@ -255,7 +344,7 @@ async function generatePreview(
     }),
   });
 
-  const msgData = await msgRes.json();
+  const msgData = await msgRes.json() as AiClassifyResponse;
   return json({
     ok: true, preview: true,
     contact_name: contact.full_name,
@@ -268,10 +357,10 @@ async function generatePreview(
 
 /** Send a single message */
 async function sendMessage(
-  supabase: any, supabaseUrl: string, serviceKey: string,
-  contact: any, attemptNumber: number, previousMessages: string[]
+  supabase: SupabaseClient, supabaseUrl: string, serviceKey: string,
+  contact: QualifyContact, attemptNumber: number, previousMessages: string[]
 ) {
-  const channel = contact.phone ? "whatsapp" : "email";
+  const channel: "whatsapp" | "email" = contact.phone ? "whatsapp" : "email";
   const context = await loadContactContext(supabase, contact);
 
   const msgRes = await fetch(`${supabaseUrl}/functions/v1/ai-classify-message`, {
@@ -287,10 +376,10 @@ async function sendMessage(
     }),
   });
 
-  const msgData = await msgRes.json();
+  const msgData = await msgRes.json() as AiClassifyResponse;
   if (!msgData.ok) throw new Error(`AI error: ${msgData.error}`);
 
-  const sendPayload: any = {
+  const sendPayload: MultichannelSendPayload = {
     channel, contact_id: contact.id, text: msgData.text,
     source: "campaign_qualify",
     reply_to: channel === "email" ? "noreply@planhogar.es" : undefined,
@@ -307,7 +396,7 @@ async function sendMessage(
     body: JSON.stringify(sendPayload),
   });
 
-  const sendData = await sendRes.json();
+  const sendData = await sendRes.json() as { ok?: boolean; error?: string };
   if (!sendData.ok) throw new Error(`Send error: ${sendData.error}`);
 
   // Update latest log metadata
@@ -337,8 +426,8 @@ async function sendMessage(
 
 /** Send batch */
 async function sendBatch(
-  supabase: any, supabaseUrl: string, serviceKey: string,
-  contacts: any[], attemptNumber: number, remainingCount: number | null
+  supabase: SupabaseClient, supabaseUrl: string, serviceKey: string,
+  contacts: QualifyContact[], attemptNumber: number, remainingCount: number | null
 ) {
   let sent = 0;
   const errors: string[] = [];
@@ -347,15 +436,16 @@ async function sendBatch(
       await sendMessage(supabase, supabaseUrl, serviceKey, contact, attemptNumber, []);
       sent++;
       if (sent < contacts.length) await new Promise(r => setTimeout(r, 2000));
-    } catch (e: any) {
-      errors.push(`${contact.full_name}: ${e.message}`);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      errors.push(`${contact.full_name}: ${message}`);
     }
   }
   return json({ ok: true, sent, errors: errors.length ? errors : undefined, remaining: (remainingCount || 0) - sent });
 }
 
 /** Mark as no response after max attempts */
-async function markNoResponse(supabase: any, contact: any) {
+async function markNoResponse(supabase: SupabaseClient, contact: QualifyContact) {
   const newTags = (contact.tags || []).filter((t: string) => t !== "qualify-pendiente");
   newTags.push("qualify-done");
 
@@ -378,7 +468,7 @@ async function markNoResponse(supabase: any, contact: any) {
 }
 
 /** Load contact context */
-async function loadContactContext(supabase: any, contact: any) {
+async function loadContactContext(supabase: SupabaseClient, contact: QualifyContact): Promise<QualifyContext> {
   const [interactionsRes, demandsRes, propertiesRes] = await Promise.all([
     supabase.from("interactions").select("subject, description, interaction_type")
       .eq("contact_id", contact.id).order("created_at", { ascending: false }).limit(5),
@@ -390,8 +480,8 @@ async function loadContactContext(supabase: any, contact: any) {
   ]);
 
   return {
-    interactions: interactionsRes.data || [],
-    demands: demandsRes.data || [],
-    properties: propertiesRes.data || [],
+    interactions: (interactionsRes.data ?? []) as QualifyInteraction[],
+    demands: (demandsRes.data ?? []) as QualifyDemand[],
+    properties: (propertiesRes.data ?? []) as QualifyProperty[],
   };
 }

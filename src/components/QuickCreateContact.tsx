@@ -47,10 +47,10 @@ const QuickCreateContact = ({ open, onOpenChange, phone, onCreated }: QuickCreat
     const { data, error } = await supabase.from('contacts').insert([{
       full_name: name.trim(),
       phone: phone,
-      contact_type: contactType as any,
+      contact_type: contactType,
       agent_id: user?.id,
       pipeline_stage: defaultStage,
-    } as any]).select('id').single();
+    }]).select('id').single();
 
     setSaving(false);
     if (error) {

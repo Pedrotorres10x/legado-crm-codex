@@ -1,0 +1,16 @@
+export const propertyTypes = [
+  'piso',
+  'casa',
+  'chalet',
+  'adosado',
+  'atico',
+  'duplex',
+  'estudio',
+  'local',
+  'oficina',
+  'nave',
+  'terreno',
+  'garaje',
+  'trastero',
+  'otro',
+] as const;

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, ShieldAlert, ShieldCheck, ShieldQuestion } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 import { getTeamKpiSummaries } from '@/lib/agent-kpis';
 import { getAgentRecordRichness } from '@/lib/agent-record-richness';
 import { getAgentViabilitySignal } from '@/lib/agent-viability';
@@ -34,6 +35,11 @@ type PropertyRow = {
   surface_area?: number | null;
   mandate_type?: string | null;
 };
+
+type PropertyRichnessRow = Pick<
+  Database['public']['Tables']['properties']['Row'],
+  'agent_id' | 'status' | 'title' | 'price' | 'address' | 'city' | 'description' | 'images' | 'videos' | 'virtual_tour_url' | 'reference' | 'bedrooms' | 'bathrooms' | 'surface_area' | 'mandate_type'
+>;
 
 type Row = {
   agentId: string;
@@ -80,13 +86,13 @@ const AdminAgentViability = () => {
       ]);
 
       const agents = ((profiles || []) as AgentProfile[]).filter((profile) => profile.full_name);
-      const propertyRows = (properties || []) as PropertyRow[];
+      const propertyRows = ((properties as PropertyRichnessRow[] | null) || []) as PropertyRow[];
       const { summaries } = await getTeamKpiSummaries(agents);
 
       const nextRows = summaries
         .map((agent) => {
           const agentProperties = propertyRows.filter((property) => property.agent_id === agent.user_id);
-          const richness = getAgentRecordRichness(agentProperties as any[]);
+          const richness = getAgentRecordRichness(agentProperties);
           const availableStock = agentProperties.filter((property) => property.status === 'disponible').length;
           const signal = getAgentViabilitySignal({
             touchesToday: agent.summary.toquesHorusHoy,

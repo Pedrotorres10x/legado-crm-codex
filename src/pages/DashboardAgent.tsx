@@ -26,6 +26,22 @@ import { getAgentDailyPlaybook } from '@/lib/agent-daily-playbook';
 import { useWorkspacePersona } from '@/hooks/useWorkspacePersona';
 import { useAgentInfluenceCircle } from '@/hooks/useAgentInfluenceCircle';
 
+type PropertyStatusRow = {
+  id: string;
+  status: string | null;
+};
+
+type MatchNotesRow = {
+  notes: string | null;
+};
+
+type CommissionRow = {
+  agent_total: number | null;
+  agency_commission: number | null;
+  listing_origin_agent_id: string | null;
+  buying_origin_agent_id: string | null;
+};
+
 const DashboardAgent = () => {
   const { user, canViewAll } = useAuth();
   const { isAgentMode } = useWorkspacePersona(canViewAll);
@@ -81,7 +97,7 @@ const DashboardAgent = () => {
         pendingQuery = pendingQuery.eq('agent_id', uid);
         commMonthQuery = commMonthQuery.eq('agent_id', uid);
         commYearQuery = commYearQuery.eq('agent_id', uid);
-        demandsQuery = (demandsQuery as any).eq('contacts.agent_id', uid);
+        demandsQuery = demandsQuery.eq('contacts.agent_id', uid);
       }
 
       const [props, contacts, demands, matches, pending, commMonth, commYear, matchLosses, offerLosses] = await Promise.all([
@@ -102,7 +118,7 @@ const DashboardAgent = () => {
       const resolvedTargets = await getAgentKpiTargets();
       setKpiTargets(resolvedTargets);
 
-      const propData = props.data || [];
+      const propData = (props.data || []) as PropertyStatusRow[];
       setPendingMatches(pending.count || 0);
       setStats({
         properties: propData.length, contacts: contacts.count || 0,
@@ -123,15 +139,19 @@ const DashboardAgent = () => {
           visitasSinOferta: summary.visitasSinOferta,
         });
       }
-      const topMatchReason = buildTopReasons((matchLosses.data || []).map((row: any) => extractMatchDiscardReason(row.notes)))[0]?.[0] || null;
-      const topOfferReason = buildTopReasons((offerLosses.data || []).map((row: any) => extractOfferLossReason(row.notes)))[0]?.[0] || null;
+      const matchLossRows = (matchLosses.data || []) as MatchNotesRow[];
+      const offerLossRows = (offerLosses.data || []) as MatchNotesRow[];
+      const commissionMonthRows = (commMonth.data || []) as CommissionRow[];
+      const commissionSemesterRows = (commYear.data || []) as CommissionRow[];
+      const topMatchReason = buildTopReasons(matchLossRows.map((row) => extractMatchDiscardReason(row.notes)))[0]?.[0] || null;
+      const topOfferReason = buildTopReasons(offerLossRows.map((row) => extractOfferLossReason(row.notes)))[0]?.[0] || null;
       setCommercialFriction({ match: topMatchReason, offer: topOfferReason });
       setEarnings({
-        month: ((commMonth.data as any[]) || []).reduce((s: number, r: any) => s + (r.agent_total || 0), 0),
-        semester: ((commYear.data as any[]) || []).reduce((s: number, r: any) => s + (r.agent_total || 0), 0),
-        originatedAccumulated: ((commYear.data as any[]) || [])
-          .filter((row: any) => row.listing_origin_agent_id === uid || row.buying_origin_agent_id === uid)
-          .reduce((s: number, r: any) => s + (r.agency_commission || 0), 0),
+        month: commissionMonthRows.reduce((sum, row) => sum + (row.agent_total || 0), 0),
+        semester: commissionSemesterRows.reduce((sum, row) => sum + (row.agent_total || 0), 0),
+        originatedAccumulated: commissionSemesterRows
+          .filter((row) => row.listing_origin_agent_id === uid || row.buying_origin_agent_id === uid)
+          .reduce((sum, row) => sum + (row.agency_commission || 0), 0),
       });
     };
 
@@ -221,6 +241,7 @@ const DashboardAgent = () => {
       kpis.ofertasActivas,
       kpis.toquesHorusHoy,
       kpis.visitasSinOferta,
+      kpiTargets.ventas_ano,
       recommendedTouchTarget,
     ],
   );

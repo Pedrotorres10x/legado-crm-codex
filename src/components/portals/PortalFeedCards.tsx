@@ -41,10 +41,15 @@ export function PortalFeedCards({ feeds, onToggleActive, onCopyFeedUrl, onTestFe
               <Switch checked={feed.is_active} onCheckedChange={() => onToggleActive(feed)} />
             </div>
 
-            <div className="text-xs text-muted-foreground">
-              {feed.last_accessed_at
-                ? <>Última lectura del feed: {formatDistanceToNow(new Date(feed.last_accessed_at), { addSuffix: true, locale: es })}</>
-                : 'El portal aún no ha leído este feed'}
+            <div className="space-y-1 text-xs text-muted-foreground">
+              <div>
+                Última regeneración CRM: {formatDistanceToNow(new Date(feed.updated_at), { addSuffix: true, locale: es })}
+              </div>
+              <div>
+                {feed.last_accessed_at
+                  ? <>Última petición detectada a la URL: {formatDistanceToNow(new Date(feed.last_accessed_at), { addSuffix: true, locale: es })}</>
+                  : 'No hay peticiones registradas todavía sobre esta URL'}
+              </div>
             </div>
 
             <div className="space-y-1.5">
@@ -77,7 +82,7 @@ export function PortalFeedCards({ feeds, onToggleActive, onCopyFeedUrl, onTestFe
             {feed.api_credentials && Object.keys(feed.api_credentials).length > 0 && <div className="text-xs text-muted-foreground">🔑 Credenciales API configuradas</div>}
 
             <p className="text-xs text-muted-foreground">
-              Este contador refleja el feed preparado por el CRM. El portal se actualiza cuando relee esta URL.
+              La primera línea refleja cuándo el CRM dejó el feed regenerado. La segunda refleja la última petición detectada a la URL, ya sea del portal o de una regeneración lanzada desde el CRM.
             </p>
 
             {feed.is_active && (

@@ -46,28 +46,44 @@ type AiSummary = {
   pendingOwners: string[];
 };
 
+type PropertyDocument = {
+  id: string;
+  title?: string | null;
+  doc_type?: string | null;
+  file_name?: string | null;
+  expires_at?: string | null;
+  created_at?: string | null;
+  ai_notes?: string | null;
+  [key: string]: unknown;
+};
+
+type DocumentAiState = {
+  doc: PropertyDocument;
+  ai: AiSummary | null;
+};
+
 type PropertyDocumentsChecklistPanelProps = {
   completionPct: number;
   reanalyzingAll: boolean;
   handleReanalyzeAll: () => void;
   onAddDocument: () => void;
   legalTrafficLight: LegalTrafficLight;
-  expiredDocs: any[];
-  expiringDocs: any[];
+  expiredDocs: PropertyDocument[];
+  expiringDocs: PropertyDocument[];
   missingRequired: string[];
   horusDocs: HorusDoc[];
-  docsWithAiIssues: Array<{ doc: any; ai: AiSummary | null }>;
-  docsValidatedByAi: Array<{ doc: any; ai: AiSummary | null }>;
-  docs: any[];
+  docsWithAiIssues: DocumentAiState[];
+  docsValidatedByAi: DocumentAiState[];
+  docs: PropertyDocument[];
   propertyStatus: string;
   getAiSummary: (notes?: string | null) => AiSummary | null;
   reanalyzingDocId: string | null;
-  handleReanalyzeDocument: (doc: any) => void;
-  handleDelete: (doc: any) => void;
+  handleReanalyzeDocument: (doc: PropertyDocument) => void;
+  handleDelete: (doc: PropertyDocument) => void;
   onUploadMissing: (docType: string, label: string) => void;
   resolvingHolder: string | null;
-  openLinkExistingDialog: (doc: any, ownerName: string) => void;
-  handleCreatePendingOwner: (doc: any, ownerName: string) => void;
+  openLinkExistingDialog: (doc: PropertyDocument, ownerName: string) => void;
+  handleCreatePendingOwner: (doc: PropertyDocument, ownerName: string) => void;
 };
 
 export function PropertyDocumentsChecklistPanel({
@@ -96,7 +112,7 @@ export function PropertyDocumentsChecklistPanel({
   const visibleHorusDocs = horusDocs.filter((h) => h.required_phases.includes(propertyStatus));
   const otherDocs = docs.filter((d) => !horusDocs.some((h) => h.type === d.doc_type));
 
-  const renderAiSummary = (doc: any, aiSummary: AiSummary | null) => {
+  const renderAiSummary = (doc: PropertyDocument, aiSummary: AiSummary | null) => {
     if (!aiSummary) return null;
 
     return (

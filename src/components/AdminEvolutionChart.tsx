@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 import { fmt } from '@/lib/commissions';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { BarChart3 } from 'lucide-react';
@@ -14,69 +15,83 @@ interface MonthData {
   beneficio: number;
 }
 
+type CommissionChartRow = Pick<
+  Database['public']['Tables']['commissions']['Row'],
+  'agency_commission' | 'agent_total' | 'status' | 'created_at'
+>;
+
+type TooltipEntry = {
+  dataKey: string;
+  color: string;
+  name: string;
+  value: number;
+};
+
 const AdminEvolutionChart = ({ agentMonthlyCost }: { agentMonthlyCost: number }) => {
   const [data, setData] = useState<MonthData[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      const now = new Date();
-      const months: { start: Date; end: Date; label: string }[] = [];
-      for (let i = 5; i >= 0; i--) {
-        const d = subMonths(now, i);
-        months.push({
-          start: startOfMonth(d),
-          end: endOfMonth(d),
-          label: format(d, 'MMM yy', { locale: es }),
-        });
-      }
-
-      // Fetch all commissions for last 6 months + agent count
-      const sixMonthsAgo = months[0].start.toISOString();
-      const [commsRes, agentCountRes] = await Promise.all([
-        supabase.from('commissions').select('agency_commission, agent_total, status, created_at')
-          .in('status', ['aprobado', 'pagado'])
-          .gte('created_at', sixMonthsAgo),
-        supabase.from('user_roles').select('id', { count: 'exact', head: true }).eq('role', 'agent'),
-      ]);
-
-      const comms = (commsRes.data as any[]) || [];
-      const agentCount = agentCountRes.count || 1;
-
-      const chartData: MonthData[] = months.map(m => {
-        const monthComms = comms.filter(c => {
-          const d = new Date(c.created_at);
-          return d >= m.start && d <= m.end;
-        });
-        const generado = monthComms.reduce((s: number, c: any) => s + (c.agency_commission || 0), 0);
-        const commsPaid = monthComms.filter((c: any) => c.status === 'pagado')
-          .reduce((s: number, c: any) => s + (c.agent_total || 0), 0);
-        const costes = (agentCount * agentMonthlyCost) + commsPaid;
-        return {
-          month: m.label,
-          generado,
-          costes,
-          beneficio: generado - costes,
-        };
+  const fetchData = useCallback(async () => {
+    const now = new Date();
+    const months: { start: Date; end: Date; label: string }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = subMonths(now, i);
+      months.push({
+        start: startOfMonth(d),
+        end: endOfMonth(d),
+        label: format(d, 'MMM yy', { locale: es }),
       });
+    }
 
-      setData(chartData);
-      setLoading(false);
-    };
-    fetchData();
-  }, []);
+    // Fetch all commissions for last 6 months + agent count
+    const sixMonthsAgo = months[0].start.toISOString();
+    const [commsRes, agentCountRes] = await Promise.all([
+      supabase.from('commissions').select('agency_commission, agent_total, status, created_at')
+        .in('status', ['aprobado', 'pagado'])
+        .gte('created_at', sixMonthsAgo),
+      supabase.from('user_roles').select('id', { count: 'exact', head: true }).eq('role', 'agent'),
+    ]);
+
+    const comms = (commsRes.data as CommissionChartRow[] | null) || [];
+    const agentCount = agentCountRes.count || 1;
+
+    const chartData: MonthData[] = months.map((month) => {
+      const monthComms = comms.filter((commission) => {
+        const createdAt = new Date(commission.created_at);
+        return createdAt >= month.start && createdAt <= month.end;
+      });
+      const generado = monthComms.reduce((sum, commission) => sum + (commission.agency_commission || 0), 0);
+      const commsPaid = monthComms
+        .filter((commission) => commission.status === 'pagado')
+        .reduce((sum, commission) => sum + (commission.agent_total || 0), 0);
+      const costes = (agentCount * agentMonthlyCost) + commsPaid;
+      return {
+        month: month.label,
+        generado,
+        costes,
+        beneficio: generado - costes,
+      };
+    });
+
+    setData(chartData);
+    setLoading(false);
+  }, [agentMonthlyCost]);
+
+  useEffect(() => {
+    void fetchData();
+  }, [fetchData]);
 
   if (loading) return null;
 
-  const CustomTooltip = ({ active, payload, label }: any) => {
+  const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: TooltipEntry[]; label?: string }) => {
     if (!active || !payload?.length) return null;
     return (
       <div className="rounded-lg border bg-background p-3 shadow-md text-sm">
         <p className="font-semibold mb-1">{label}</p>
-        {payload.map((p: any) => (
-          <div key={p.dataKey} className="flex justify-between gap-4">
-            <span style={{ color: p.color }}>{p.name}:</span>
-            <span className="font-medium">{fmt(p.value)}</span>
+        {payload.map((entry) => (
+          <div key={entry.dataKey} className="flex justify-between gap-4">
+            <span style={{ color: entry.color }}>{entry.name}:</span>
+            <span className="font-medium">{fmt(entry.value)}</span>
           </div>
         ))}
       </div>

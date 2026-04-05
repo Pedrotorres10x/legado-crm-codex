@@ -55,6 +55,10 @@ const AUTO_TASK_SOURCE_LABELS: Record<string, string> = {
   closing_deed_due: 'Auto escritura',
 };
 
+type TaskWithRecurrence = Task & {
+  recurrence?: string | null;
+};
+
 const isAutomaticTask = (task: Pick<Task, 'source'>) => Boolean(task.source && task.source !== 'manual');
 
 const getAutomaticTaskRoute = (task: Pick<Task, 'source' | 'property_id' | 'contact_id'>) => {
@@ -263,7 +267,7 @@ const Tasks = () => {
 
   const overdue = tasks.filter(t => !t.completed && isPast(new Date(t.due_date)) && !isToday(new Date(t.due_date))).length;
   const todayCount = tasks.filter(t => !t.completed && isToday(new Date(t.due_date))).length;
-  const recurringCount = tasks.filter(t => !t.completed && (t as any).recurrence).length;
+  const recurringCount = tasks.filter((t) => !t.completed && (t as TaskWithRecurrence).recurrence).length;
   const openAutomaticTasks = tasks.filter(t => !t.completed && t.source && t.source !== 'manual').length;
   const autoClosingTasks = tasks.filter(t => !t.completed && ['closing_blocked', 'closing_signature_pending', 'closing_deed_due'].includes(t.source || '')).length;
 
@@ -419,19 +423,19 @@ const Tasks = () => {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5">
                             <p className={`text-sm font-medium truncate ${task.completed ? 'line-through text-muted-foreground' : ''}`}>{task.title}</p>
-                            {(task as any).recurrence && (
+                            {(task as TaskWithRecurrence).recurrence && (
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <span><RefreshCw className="h-3 w-3 text-primary shrink-0" /></span>
                                 </TooltipTrigger>
                                 <TooltipContent>
-                                  Tarea recurrente · {RECURRENCE_OPTIONS.find(r => r.value === (task as any).recurrence)?.label}
+                                  Tarea recurrente · {RECURRENCE_OPTIONS.find(r => r.value === (task as TaskWithRecurrence).recurrence)?.label}
                                 </TooltipContent>
                               </Tooltip>
                             )}
-                            {(task as any).source && (task as any).source !== 'manual' && (
+                            {task.source && task.source !== 'manual' && (
                               <Badge variant="outline" className="text-[9px] py-0 px-1 border-primary/30 text-primary">
-                                {AUTO_TASK_SOURCE_LABELS[(task as any).source] || 'Auto'}
+                                {AUTO_TASK_SOURCE_LABELS[task.source] || 'Auto'}
                               </Badge>
                             )}
                           </div>

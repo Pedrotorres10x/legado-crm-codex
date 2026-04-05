@@ -1,9 +1,26 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 import { getSemesterRange, fmt } from '@/lib/commissions';
 import { Users, Crown } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+
+type ProfileRow = Pick<Database['public']['Tables']['profiles']['Row'], 'user_id' | 'full_name'>;
+type PaidCommissionRow = Pick<
+  Database['public']['Tables']['commissions']['Row'],
+  | 'agent_id'
+  | 'agency_commission'
+  | 'listing_origin_agent_id'
+  | 'listing_field_agent_id'
+  | 'buying_origin_agent_id'
+  | 'buying_field_agent_id'
+  | 'listing_origin_amount'
+  | 'listing_field_amount'
+  | 'buying_origin_amount'
+  | 'buying_field_amount'
+>;
+type UserRoleRow = Pick<Database['public']['Tables']['user_roles']['Row'], 'user_id' | 'role'>;
 
 interface AgentCost {
   user_id: string;
@@ -20,67 +37,67 @@ const AdminAgentCosts = ({ agentMonthlyCost }: { agentMonthlyCost: number }) => 
   const [agentCosts, setAgentCosts] = useState<AgentCost[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const fetchData = useCallback(async () => {
+    const semester = getSemesterRange();
+    const now = new Date();
+
+    // Months elapsed in current semester (at least 1)
+    const semesterStartMonth = semester.start.getMonth();
+    const currentMonth = now.getMonth();
+    const monthsElapsed = Math.max(1, currentMonth - semesterStartMonth + 1);
+
+    const [profilesRes, commissionsRes] = await Promise.all([
+      supabase.from('profiles').select('user_id, full_name'),
+      supabase.from('commissions').select('agent_id, agency_commission, status, listing_origin_agent_id, listing_field_agent_id, buying_origin_agent_id, buying_field_agent_id, listing_origin_amount, listing_field_amount, buying_origin_amount, buying_field_amount')
+        .in('status', ['pagado'])
+        .gte('created_at', semester.start.toISOString()),
+    ]);
+
+    const profiles = (profilesRes.data as ProfileRow[] | null) || [];
+    const comms = (commissionsRes.data as PaidCommissionRow[] | null) || [];
+
+    // Also get all agent user_ids from user_roles
+    const { data: roles } = await supabase.from('user_roles').select('user_id, role').eq('role', 'agent');
+    const agentUserIds = new Set(((roles as UserRoleRow[] | null) || []).map((role) => role.user_id));
+
+    const costs: AgentCost[] = profiles
+      .filter((profile) => agentUserIds.has(profile.user_id))
+      .map((profile) => {
+        // Sum paid commissions for this agent across all roles
+        let commissionsPaid = 0;
+        let agencyGenerated = 0;
+        for (const commission of comms) {
+          if (commission.listing_origin_agent_id === profile.user_id) commissionsPaid += commission.listing_origin_amount || 0;
+          if (commission.listing_field_agent_id === profile.user_id) commissionsPaid += commission.listing_field_amount || 0;
+          if (commission.buying_origin_agent_id === profile.user_id) commissionsPaid += commission.buying_origin_amount || 0;
+          if (commission.buying_field_agent_id === profile.user_id) commissionsPaid += commission.buying_field_amount || 0;
+          if (commission.agent_id === profile.user_id) agencyGenerated += commission.agency_commission || 0;
+        }
+
+        const fixedCost = monthsElapsed * agentMonthlyCost;
+        const totalCost = fixedCost + commissionsPaid;
+        const profit = agencyGenerated - totalCost;
+
+        return {
+          user_id: profile.user_id,
+          full_name: profile.full_name || 'Sin nombre',
+          commissionsPaid,
+          monthsInSemester: monthsElapsed,
+          fixedCost,
+          totalCost,
+          agencyGenerated,
+          profit,
+        };
+      })
+      .sort((a, b) => b.profit - a.profit);
+
+    setAgentCosts(costs);
+    setLoading(false);
+  }, [agentMonthlyCost]);
+
   useEffect(() => {
-    const fetchData = async () => {
-      const semester = getSemesterRange();
-      const now = new Date();
-
-      // Months elapsed in current semester (at least 1)
-      const semesterStartMonth = semester.start.getMonth();
-      const currentMonth = now.getMonth();
-      const monthsElapsed = Math.max(1, currentMonth - semesterStartMonth + 1);
-
-      const [profilesRes, commissionsRes] = await Promise.all([
-        supabase.from('profiles').select('user_id, full_name'),
-        supabase.from('commissions').select('agent_id, agent_total, agency_commission, status, listing_origin_agent_id, listing_field_agent_id, buying_origin_agent_id, buying_field_agent_id, listing_origin_amount, listing_field_amount, buying_origin_amount, buying_field_amount')
-          .in('status', ['pagado'])
-          .gte('created_at', semester.start.toISOString()),
-      ]);
-
-      const profiles = profilesRes.data || [];
-      const comms = (commissionsRes.data || []) as any[];
-
-      // Also get all agent user_ids from user_roles
-      const { data: roles } = await supabase.from('user_roles').select('user_id, role').eq('role', 'agent');
-      const agentUserIds = new Set((roles || []).map(r => r.user_id));
-
-      const costs: AgentCost[] = profiles
-        .filter(p => agentUserIds.has(p.user_id))
-        .map(p => {
-          // Sum paid commissions for this agent across all roles
-          let commissionsPaid = 0;
-          let agencyGenerated = 0;
-          for (const c of comms) {
-            if (c.listing_origin_agent_id === p.user_id) commissionsPaid += c.listing_origin_amount || 0;
-            if (c.listing_field_agent_id === p.user_id) commissionsPaid += c.listing_field_amount || 0;
-            if (c.buying_origin_agent_id === p.user_id) commissionsPaid += c.buying_origin_amount || 0;
-            if (c.buying_field_agent_id === p.user_id) commissionsPaid += c.buying_field_amount || 0;
-            // Agency generated: count full agency_commission if agent was primary
-            if (c.agent_id === p.user_id) agencyGenerated += c.agency_commission || 0;
-          }
-
-          const fixedCost = monthsElapsed * agentMonthlyCost;
-          const totalCost = fixedCost + commissionsPaid;
-          const profit = agencyGenerated - totalCost;
-
-          return {
-            user_id: p.user_id,
-            full_name: p.full_name,
-            commissionsPaid,
-            monthsInSemester: monthsElapsed,
-            fixedCost,
-            totalCost,
-            agencyGenerated,
-            profit,
-          };
-        })
-        .sort((a, b) => b.profit - a.profit);
-
-      setAgentCosts(costs);
-      setLoading(false);
-    };
-    fetchData();
-  }, []);
+    void fetchData();
+  }, [fetchData]);
 
   const semester = getSemesterRange();
   const totals = agentCosts.reduce((acc, a) => ({

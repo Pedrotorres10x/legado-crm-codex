@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -18,18 +19,19 @@ import {
   Calendar, Handshake, Eye, Award, Flame, CheckCircle, Edit, Save,
   BarChart3, Clock, MapPin, CreditCard, Loader2,
   Globe, MessageCircle, Linkedin, Instagram, ExternalLink, Copy, Camera,
-  Facebook, Share2, PhoneCall
+  Facebook, Share2
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { COMMISSION_TIERS, getAgentTier, getNextTierLabel, fmt, calcProgressiveAgentAmount } from '@/lib/commissions';
 import { useProfileData } from '@/hooks/useProfileData';
-import { useProfileTwilio } from '@/hooks/useProfileTwilio';
-import { ProfileTwilioCard } from '@/components/profile/ProfileTwilioCard';
 import { useHorusScoringConfig } from '@/hooks/useHorusScoringConfig';
 import HorusScoringGuide from '@/components/performance/HorusScoringGuide';
 import { useAgentHorusStatus } from '@/hooks/useAgentHorusStatus';
+import { CRM_PUBLIC_APP_URL } from '@/lib/publicUrls';
+
+type ProfileRow = Database['public']['Tables']['profiles']['Row'];
 
 const Profile = () => {
   const { user, isAdmin, isCoordinadora, canViewAll } = useAuth();
@@ -57,24 +59,10 @@ const Profile = () => {
     userId: user?.id,
     toast,
   });
-  const {
-    twilioPhone,
-    setTwilioPhone,
-    twilioStep,
-    twilioValidationCode,
-    twilioLoading,
-    clearPending,
-    handleTwilioStart,
-    handleTwilioCheck,
-    handleTwilioReset,
-    prepareReplace,
-  } = useProfileTwilio({
-    profile,
-    toast,
-    onVerified: loadAll,
-  });
   const { weights: horusWeights, loading: horusConfigLoading } = useHorusScoringConfig();
   const horusStatus = useAgentHorusStatus(user?.id);
+  const profileData = profile as ProfileRow | null;
+  const publicSlug = profileData?.public_slug;
 
   if (loading) {
     return (
@@ -136,7 +124,7 @@ const Profile = () => {
           <div className="flex flex-col sm:flex-row items-start sm:items-end gap-4">
             <div className="relative group">
               <Avatar className="h-24 w-24 border-4 border-background shadow-lg text-2xl">
-                {(profile as any)?.avatar_url && <AvatarImage src={(profile as any).avatar_url} alt={profile?.full_name} />}
+                {profileData?.avatar_url && <AvatarImage src={profileData.avatar_url} alt={profile?.full_name} />}
                 <AvatarFallback className="bg-primary text-primary-foreground text-2xl font-bold">
                   {initials}
                 </AvatarFallback>
@@ -176,7 +164,7 @@ const Profile = () => {
                 </Badge>
               </div>
               <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground flex-wrap">
-                <span className="flex items-center gap-1"><Mail className="h-3.5 w-3.5" />{(profile as any)?.email || user?.email}</span>
+                <span className="flex items-center gap-1"><Mail className="h-3.5 w-3.5" />{profileData?.email || user?.email}</span>
                 {profile?.phone && <span className="flex items-center gap-1"><Phone className="h-3.5 w-3.5" />{profile.phone}</span>}
                 <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" />Desde {format(new Date(profile?.created_at || Date.now()), "MMMM yyyy", { locale: es })}</span>
               </div>
@@ -310,7 +298,7 @@ const Profile = () => {
                   {editing ? (
                     <Input value={editForm.email} onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} placeholder="correo@ejemplo.com" />
                   ) : (
-                    <p className="text-sm font-medium">{(profile as any)?.email || user?.email || '—'}</p>
+                    <p className="text-sm font-medium">{profileData?.email || user?.email || '—'}</p>
                   )}
                 </div>
                 <div className="space-y-1.5">
@@ -326,7 +314,7 @@ const Profile = () => {
                   {editing ? (
                     <Input value={editForm.id_number} onChange={e => setEditForm(f => ({ ...f, id_number: e.target.value }))} placeholder="12345678A" />
                   ) : (
-                    <p className="text-sm font-medium">{(profile as any)?.id_number || '—'}</p>
+                    <p className="text-sm font-medium">{profileData?.id_number || '—'}</p>
                   )}
                 </div>
                 <div className="space-y-1.5 sm:col-span-2">
@@ -334,7 +322,7 @@ const Profile = () => {
                   {editing ? (
                     <Input value={editForm.address} onChange={e => setEditForm(f => ({ ...f, address: e.target.value }))} placeholder="Calle, número, ciudad..." />
                   ) : (
-                    <p className="text-sm font-medium">{(profile as any)?.address || '—'}</p>
+                    <p className="text-sm font-medium">{profileData?.address || '—'}</p>
                   )}
                 </div>
               </div>
@@ -379,10 +367,10 @@ const Profile = () => {
               <CardTitle className="flex items-center gap-2 text-base">
                 <Globe className="h-5 w-5 text-primary" />Tarjeta virtual pública
               </CardTitle>
-              {(profile as any)?.public_slug && (
+              {publicSlug && (
                 <div className="flex gap-1.5">
                   <Button size="sm" variant="outline" className="gap-1.5" onClick={() => {
-                    const url = `https://legadocoleccion.es/agente/${(profile as any).public_slug}`;
+                    const url = `https://legadocoleccion.es/agente/${publicSlug}`;
                     navigator.clipboard.writeText(url);
                     toast({ title: 'Enlace web copiado', description: 'URL directa para enviar a clientes' });
                   }}>
@@ -392,7 +380,7 @@ const Profile = () => {
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button size="sm" variant="outline" className="gap-1.5" onClick={() => {
-                          const ogUrl = `https://legadocrm.lovable.app/og/agent/${(profile as any).public_slug}`;
+                          const ogUrl = `${CRM_PUBLIC_APP_URL}/og/agent/${publicSlug}`;
                           navigator.clipboard.writeText(ogUrl);
                           toast({ title: 'Enlace redes copiado ✓', description: 'Pégalo en LinkedIn, WhatsApp o Facebook — verás preview con tu foto y bio' });
                         }}>
@@ -409,10 +397,10 @@ const Profile = () => {
               <p className="text-sm text-muted-foreground">
                 Tu tarjeta virtual se genera automáticamente con tus datos. Compártela con clientes como presentación profesional.
               </p>
-              {(profile as any)?.public_slug && (
+              {publicSlug && (
                 <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/50 border">
                   <Globe className="h-4 w-4 text-muted-foreground shrink-0" />
-                  <span className="text-sm font-mono truncate">Legado Colección · /agente/{(profile as any).public_slug}</span>
+                  <span className="text-sm font-mono truncate">Legado Colección · /agente/{publicSlug}</span>
                 </div>
               )}
               <div className="grid gap-4 sm:grid-cols-2">
@@ -421,7 +409,7 @@ const Profile = () => {
                   {editing ? (
                     <Input value={editForm.whatsapp} onChange={e => setEditForm(f => ({ ...f, whatsapp: e.target.value }))} placeholder="+34612345678" />
                   ) : (
-                    <p className="text-sm font-medium">{(profile as any)?.whatsapp || (profile as any)?.phone || '—'}</p>
+                    <p className="text-sm font-medium">{profileData?.whatsapp || profileData?.phone || '—'}</p>
                   )}
                 </div>
                 <div className="space-y-1.5">
@@ -429,7 +417,7 @@ const Profile = () => {
                   {editing ? (
                     <Input value={editForm.linkedin_url} onChange={e => setEditForm(f => ({ ...f, linkedin_url: e.target.value }))} placeholder="https://linkedin.com/in/..." />
                   ) : (
-                    <p className="text-sm font-medium truncate">{(profile as any)?.linkedin_url || '—'}</p>
+                    <p className="text-sm font-medium truncate">{profileData?.linkedin_url || '—'}</p>
                   )}
                 </div>
                 <div className="space-y-1.5">
@@ -437,7 +425,7 @@ const Profile = () => {
                   {editing ? (
                     <Input value={editForm.instagram_url} onChange={e => setEditForm(f => ({ ...f, instagram_url: e.target.value }))} placeholder="https://instagram.com/..." />
                   ) : (
-                    <p className="text-sm font-medium truncate">{(profile as any)?.instagram_url || '—'}</p>
+                    <p className="text-sm font-medium truncate">{profileData?.instagram_url || '—'}</p>
                   )}
                 </div>
                 <div className="space-y-1.5">
@@ -445,7 +433,7 @@ const Profile = () => {
                   {editing ? (
                     <Input value={editForm.facebook_url} onChange={e => setEditForm(f => ({ ...f, facebook_url: e.target.value }))} placeholder="https://facebook.com/..." />
                   ) : (
-                    <p className="text-sm font-medium truncate">{(profile as any)?.facebook_url || '—'}</p>
+                    <p className="text-sm font-medium truncate">{profileData?.facebook_url || '—'}</p>
                   )}
                 </div>
                 <div className="space-y-1.5 sm:col-span-2">
@@ -458,27 +446,12 @@ const Profile = () => {
                       placeholder="Breve descripción profesional para tu tarjeta pública..."
                     />
                   ) : (
-                    <p className="text-sm font-medium">{(profile as any)?.bio || '—'}</p>
+                    <p className="text-sm font-medium">{profileData?.bio || '—'}</p>
                   )}
                 </div>
               </div>
             </CardContent>
           </Card>
-
-          {/* Twilio Caller ID Verification */}
-          <ProfileTwilioCard
-            profile={profile}
-            twilioPhone={twilioPhone}
-            setTwilioPhone={setTwilioPhone}
-            twilioStep={twilioStep}
-            twilioValidationCode={twilioValidationCode}
-            twilioLoading={twilioLoading}
-            onStart={handleTwilioStart}
-            onCheck={handleTwilioCheck}
-            onReset={handleTwilioReset}
-            onPrepareReplace={prepareReplace}
-            onCancel={clearPending}
-          />
         </TabsContent>
 
         {/* COMMISSIONS TAB */}

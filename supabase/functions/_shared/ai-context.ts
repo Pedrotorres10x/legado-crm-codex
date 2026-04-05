@@ -19,6 +19,19 @@ export interface AIContextResult {
   systemPromptOverride: string | null; // if an active prompt version exists
 }
 
+interface AIMemoryContextRow {
+  id: string;
+  context_key: string;
+  content: string;
+  usage_count?: number | null;
+}
+
+interface AIKnowledgeBaseRow {
+  id: string;
+  title: string;
+  content: string;
+}
+
 /**
  * Fetch relevant memories and knowledge base entries for a given AI function.
  * Returns a context block to prepend/append to the system prompt.
@@ -62,20 +75,23 @@ export async function getAIContext(
   const kbEntries = kbRes.data || [];
   const promptVersion = promptRes.data;
 
-  const memoryIds = memories.map((m: any) => m.id);
-  const kbIds = kbEntries.map((k: any) => k.id);
+  const typedMemories = memories as AIMemoryContextRow[];
+  const typedKbEntries = kbEntries as AIKnowledgeBaseRow[];
+
+  const memoryIds = typedMemories.map((m) => m.id);
+  const kbIds = typedKbEntries.map((k) => k.id);
 
   // Build context block
   const parts: string[] = [];
 
   if (kbEntries.length > 0) {
     parts.push("## BASE DE CONOCIMIENTO\n" +
-      kbEntries.map((k: any) => `### ${k.title}\n${k.content}`).join("\n\n"));
+      typedKbEntries.map((k) => `### ${k.title}\n${k.content}`).join("\n\n"));
   }
 
   if (memories.length > 0) {
     parts.push("## PATRONES APRENDIDOS\n" +
-      memories.map((m: any) => `- [${m.context_key}]: ${m.content}`).join("\n"));
+      typedMemories.map((m) => `- [${m.context_key}]: ${m.content}`).join("\n"));
   }
 
   const contextBlock = parts.length > 0
@@ -88,7 +104,7 @@ export async function getAIContext(
     for (const id of memoryIds) {
       supabase
         .from("ai_memory")
-        .update({ usage_count: memories.find((m: any) => m.id === id)?.usage_count + 1 || 1 })
+        .update({ usage_count: typedMemories.find((m) => m.id === id)?.usage_count + 1 || 1 })
         .eq("id", id)
         .then(() => {});
     }

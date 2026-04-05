@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Send, Paperclip, X, FileText, Image, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import type { TablesInsert } from '@/integrations/supabase/types';
 
 interface Props {
   channelId: string;
@@ -82,14 +83,16 @@ const MessageInput = ({ channelId }: Props) => {
       if (!attachment) { setSending(false); return; }
     }
 
-    await supabase.from('chat_messages').insert({
+    const payload: TablesInsert<'chat_messages'> = {
       channel_id: channelId,
       user_id: user.id,
       content: content.trim() || '',
       attachment_url: attachment?.path ?? null,
       attachment_name: attachment?.name ?? null,
       attachment_type: attachment?.type ?? null,
-    } as any);
+    };
+
+    await supabase.from('chat_messages').insert(payload);
 
     setContent('');
     removePendingFile();

@@ -12,6 +12,36 @@ import { callAI } from '../_shared/ai.ts';
  * 3. Generates an improved system prompt version
  * 4. Saves it as a new (inactive) prompt version for admin review
  */
+
+interface AIInteractionRow {
+  id: string;
+  input_summary: string | null;
+  output_summary: string | null;
+  quality_score: number | null;
+  feedback: string | null;
+  duration_ms: number | null;
+  created_at: string;
+}
+
+interface AIMemoryRow {
+  context_key: string;
+  content: string;
+  usage_count: number | null;
+  relevance_score: number | null;
+}
+
+interface PromptAnalysisResult {
+  analysis?: string;
+  patterns_found?: string[];
+  new_memories?: Array<{
+    category?: string;
+    context_key: string;
+    content: string;
+  }>;
+  prompt_improvements?: string | null;
+  improved_prompt?: string | null;
+}
+
 Deno.serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
@@ -23,7 +53,7 @@ Deno.serve(async (req) => {
 
     // Functions to analyze
     const targetFunctions = ["ai-chat", "ai-description", "ai-search", "ai-summary", "ai-scoring"];
-    const results: Record<string, any> = {};
+    const results: Record<string, unknown> = {};
 
     for (const fnName of targetFunctions) {
       // Get recent interactions (last 7 days)
@@ -61,10 +91,10 @@ Deno.serve(async (req) => {
       const analysisPrompt = `Analiza estas ${interactions.length} interacciones recientes de la función "${fnName}" de un CRM inmobiliario español y genera recomendaciones de mejora.
 
 INTERACCIONES RECIENTES:
-${interactions.map((i: any) => `- Input: ${i.input_summary || "?"} → Output: ${(i.output_summary || "?").substring(0, 100)}${i.quality_score ? ` [Score: ${i.quality_score}]` : ""}${i.feedback ? ` [Feedback: ${i.feedback}]` : ""} (${i.duration_ms}ms)`).join("\n")}
+${((interactions ?? []) as AIInteractionRow[]).map((i) => `- Input: ${i.input_summary || "?"} → Output: ${(i.output_summary || "?").substring(0, 100)}${i.quality_score ? ` [Score: ${i.quality_score}]` : ""}${i.feedback ? ` [Feedback: ${i.feedback}]` : ""} (${i.duration_ms}ms)`).join("\n")}
 
 MEMORIAS MÁS USADAS:
-${(memories || []).map((m: any) => `- [${m.context_key}] (usado ${m.usage_count}x, relevancia ${m.relevance_score}): ${m.content.substring(0, 100)}`).join("\n") || "Sin memorias"}
+${((memories || []) as AIMemoryRow[]).map((m) => `- [${m.context_key}] (usado ${m.usage_count}x, relevancia ${m.relevance_score}): ${m.content.substring(0, 100)}`).join("\n") || "Sin memorias"}
 
 PROMPT ACTUAL:
 ${currentPrompt?.system_prompt?.substring(0, 1000) || "No hay prompt activo guardado"}
@@ -87,7 +117,7 @@ Responde SOLO con JSON válido:
         ], { max_tokens: 2000 });
 
         const raw = (aiResult.content || "").replace(/```json?\n?/g, "").replace(/```/g, "").trim();
-        const analysis = JSON.parse(raw);
+        const analysis = JSON.parse(raw) as PromptAnalysisResult;
 
         // Save new memories discovered
         if (analysis.new_memories?.length) {
@@ -130,8 +160,9 @@ Responde SOLO con JSON válido:
 
     console.log("[ai-improve-prompts] Complete:", JSON.stringify(results));
     return json({ ok: true, results });
-  } catch (err: any) {
-    console.error("[ai-improve-prompts] Error:", err.message || err);
-    return json({ ok: false, error: err.message || "Error interno" }, 500);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[ai-improve-prompts] Error:", message);
+    return json({ ok: false, error: message || "Error interno" }, 500);
   }
 });

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -20,6 +21,9 @@ interface Announcement {
   created_at: string;
 }
 
+type AnnouncementRow = Database['public']['Tables']['announcements']['Row'];
+type AnnouncementInsert = Database['public']['Tables']['announcements']['Insert'];
+
 const categories = [
   { value: 'nueva_funcion', label: '🚀 Nueva función', color: 'bg-primary text-primary-foreground' },
   { value: 'mejora', label: '✨ Mejora', color: 'bg-accent text-accent-foreground' },
@@ -37,7 +41,14 @@ const AdminAnnouncements = () => {
 
   const fetch = async () => {
     const { data } = await supabase.from('announcements').select('*').order('created_at', { ascending: false });
-    setAnnouncements((data as any[]) || []);
+    setAnnouncements(((data as AnnouncementRow[] | null) || []).map((announcement) => ({
+      id: announcement.id,
+      title: announcement.title,
+      content: announcement.content || '',
+      category: announcement.category,
+      emailed: announcement.emailed || false,
+      created_at: announcement.created_at,
+    })));
   };
 
   useEffect(() => { fetch(); }, []);
@@ -45,11 +56,12 @@ const AdminAnnouncements = () => {
   const handleCreate = async () => {
     if (!form.title.trim()) { toast.error('Añade un título'); return; }
     setSaving(true);
-    const { error } = await supabase.from('announcements').insert([{
+    const payload: AnnouncementInsert = {
       title: form.title.trim(),
       content: form.content.trim(),
       category: form.category,
-    }] as any);
+    };
+    const { error } = await supabase.from('announcements').insert(payload);
     setSaving(false);
     if (error) { toast.error(error.message); return; }
     toast.success('Anuncio creado');
@@ -63,12 +75,13 @@ const AdminAnnouncements = () => {
     const { data, error } = await supabase.functions.invoke('send-announcement', {
       body: { announcement_id: id },
     });
+    const response = data as { error?: string; recipients?: number } | null;
     setSending(null);
-    if (error || data?.error) {
-      toast.error(data?.error || error?.message || 'Error al enviar');
+    if (error || response?.error) {
+      toast.error(response?.error || error?.message || 'Error al enviar');
       return;
     }
-    toast.success(`Email enviado a ${data.recipients} usuarios`);
+    toast.success(`Email enviado a ${response?.recipients || 0} usuarios`);
     fetch();
   };
 

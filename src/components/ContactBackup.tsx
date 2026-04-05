@@ -58,7 +58,7 @@ export default function ContactBackup() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        const label = target === 'properties' ? 'inmuebles-propios' : 'contactos';
+        const label = target === 'properties' ? 'inmuebles-no-habihub' : 'contactos';
         a.download = `backup-${label}-${new Date().toISOString().slice(0, 10)}.csv`;
         a.click();
         URL.revokeObjectURL(url);
@@ -66,8 +66,9 @@ export default function ContactBackup() {
 
       toast.success('Backup generado y enviado por email');
       loadBackups();
-    } catch (err: any) {
-      toast.error(err.message);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Error generando backup';
+      toast.error(message);
     } finally {
       setDownloadingTarget(null);
     }
@@ -105,7 +106,7 @@ export default function ContactBackup() {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Genera un backup CSV y lo envía por email a los administradores. También se guarda una copia en el almacenamiento interno.
+            Genera un backup CSV, lo guarda en el almacenamiento interno y lo envía por email a los administradores.
           </p>
           <div className="flex flex-wrap gap-2">
             <Button
@@ -132,7 +133,7 @@ export default function ContactBackup() {
               ) : (
                 <Building2 className="h-4 w-4" />
               )}
-              Inmuebles propios
+              Inmuebles no HabiHub
             </Button>
             <Button
               onClick={() => handleDownload('all')}

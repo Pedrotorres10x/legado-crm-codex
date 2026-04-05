@@ -12,6 +12,7 @@ import { RefreshCw, Plus, Rss, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
+import type { TablesInsert } from '@/integrations/supabase/types';
 
 interface XmlFeed {
   id: string;
@@ -27,6 +28,16 @@ interface XmlFeed {
 interface Agent {
   user_id: string;
   full_name: string;
+}
+
+interface ImportXmlFeedResult {
+  feed: string;
+  upserted?: number;
+  error?: string;
+}
+
+interface ImportXmlFeedResponse {
+  results?: ImportXmlFeedResult[];
 }
 
 const XmlFeedsManager = () => {
@@ -51,11 +62,12 @@ const XmlFeedsManager = () => {
 
   const handleAdd = async () => {
     if (!form.name || !form.url) { toast.error('Nombre y URL son obligatorios'); return; }
-    const { error } = await supabase.from('xml_feeds').insert({
+    const payload: TablesInsert<'xml_feeds'> = {
       name: form.name,
       url: form.url,
       agent_id: !form.agent_id || form.agent_id === 'office' ? null : form.agent_id,
-    } as any);
+    };
+    const { error } = await supabase.from('xml_feeds').insert(payload);
     if (error) { toast.error('Error al crear feed'); return; }
     toast.success('Feed añadido');
     setForm({ name: '', url: '', agent_id: 'office' });
@@ -64,7 +76,8 @@ const XmlFeedsManager = () => {
   };
 
   const handleToggle = async (id: string, active: boolean) => {
-    await supabase.from('xml_feeds').update({ is_active: active } as any).eq('id', id);
+    const payload: TablesInsert<'xml_feeds'> = { is_active: active };
+    await supabase.from('xml_feeds').update(payload).eq('id', id);
     setFeeds(prev => prev.map(f => f.id === id ? { ...f, is_active: active } : f));
   };
 
@@ -100,18 +113,19 @@ const XmlFeedsManager = () => {
         },
       });
       if (res.error) throw res.error;
-      const data = res.data;
+      const data = res.data as ImportXmlFeedResponse | null;
       if (data?.results) {
-        const summary = data.results.map((r: any) =>
+        const summary = data.results.map((r) =>
           r.error ? `${r.feed}: Error - ${r.error}` : `${r.feed}: ${r.upserted} propiedades`
         ).join('\n');
         toast.success('Sincronización completada', { description: summary });
       }
       fetchData();
-    } catch (err: any) {
-      const details = err?.context?.status
-        ? `HTTP ${err.context.status}`
-        : err?.message || 'Error desconocido';
+    } catch (err: unknown) {
+      const errorWithContext = err as { context?: { status?: number }; message?: string };
+      const details = errorWithContext.context?.status
+        ? `HTTP ${errorWithContext.context.status}`
+        : errorWithContext.message || 'Error desconocido';
       toast.error('Error al sincronizar', { description: details });
     } finally {
       setSyncing(null);

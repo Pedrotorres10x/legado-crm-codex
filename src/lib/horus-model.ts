@@ -30,6 +30,17 @@ export type HorusActivityGroup = {
   activities?: string[];
 };
 
+type HorusWeightsInput = Partial<HorusWeights> & {
+  toque?: number;
+  visita_sin_resultado?: number;
+  visita?: number;
+  entrevista?: number;
+  visita_con_resultado?: number;
+  visita_resultado?: number;
+  venta?: number;
+  horus_bonus_target?: number;
+};
+
 export const DEFAULT_HORUS_WEIGHTS: HorusWeights = {
   whatsapp: 1,
   email: 2,
@@ -98,7 +109,7 @@ export const HORUS_ACTIVITY_GROUPS: HorusActivityGroup[] = [
   },
 ];
 
-export function normalizeHorusWeights(raw: any): HorusWeights {
+export function normalizeHorusWeights(raw: HorusWeightsInput | null | undefined): HorusWeights {
   return {
     whatsapp: Number(raw?.whatsapp ?? raw?.toque ?? DEFAULT_HORUS_WEIGHTS.whatsapp),
     email: Number(raw?.email ?? raw?.toque ?? DEFAULT_HORUS_WEIGHTS.email),
@@ -263,7 +274,7 @@ export function countHorusTouches(interactions: HorusInteractionLike[]) {
   let total = 0;
 
   for (const interaction of interactions) {
-    if (!HORUS_TOUCH_TYPES.includes(interaction.interaction_type as any)) continue;
+    if (!HORUS_TOUCH_TYPES.some((type) => type === interaction.interaction_type)) continue;
 
     if (interaction.interaction_type === 'visita_tasacion') {
       const key = getHorusOpportunityKey(interaction);

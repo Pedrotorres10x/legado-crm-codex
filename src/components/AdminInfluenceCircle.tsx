@@ -17,6 +17,9 @@ type CircleRow = ReturnType<typeof getAgentInfluenceCircle> & {
   agentId: string;
   name: string;
 };
+type InfluenceCircleContact = Parameters<typeof getAgentInfluenceCircle>[0][number] & {
+  agent_id?: string | null;
+};
 
 const tierToneMap = {
   bronce: 'border-amber-300 bg-amber-50 text-amber-800',
@@ -49,7 +52,7 @@ const AdminInfluenceCircle = () => {
       if (cancelled) return;
 
       const agents = ((profiles || []) as AgentProfile[]).filter((profile) => profile.full_name);
-      const contactRows = (contacts as any[]) || [];
+      const contactRows = (contacts as InfluenceCircleContact[]) || [];
 
       const nextRows = agents
         .map((agent) => ({

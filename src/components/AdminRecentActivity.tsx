@@ -14,9 +14,20 @@ const typeIcons: Record<string, React.ElementType> = {
 const typeLabels: Record<string, string> = {
   llamada: 'Llamada', email: 'Email', visita: 'Visita', whatsapp: 'WhatsApp', reunion: 'Reunión', nota: 'Nota', cafe_comida: 'Café/Comida',
 };
+type InteractionActivityRow = {
+  id: string;
+  interaction_type: string;
+  subject?: string | null;
+  description?: string | null;
+  interaction_date: string;
+  agent_id?: string | null;
+  contacts?: { full_name?: string | null } | null;
+  properties?: { title?: string | null } | null;
+  profiles?: { full_name?: string | null } | null;
+};
 
 const AdminRecentActivity = () => {
-  const [activities, setActivities] = useState<any[]>([]);
+  const [activities, setActivities] = useState<InteractionActivityRow[]>([]);
   const [limit, setLimit] = useState(30);
   const [loading, setLoading] = useState(true);
 
@@ -28,7 +39,7 @@ const AdminRecentActivity = () => {
         .select('id, interaction_type, subject, description, interaction_date, agent_id, contacts(full_name), properties(title), profiles:agent_id(full_name)')
         .order('interaction_date', { ascending: false })
         .limit(limit);
-      setActivities(data || []);
+      setActivities((data || []) as InteractionActivityRow[]);
       setLoading(false);
     };
     fetch();
@@ -59,9 +70,9 @@ const AdminRecentActivity = () => {
             <div className="space-y-2">
               {activities.map(a => {
                 const Icon = typeIcons[a.interaction_type] || FileText;
-                const agentName = (a.profiles as any)?.full_name;
-                const contactName = (a.contacts as any)?.full_name;
-                const propertyTitle = (a.properties as any)?.title;
+                const agentName = a.profiles?.full_name;
+                const contactName = a.contacts?.full_name;
+                const propertyTitle = a.properties?.title;
                 return (
                   <div key={a.id} className="flex items-start gap-3 text-sm p-2.5 rounded-xl hover:bg-muted/50 transition-colors">
                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted mt-0.5">

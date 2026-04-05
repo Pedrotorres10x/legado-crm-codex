@@ -58,7 +58,7 @@ export const buildPropertyMediaFilesFromStorage = (
     }))
 );
 
-export const buildCatastroSnapshotContent = (reference: string, catastroData: Record<string, any>) => {
+export const buildCatastroSnapshotContent = (reference: string, catastroData: Record<string, unknown>) => {
   const lines = [
     'FICHA CATASTRAL',
     `Fecha de consulta: ${new Date().toLocaleDateString('es-ES')}`,

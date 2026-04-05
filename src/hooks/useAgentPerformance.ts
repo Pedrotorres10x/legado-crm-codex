@@ -113,11 +113,14 @@ export function useAgentPerformance(agentId: string | undefined, months: 3 | 6 =
       const properties = propertiesRes.data || [];
       const visits = visitsRes.data || [];
       const offers = offersRes.data || [];
+      const typedInteractions = interactions as Parameters<typeof countHorusTouches>[0];
+      const typedVisits = visits as Parameters<typeof sumBuyerVisitPoints>[0];
+      const typedOffers = offers as Parameters<typeof sumBuyerVisitPoints>[1];
 
       // Counts
       const llamadasCount = interactions.filter((interaction) => interaction.interaction_type === 'llamada').length;
-      const toquesCount = countHorusTouches(interactions as any);
-      const entrevistasCount = countCaptureInterviews(interactions as any);
+      const toquesCount = countHorusTouches(typedInteractions);
+      const entrevistasCount = countCaptureInterviews(typedInteractions);
       const captacionesCount = properties.filter((property) => new Date(property.created_at) >= start).length;
       const facturacionCount = properties.filter((property) =>
         property.arras_status === 'firmado' &&
@@ -159,7 +162,7 @@ export function useAgentPerformance(agentId: string | undefined, months: 3 | 6 =
       });
       Object.entries(interactionsByMonth).forEach(([key, monthInteractions]) => {
         if (monthlyMap[key]) {
-          monthlyMap[key].points += sumHorusInteractionPoints(monthInteractions as any, weights);
+          monthlyMap[key].points += sumHorusInteractionPoints(monthInteractions as Parameters<typeof sumHorusInteractionPoints>[0], weights);
         }
       });
       const visitsByMonth: Record<string, typeof visits> = {};
@@ -170,7 +173,7 @@ export function useAgentPerformance(agentId: string | undefined, months: 3 | 6 =
       });
       Object.entries(visitsByMonth).forEach(([key, monthVisits]) => {
         if (monthlyMap[key]) {
-          monthlyMap[key].points += sumBuyerVisitPoints(monthVisits as any, offers as any, weights, now);
+          monthlyMap[key].points += sumBuyerVisitPoints(monthVisits as Parameters<typeof sumBuyerVisitPoints>[0], typedOffers, weights, now);
         }
       });
       properties.forEach((property) => {

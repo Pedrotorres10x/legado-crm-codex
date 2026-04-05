@@ -15,6 +15,19 @@ interface AgentRank {
   ops: number;
 }
 
+type CommissionRow = {
+  agent_id?: string | null;
+  listing_origin_agent_id?: string | null;
+  listing_field_agent_id?: string | null;
+  buying_origin_agent_id?: string | null;
+  buying_field_agent_id?: string | null;
+  listing_origin_amount?: number | null;
+  listing_field_amount?: number | null;
+  buying_origin_amount?: number | null;
+  buying_field_amount?: number | null;
+  agent_total?: number | null;
+};
+
 const MEDALS = [
   { icon: Crown, color: 'text-amber-500', bg: 'bg-amber-100 dark:bg-amber-900/30', label: '🥇' },
   { icon: Medal, color: 'text-slate-400', bg: 'bg-slate-100 dark:bg-slate-800/40', label: '🥈' },
@@ -48,7 +61,7 @@ const AgentLeaderboard = () => {
       const profiles = profilesRes.data || [];
       const nameMap = new Map(profiles.map(p => [p.user_id, p.full_name]));
 
-      const aggregate = (comms: any[]): AgentRank[] => {
+      const aggregate = (comms: CommissionRow[]): AgentRank[] => {
         const map = new Map<string, { total: number; ops: number }>();
         for (const c of comms) {
           const roles = [
@@ -72,9 +85,9 @@ const AgentLeaderboard = () => {
       };
 
       setRankings({
-        month: aggregate(monthRes.data || []),
-        semester: aggregate(semesterRes.data || []),
-        year: aggregate(yearRes.data || []),
+        month: aggregate((monthRes.data || []) as CommissionRow[]),
+        semester: aggregate((semesterRes.data || []) as CommissionRow[]),
+        year: aggregate((yearRes.data || []) as CommissionRow[]),
       });
       setLoading(false);
     };

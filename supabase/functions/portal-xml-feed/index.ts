@@ -31,6 +31,132 @@ const operationMap: Record<string, string> = {
   traspaso: 'transfer',
 };
 
+const thinkSpainTypeMap: Record<string, string> = {
+  piso: 'Apartment',
+  casa: 'Townhouse',
+  chalet: 'Villa',
+  adosado: 'Terraced Villa',
+  atico: 'Penthouse',
+  duplex: 'Apartment',
+  estudio: 'Studio',
+  local: 'Commercial',
+  oficina: 'Office',
+  nave: 'Business',
+  terreno: 'Building Plot',
+  garaje: 'Garage',
+  trastero: 'Commercial',
+  otro: 'Property',
+};
+
+const KYERO_COHORT_TAG = 'portal_cohort_alicante_50';
+const KYERO_SOURCE = 'habihub';
+const KYERO_SOURCE_FEED_NAME = 'HabiHub · Blanca Cálida';
+const KYERO_ALLOWED_PROVINCE = 'Alicante';
+const KYERO_ALLOWED_TYPES = new Set(['piso', 'casa', 'chalet', 'adosado', 'atico', 'duplex', 'estudio']);
+
+type RawTagMap = Record<string, string | string[]>;
+
+type PortalProperty = {
+  id: string;
+  crm_reference?: string | null;
+  xml_id?: string | null;
+  title?: string | null;
+  description?: string | null;
+  property_type?: string | null;
+  operation?: string | null;
+  price?: number | null;
+  bedrooms?: number | null;
+  bathrooms?: number | null;
+  surface_area?: number | null;
+  built_area?: number | null;
+  floor_number?: number | string | null;
+  floor?: string | null;
+  door?: string | null;
+  city?: string | null;
+  province?: string | null;
+  address?: string | null;
+  zip_code?: string | null;
+  zone?: string | null;
+  country?: string | null;
+  energy_cert?: string | null;
+  features?: string[] | null;
+  images?: string[] | null;
+  image_order?: Array<string | { url?: string | null; name?: string | null }> | null;
+  videos?: string[] | null;
+  virtual_tour_url?: string | null;
+  tags?: string[] | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  status?: string | null;
+  updated_at?: string | null;
+  is_featured?: boolean | null;
+  floor_plans?: string[] | null;
+  year_built?: number | null;
+  new_build?: boolean | null;
+  source_metadata?: { raw_tags?: RawTagMap | null } & Record<string, unknown> | null;
+  source?: string | null;
+  source_feed_name?: string | null;
+  has_elevator?: boolean | null;
+  has_garage?: boolean | null;
+  has_pool?: boolean | null;
+  has_terrace?: boolean | null;
+  has_garden?: boolean | null;
+};
+
+type PortalFeed = {
+  id: string;
+  portal_name?: string | null;
+  display_name?: string | null;
+  format?: string | null;
+  filters?: Record<string, unknown> | null;
+  is_enabled?: boolean | null;
+};
+
+type ExclusionRow = { property_id: string };
+type TrackingRow = { property_id: string; removed_at: string | null };
+type PropertyRefRow = { id: string; crm_reference: string | null };
+
+function isKyeroFormat(format: unknown): boolean {
+  const normalized = typeof format === 'string' ? format.trim().toLowerCase() : '';
+  return normalized === 'kyero' || normalized === 'kyero_v3';
+}
+
+function isThinkSpainFeed(feed: { portal_name?: string | null; display_name?: string | null; format?: string | null }): boolean {
+  const values = [feed.portal_name, feed.display_name, feed.format]
+    .filter((value): value is string => typeof value === 'string')
+    .map((value) =>
+      value
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, ''),
+    );
+
+  return values.some((value) => value.includes('thinkspain') || value.includes('think spain'));
+}
+
+function isSharedKyeroCohortFeed(feed: { portal_name?: string | null; display_name?: string | null; format?: string | null }): boolean {
+  const values = [feed.portal_name, feed.display_name]
+    .filter((value): value is string => typeof value === 'string')
+    .map((value) =>
+      value
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, ''),
+    );
+
+  return isThinkSpainFeed(feed) || values.some((value) => value === 'kyero');
+}
+
+function normalizeTagList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is string => typeof item === 'string')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 function normalizePropertyTypeKey(value: unknown): string {
   const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
   const normalized = raw
@@ -89,7 +215,12 @@ function normalizeOperationKey(value: unknown): string {
 
 function esc(val: string | null | undefined): string {
   if (!val) return '';
-  return val.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return val
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
 }
 
 function cdata(val: string | null | undefined): string {
@@ -97,28 +228,314 @@ function cdata(val: string | null | undefined): string {
   return `<![CDATA[${val}]]>`;
 }
 
+function xmlText(val: string | null | undefined): string {
+  if (!val) return '';
+  return esc(val).replace(/\r?\n/g, '&#13;');
+}
+
+function thinkSpainUniqueId(prop: PortalProperty): string {
+  const xmlId = String(prop?.xml_id || '').trim();
+  if (/^\d+$/.test(xmlId)) return xmlId;
+
+  const crmDigits = String(prop?.crm_reference || '').replace(/\D+/g, '');
+  if (crmDigits) return crmDigits;
+
+  const rawId = String(prop?.id || '').replace(/-/g, '').trim();
+  if (/^\d+$/.test(rawId)) return rawId;
+  if (/^[0-9a-f]+$/i.test(rawId)) return BigInt(`0x${rawId}`).toString(10);
+
+  return String(Date.now());
+}
+
+function slugifyPortalSegment(value: string | null | undefined): string {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function buildPortalPropertyUrl(prop: PortalProperty): string {
+  const titleSlug = slugifyPortalSegment(prop?.title || 'propiedad');
+  const citySlug = slugifyPortalSegment(prop?.city || prop?.province || '');
+  const uuidSuffix = String(prop?.id || '').replace(/-/g, '').slice(-5);
+  const slug = citySlug ? `${titleSlug}-${citySlug}-${uuidSuffix}` : `${titleSlug}-${uuidSuffix}`;
+  return `https://legadocoleccion.es/propiedad/${slug}`;
+}
+
+function toThinkSpainSaleType(operation: unknown): string {
+  const normalized = normalizeOperationKey(operation);
+  if (normalized === 'alquiler') return 'longterm';
+  if (normalized === 'alquiler_vacacional') return 'holiday';
+  return 'sale';
+}
+
+function formatThinkSpainDate(value: string | null | undefined): string {
+  const date = value ? new Date(value) : new Date();
+  if (Number.isNaN(date.getTime())) return formatThinkSpainDate(null);
+  const yyyy = date.getUTCFullYear();
+  const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(date.getUTCDate()).padStart(2, '0');
+  const hh = String(date.getUTCHours()).padStart(2, '0');
+  const mi = String(date.getUTCMinutes()).padStart(2, '0');
+  const ss = String(date.getUTCSeconds()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
+}
+
+function normalizeCatastralReference(value: string | null | undefined): string {
+  return String(value || '').replace(/\s+/g, '').trim();
+}
+
+function formatDistanceKm(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return '';
+  const normalized = Number(value);
+  if (!Number.isFinite(normalized)) return '';
+  return Number.isInteger(normalized) ? String(normalized) : normalized.toFixed(1).replace(/\.0$/, '');
+}
+
+function formatKyeroDate(value: string | null | undefined): string {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const yyyy = date.getUTCFullYear();
+  const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(date.getUTCDate()).padStart(2, '0');
+  const hh = String(date.getUTCHours()).padStart(2, '0');
+  const mi = String(date.getUTCMinutes()).padStart(2, '0');
+  const ss = String(date.getUTCSeconds()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
+}
+
+function isKyeroImageUrl(url: string): boolean {
+  return /^(https?|ftp):\/\/.*\.(gif|jpe?g|png)$/i.test(url.trim());
+}
+
+function isKyeroVideoUrl(url: string): boolean {
+  return /^https?:\/\/.*(youtu\.?be|vimeo).*(\/|=).+/i.test(url.trim());
+}
+
+function sanitizeKyeroMediaUrl(url: string | null | undefined): string | null {
+  if (!url || typeof url !== 'string') return null;
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+  const withoutQuery = trimmed.split('?')[0];
+  return withoutQuery || null;
+}
+
+function cleanPortalText(value: string | null | undefined): string {
+  if (!value) return '';
+
+  const lines = value
+    .replace(/<!\[CDATA\[/gi, '')
+    .replace(/\]\]>/g, '')
+    .replace(/\r/g, '\n')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !/^https?:\/\//i.test(line))
+    .filter((line) => !/^not-available$/i.test(line));
+
+  return lines
+    .join('\n\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+}
+
+function extractLocalizedText(
+  container: string,
+  preferredLanguages: string[] = ['en', 'en_gb', 'en_us', 'english'],
+  fallbackToAnyLanguage = false,
+): string {
+  if (!container) return '';
+  if (!container.includes('<')) return cleanPortalText(container);
+
+  for (const lang of preferredLanguages) {
+    const match = container.match(new RegExp(`<${lang}[^>]*>([\\s\\S]*?)<\\/${lang}>`, 'i'));
+    if (match?.[1]) return cleanPortalText(match[1]);
+  }
+
+  if (!fallbackToAnyLanguage) return '';
+  const anyLanguageMatch = container.match(/<[a-z_]{2,10}[^>]*>([\s\S]*?)<\/[a-z_]{2,10}>/i);
+  return cleanPortalText(anyLanguageMatch?.[1] || container);
+}
+
+function readRawTagValue(prop: PortalProperty, keys: string[]): string {
+  const rawTags = prop?.source_metadata?.raw_tags;
+  if (!rawTags || typeof rawTags !== 'object') return '';
+
+  for (const key of keys) {
+    const value = rawTags[key];
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (typeof item === 'string' && item.trim()) return item.trim();
+      }
+    } else if (typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  return '';
+}
+
+function buildGeneratedEnglishTitle(prop: PortalProperty): string {
+  const mapped = typeMap[normalizePropertyTypeKey(prop.property_type)] || typeMap.otro;
+  const typeLabel = mapped.kyero
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+  const area = cleanPortalText(prop.zone) || cleanPortalText(prop.city) || cleanPortalText(prop.province);
+
+  return area ? `${typeLabel} in ${area}` : typeLabel;
+}
+
+function buildGeneratedEnglishDescription(prop: PortalProperty): string {
+  const parts: string[] = [];
+  const bedrooms = Number(prop.bedrooms) > 0 ? `${prop.bedrooms} bedroom${Number(prop.bedrooms) === 1 ? '' : 's'}` : '';
+  const bathrooms = Number(prop.bathrooms) > 0 ? `${prop.bathrooms} bathroom${Number(prop.bathrooms) === 1 ? '' : 's'}` : '';
+  const surface = Number(prop.surface_area) > 0 ? `${Math.round(Number(prop.surface_area))} m2` : '';
+  const location = [cleanPortalText(prop.zone), cleanPortalText(prop.city), cleanPortalText(prop.province)]
+    .filter(Boolean)
+    .join(', ');
+
+  const summary = [bedrooms, bathrooms, surface].filter(Boolean).join(', ');
+  if (summary) {
+    parts.push(`${buildGeneratedEnglishTitle(prop)} with ${summary}.`);
+  } else {
+    parts.push(`${buildGeneratedEnglishTitle(prop)} available${location ? ` in ${location}` : ''}.`);
+  }
+
+  const highlights: string[] = [];
+  if (prop.has_terrace) highlights.push('terrace');
+  if (prop.has_pool) highlights.push('pool');
+  if (prop.has_garage) highlights.push('garage');
+  if (prop.has_garden) highlights.push('garden');
+  if (prop.has_elevator) highlights.push('lift');
+  if (highlights.length > 0) parts.push(`Key features include ${highlights.join(', ')}.`);
+
+  parts.push(location ? `Located in ${location}. Contact us for further details.` : 'Contact us for further details.');
+  return cleanPortalText(parts.join(' '));
+}
+
+function buildKyeroTitle(prop: PortalProperty): string {
+  const cleanedTitle = cleanPortalText(prop.title);
+  const suspiciousTitle = cleanedTitle.length < 6 || cleanedTitle.length > 140;
+
+  if (!suspiciousTitle) return cleanedTitle;
+
+  const mapped = typeMap[normalizePropertyTypeKey(prop.property_type)] || typeMap.otro;
+  const typeLabel = mapped.kyero
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+  const zone = cleanPortalText(prop.zone);
+  const city = cleanPortalText(prop.city);
+  const price = Number(prop.price) > 0 ? ` - EUR ${Math.round(Number(prop.price))}` : '';
+  const location = zone || city;
+
+  return location ? `${typeLabel} in ${location}${price}` : `${typeLabel}${price}`;
+}
+
+function buildKyeroDescription(prop: PortalProperty): string {
+  const cleaned = cleanPortalText(prop.description);
+  if (cleaned) return cleaned;
+
+  const parts = [
+    cleanPortalText(prop.zone),
+    cleanPortalText(prop.city),
+    cleanPortalText(prop.province),
+  ].filter(Boolean);
+
+  if (parts.length > 0) {
+    return `Property available in ${parts.join(', ')}. Contact us for full details.`;
+  }
+
+  return 'Property available. Contact us for full details.';
+}
+
+function hasKyeroPublicationEligibility(prop: PortalProperty): boolean {
+  const title = cleanPortalText(prop.title);
+  const description = cleanPortalText(prop.description);
+  const normalizedType = normalizePropertyTypeKey(prop.property_type);
+  const photoCount = resolvePortalImageUrls(prop)
+    .map((url) => sanitizeKyeroMediaUrl(url))
+    .filter((url): url is string => Boolean(url) && isKyeroImageUrl(url))
+    .length;
+  const tags = Array.isArray(prop.tags) ? prop.tags : [];
+  const province = cleanPortalText(prop.province);
+  const source = cleanPortalText(prop.source);
+  const sourceFeedName = cleanPortalText(prop.source_feed_name);
+  const cityOrZone = cleanPortalText(prop.zone) || cleanPortalText(prop.city);
+
+  return Boolean(title)
+    && Boolean(description)
+    && (Number(prop.price) || 0) > 0
+    && prop.latitude !== null
+    && prop.longitude !== null
+    && Boolean(cityOrZone)
+    && photoCount >= 6
+    && KYERO_ALLOWED_TYPES.has(normalizedType)
+    && province === cleanPortalText(KYERO_ALLOWED_PROVINCE)
+    && source === cleanPortalText(KYERO_SOURCE)
+    && sourceFeedName === cleanPortalText(KYERO_SOURCE_FEED_NAME)
+    && tags.includes(KYERO_COHORT_TAG);
+}
+
+function looksMostlyEnglish(value: string): boolean {
+  const text = ` ${value.toLowerCase()} `;
+  const englishHits = [' the ', ' and ', ' with ', ' located ', ' property ', ' bedrooms ', ' bathrooms ', ' sea ', ' views ']
+    .filter((token) => text.includes(token)).length;
+  const spanishHits = [' el ', ' la ', ' con ', ' ubicado ', ' propiedad ', ' dormitorios ', ' banos ', ' baños ', ' vistas ']
+    .filter((token) => text.includes(token)).length;
+  return englishHits > spanishHits;
+}
+
+function resolvePortalCopy(prop: PortalProperty): { title: string; description: string } {
+  const currentTitle = cleanPortalText(prop.title);
+  const currentDescription = cleanPortalText(prop.description);
+
+  const englishTitleFromRaw = cleanPortalText(
+    extractLocalizedText(readRawTagValue(prop, ['title_en', 'name_en', 'headline_en', 'title', 'titulo', 'name', 'headline']))
+  );
+  const englishDescriptionFromRaw = cleanPortalText(
+    extractLocalizedText(readRawTagValue(prop, ['description_en', 'desc_en', 'description_english', 'description', 'desc', 'descripcion', 'comments']))
+  );
+
+  const title = englishTitleFromRaw
+    || (currentTitle && looksMostlyEnglish(currentTitle) ? currentTitle : '');
+
+  const description = englishDescriptionFromRaw
+    || (currentDescription && looksMostlyEnglish(currentDescription) ? currentDescription : '');
+
+  return { title, description };
+}
+
+function normalizeKyeroFeature(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
 // ── CEE resolver: never return "en_tramite" ─────────────────────────────────
 const RESIDENTIAL_TYPES = ['piso', 'casa', 'chalet', 'adosado', 'atico', 'duplex', 'estudio'];
 const VALID_CEE_LETTERS = new Set(['A', 'B', 'C', 'D', 'E', 'F', 'G']);
 
-function resolveCert(prop: any): string {
+function resolveCert(prop: PortalProperty): string {
   const raw = (prop.energy_cert || '').trim();
   if (raw) {
     const upper = raw.toUpperCase();
     if (VALID_CEE_LETTERS.has(upper)) return upper;
-    if (/exento|exempt/i.test(raw)) return 'exempt';
-    // Any other value (including "en_tramite") → treat as empty
+    if (/exento|exempt/i.test(raw)) return 'X';
+    // Any other value (including "en_tramite") → treat as unknown
   }
-  // No valid cert → decide by property type
-  const propType = normalizePropertyTypeKey(prop.property_type);
-  if (RESIDENTIAL_TYPES.includes(propType)) {
-    return Math.random() < 0.5 ? 'A' : 'B';
-  }
-  return 'exempt';
+  return 'X';
 }
 
 /** Order images according to image_order JSON if present */
-function orderImages(images: string[] | null, imageOrder: any): string[] {
+function orderImages(images: string[] | null, imageOrder: PortalProperty['image_order']): string[] {
   if (!images || images.length === 0) return [];
   if (!imageOrder || !Array.isArray(imageOrder)) return images;
   const ordered: string[] = [];
@@ -137,7 +554,7 @@ function orderImages(images: string[] | null, imageOrder: any): string[] {
  * image_order may contain inherited absolute URLs (xmlurl_...) even when images[]
  * is empty or incomplete.
  */
-function resolvePortalImageUrls(prop: any): string[] {
+function resolvePortalImageUrls(prop: PortalProperty): string[] {
   const baseImages = Array.isArray(prop.images) ? prop.images.filter((url: unknown): url is string => typeof url === 'string' && url.length > 0) : [];
   const imageOrder = Array.isArray(prop.image_order) ? prop.image_order : [];
   const ordered: string[] = [];
@@ -304,116 +721,171 @@ interface Translations {
   [propertyId: string]: { title_en: string; description_en: string };
 }
 
-async function translatePremiumProperties(properties: any[]): Promise<Translations> {
-  const premium = properties.filter((p: any) => (p.price || 0) >= 500000 && (p.images?.length || 0) >= 20);
-  if (premium.length === 0) return {};
+function buildTranslationSourceItem(prop: PortalProperty) {
+  const existing = resolvePortalCopy(prop);
+  return {
+    id: prop.id,
+    crm_reference: prop.crm_reference || prop.id,
+    title: cleanPortalText(prop.title).slice(0, 220),
+    description: cleanPortalText(prop.description).slice(0, 2600),
+    existing_english_title: existing.title.slice(0, 220),
+    existing_english_description: existing.description.slice(0, 2600),
+    property_type: prop.property_type || '',
+    operation: prop.operation || '',
+    city: cleanPortalText(prop.city),
+    zone: cleanPortalText(prop.zone),
+    province: cleanPortalText(prop.province),
+    bedrooms: Number(prop.bedrooms) || 0,
+    bathrooms: Number(prop.bathrooms) || 0,
+    surface_area: Number(prop.surface_area) || 0,
+    built_area: Number(prop.built_area) || 0,
+    price: Number(prop.price) || 0,
+    features: Array.isArray(prop.features) ? prop.features.slice(0, 40) : [],
+  };
+}
 
-  // Build a compact payload for translation
-  const items = premium.map(p => ({
-    id: p.id,
-    title: (p.title || '').substring(0, 200),
-    description: (p.description || '').substring(0, 2000),
-  }));
-
-  // Split into batches of 10 to avoid token limits
-  const BATCH_SIZE = 10;
+async function translatePropertiesToEnglish(properties: PortalProperty[]): Promise<Translations> {
   const result: Translations = {};
+  const pending = properties.filter((prop) => {
+    const existing = resolvePortalCopy(prop);
+    if (existing.title && existing.description) {
+      result[prop.id] = { title_en: existing.title, description_en: existing.description };
+      return false;
+    }
+    return true;
+  });
+
+  if (pending.length === 0) return result;
+
+  const items = pending.map(buildTranslationSourceItem);
+  const BATCH_SIZE = 8;
 
   for (let i = 0; i < items.length; i += BATCH_SIZE) {
     const batch = items.slice(i, i + BATCH_SIZE);
-    try {
-      const aiResult = await callAI('google/gemini-2.5-flash', [
-        {
-          role: 'system',
-          content: `You are a native English copywriter specialising in luxury real estate for high-net-worth international buyers on the Spanish Mediterranean coast.
+    const aiResult = await callAI('google/gemini-2.5-flash', [
+      {
+        role: 'system',
+        content: `You are a world-class British English real-estate copywriter.
 
-Your job is NOT to translate — it is to REWRITE the listing in natural, compelling English as if it were originally written for Savills, Knight Frank or Christie's.
+Write flawless portal-ready English for Spanish residential and commercial listings.
 
 Rules:
-• Sound fresh and native — never stilted, never "translated". No awkward calques from Spanish.
-• Evoke lifestyle, light, views and emotion. Use sensory language that sells the dream.
-• Keep factual accuracy (rooms, sizes, features) but express them elegantly.
-• Titles: punchy, aspirational, max 15 words. No generic "beautiful apartment" — be specific.
-• Descriptions: flowing prose, short paragraphs. Highlight unique selling points first.
-• Avoid clichés like "boasts", "nestled", "sought-after" — find fresher alternatives.
-• Never invent features not present in the original.
+- Output natural, premium, trustworthy English.
+- Preserve factual accuracy exactly. Never invent features, views, rooms, sizes, or locations.
+- If Spanish source text is awkward or incomplete, improve the writing but stay faithful to the facts.
+- Titles must be concise, compelling, and specific. Max 12 words.
+- Descriptions must read as publication-ready marketing copy in polished English.
+- No contact details, no agency self-promotion, no markdown.
+- Every item MUST include both a non-empty title_en and description_en.
+- If existing English is already good, you may refine it lightly, but keep the same meaning.
 
-Return ONLY a valid JSON array, no markdown, no explanation.
-Each item: {"id":"...","title_en":"...","description_en":"..."}`,
-        },
-        {
-          role: 'user',
-          content: JSON.stringify(batch),
-        },
-      ], { max_tokens: 4000 });
+Return ONLY valid JSON array.
+Schema per item: {"id":"...","title_en":"...","description_en":"..."}`,
+      },
+      {
+        role: 'user',
+        content: JSON.stringify(batch),
+      },
+    ], { max_tokens: 5000 });
 
-      const raw = (aiResult.content || '')
-        .replace(/```json?\n?/g, '')
-        .replace(/```/g, '')
-        .trim();
-      const parsed = JSON.parse(raw) as { id: string; title_en: string; description_en: string }[];
-      for (const t of parsed) {
-        result[t.id] = { title_en: t.title_en, description_en: t.description_en };
+    const raw = (aiResult.content || '')
+      .replace(/```json?\n?/g, '')
+      .replace(/```/g, '')
+      .trim();
+    const parsed = JSON.parse(raw) as { id: string; title_en: string; description_en: string }[];
+
+    for (const item of batch) {
+      const translated = parsed.find((entry) => entry.id === item.id);
+      const title_en = cleanPortalText(translated?.title_en);
+      const description_en = cleanPortalText(translated?.description_en);
+      if (!title_en || !description_en) {
+        throw new Error(`[portal-xml-feed] Missing AI English copy for property ${item.id}`);
       }
-    } catch (err) {
-      console.warn('[portal-xml-feed] Translation batch failed, using Spanish fallback:', err);
-      // Fallback: use Spanish text
-      for (const item of batch) {
-        result[item.id] = { title_en: item.title, description_en: item.description };
-      }
+      result[item.id] = { title_en, description_en };
     }
   }
 
   return result;
 }
 
+function buildFastEnglishTranslations(properties: PortalProperty[]): Translations {
+  const result: Translations = {};
+
+  for (const prop of properties) {
+    const existing = resolvePortalCopy(prop);
+    result[prop.id] = {
+      title_en: existing.title || buildGeneratedEnglishTitle(prop),
+      description_en: existing.description || buildGeneratedEnglishDescription(prop),
+    };
+  }
+
+  return result;
+}
+
 // ── Kyero V3 format (accepted by most Spanish portals) ──────────────────────
-function toKyeroXml(properties: any[], portalName: string, supabaseUrl: string, translations: Translations = {}): string {
+function toKyeroXml(properties: PortalProperty[], portalName: string, supabaseUrl: string, translations: Translations = {}): string {
   let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
   xml += `<root>\n`;
   xml += `  <kyero>\n    <feed_version>3</feed_version>\n  </kyero>\n`;
 
   for (const p of properties) {
-    const imgs = resolvePortalImageUrls(p).map(u => proxyImageUrl(u, supabaseUrl));
+    const imgs = resolvePortalImageUrls(p)
+      .map((u) => sanitizeKyeroMediaUrl(u))
+      .filter((u): u is string => Boolean(u) && isKyeroImageUrl(u))
+      .slice(0, 50);
+      const planImgs = (p.floor_plans || [])
+        .map((u) => sanitizeKyeroMediaUrl(u))
+        .filter((u): u is string => Boolean(u) && isKyeroImageUrl(u));
+    const allImages = [...imgs];
+    for (const planImg of planImgs) {
+      if (allImages.length >= 50) break;
+      if (!allImages.includes(planImg)) allImages.push(planImg);
+    }
     const mapped = typeMap[normalizePropertyTypeKey(p.property_type)] || typeMap.otro;
     const op = operationMap[normalizeOperationKey(p.operation)] || 'sale';
     const pf = parseFeatures(p.features);
+    const ref = p.crm_reference || p.id;
+    const translatedTitle = cleanPortalText(translations[p.id]?.title_en);
+    const translatedEn = cleanPortalText(translations[p.id]?.description_en);
+    if (!translatedTitle || !translatedEn) {
+      throw new Error(`[portal-xml-feed] Missing English copy for property ${p.id}`);
+    }
+    const descEs = '';
+    const descEn = xmlText(translatedEn);
+    const propertyUrl = `https://www.legadocoleccion.es/propiedad/${p.id}`;
+    const videoUrl = Array.isArray(p.videos)
+      ? p.videos
+        .map((url: string) => sanitizeKyeroMediaUrl(url))
+        .find((url: string | null): url is string => Boolean(url) && isKyeroVideoUrl(url))
+      : null;
+    const virtualTourUrl = sanitizeKyeroMediaUrl(p.virtual_tour_url);
 
     xml += `  <property>\n`;
-    xml += `    <id>${esc(p.crm_reference || p.id)}</id>\n`;
-    xml += `    <date>${p.updated_at?.substring(0, 19) || ''}</date>\n`;
-    xml += `    <ref>${esc(p.crm_reference || '')}</ref>\n`;
-    xml += `    <price>${p.price || 0}</price>\n`;
+    xml += `    <id>${esc(ref)}</id>\n`;
+    xml += `    <date>${formatKyeroDate(p.updated_at) || formatKyeroDate(new Date().toISOString())}</date>\n`;
+    xml += `    <ref>${esc(ref)}</ref>\n`;
+    xml += `    <price>${Math.round(Number(p.price) || 0)}</price>\n`;
     xml += `    <currency>EUR</currency>\n`;
     xml += `    <price_freq>${op === 'rent' ? 'month' : 'sale'}</price_freq>\n`;
     xml += `    <new_build>0</new_build>\n`;
     xml += `    <type>${mapped.kyero}</type>\n`;
-    xml += `    <operation>${op}</operation>\n`;
-
-    // ── Status ──────────────────────────────────────────────
-    if (p.status === 'reservado') xml += `    <leased>1</leased>\n`;
 
     // ── Location ────────────────────────────────────────────
     xml += `    <town>${esc(p.city)}</town>\n`;
     xml += `    <province>${esc(p.province)}</province>\n`;
-    xml += `    <country>${esc(p.country || 'Spain')}</country>\n`;
-    if (p.zip_code) xml += `    <postcode>${esc(p.zip_code)}</postcode>\n`;
-    if (p.address) xml += `    <address>${esc(p.address)}</address>\n`;
+    xml += `    <country>Spain</country>\n`;
     if (p.zone) xml += `    <location_detail>${esc(p.zone)}</location_detail>\n`;
     if (p.latitude && p.longitude) {
-      xml += `    <latitude>${p.latitude}</latitude>\n`;
-      xml += `    <longitude>${p.longitude}</longitude>\n`;
+      xml += `    <location>\n`;
+      xml += `      <longitude>${p.longitude}</longitude>\n`;
+      xml += `      <latitude>${p.latitude}</latitude>\n`;
+      xml += `    </location>\n`;
     }
-
-    // ── Floor / staircase / door ────────────────────────────
-    if (p.floor_number) xml += `    <floor>${esc(p.floor_number)}</floor>\n`;
-    if (p.staircase) xml += `    <staircase>${esc(p.staircase)}</staircase>\n`;
-    if (p.door) xml += `    <door>${esc(p.door)}</door>\n`;
 
     // ── Dimensions ──────────────────────────────────────────
     xml += `    <beds>${p.bedrooms || 0}</beds>\n`;
     xml += `    <baths>${p.bathrooms || 0}</baths>\n`;
-    if (pf.toilets) xml += `    <toilets>${pf.toilets}</toilets>\n`;
+    if (p.has_pool || pf.communityPool) xml += `    <pool>1</pool>\n`;
 
     const plotSize = pf.plotSize || p.surface_area;
     const builtSize = p.built_area || p.surface_area;
@@ -423,27 +895,18 @@ function toKyeroXml(properties: any[], portalName: string, supabaseUrl: string, 
       if (plotSize) xml += `      <plot>${plotSize}</plot>\n`;
       xml += `    </surface_area>\n`;
     }
-    if (p.year_built) xml += `    <year_built>${p.year_built}</year_built>\n`;
 
     // ── Energy certificate (ALWAYS sent, never "en_tramite") ─
     {
       const cert = resolveCert(p);
       xml += `    <energy_rating>\n`;
       xml += `      <consumption>${esc(cert)}</consumption>\n`;
-      if (p.energy_consumption_value) xml += `      <consumption_value>${p.energy_consumption_value}</consumption_value>\n`;
       xml += `      <emissions>${esc(cert)}</emissions>\n`;
-      if (p.energy_emissions_value) xml += `      <emissions_value>${p.energy_emissions_value}</emissions_value>\n`;
       xml += `    </energy_rating>\n`;
     }
 
-    // ── Condition / orientation ──────────────────────────────
-    if (pf.condition) xml += `    <condition>${pf.condition === 'move_in' ? 'good' : pf.condition}</condition>\n`;
-    if (pf.orientation) xml += `    <orientation>${pf.orientation}</orientation>\n`;
-    if (pf.furnished) xml += `    <furnished>yes</furnished>\n`;
-
     // ── Features (structured) ───────────────────────────────
     const features: string[] = [];
-    if (p.has_pool || pf.communityPool) features.push('pool');
     if (p.has_garage || pf.privateGarage > 0) features.push('parking');
     if (p.has_terrace) features.push('terrace');
     if (p.has_garden || pf.communityGarden) features.push('garden');
@@ -476,74 +939,247 @@ function toKyeroXml(properties: any[], portalName: string, supabaseUrl: string, 
 
     if (features.length) {
       xml += `    <features>\n`;
-      for (const f of [...new Set(features)]) xml += `      <feature>${esc(f)}</feature>\n`;
+      for (const f of [...new Set(features.map(normalizeKyeroFeature).filter(Boolean))]) {
+        xml += `      <feature>${esc(f)}</feature>\n`;
+      }
       xml += `    </features>\n`;
     }
 
-    // ── Tags (CRM labels for portal context) ────────────────
-    if ((p.tags || []).length) {
-      xml += `    <tags>\n`;
-      for (const tag of [...new Set(p.tags || [])]) xml += `      <tag>${esc(tag)}</tag>\n`;
-      xml += `    </tags>\n`;
-    }
-
     // ── Description ─────────────────────────────────────────
-    const tr = translations[p.id];
     xml += `    <desc>\n`;
-    xml += `      <es>${cdata(p.description)}</es>\n`;
-    xml += `      <en>${cdata(tr?.description_en || p.description)}</en>\n`;
+    if (descEs) xml += `      <es>${descEs}</es>\n`;
+    xml += `      <en>${descEn}</en>\n`;
     xml += `    </desc>\n`;
 
-    // ── Title ───────────────────────────────────────────────
-    xml += `    <title>\n`;
-    xml += `      <es>${cdata(p.title)}</es>\n`;
-    xml += `      <en>${cdata(tr?.title_en || p.title)}</en>\n`;
-    xml += `    </title>\n`;
+    xml += `    <notes>${xmlText(translatedTitle)}</notes>\n`;
 
     // ── Images ──────────────────────────────────────────────
-    if (imgs.length) {
-      xml += `    <images>\n`;
-      for (let i = 0; i < imgs.length; i++) {
-        xml += `      <image id="${i + 1}">\n        <url>${esc(imgs[i])}</url>\n      </image>\n`;
+    xml += `    <images>\n`;
+    for (let i = 0; i < allImages.length; i++) {
+      const imageUrl = allImages[i];
+      const isFloorplan = !imgs.includes(imageUrl);
+      xml += `      <image id="${i + 1}">\n`;
+      xml += `        <url>${esc(imageUrl)}</url>\n`;
+      if (isFloorplan) {
+        xml += `        <tags>\n`;
+        xml += `          <tag>floorplan</tag>\n`;
+        xml += `        </tags>\n`;
       }
-      xml += `    </images>\n`;
+      xml += `      </image>\n`;
     }
-
-    // ── Floor plans ─────────────────────────────────────────
-    const plans = (p.floor_plans || []).map((u: string) => proxyImageUrl(u, supabaseUrl));
-    if (plans.length) {
-      xml += `    <plans>\n`;
-      for (let i = 0; i < plans.length; i++) {
-        xml += `      <plan id="${i + 1}">\n        <url>${esc(plans[i])}</url>\n      </plan>\n`;
-      }
-      xml += `    </plans>\n`;
-    }
+    xml += `    </images>\n`;
 
     // ── Videos ──────────────────────────────────────────────
-    if (p.videos?.length) {
-      xml += `    <videos>\n`;
-      for (const v of p.videos) {
-        xml += `      <video><url>${esc(v)}</url></video>\n`;
-      }
-      xml += `    </videos>\n`;
-    }
+    if (videoUrl) xml += `    <video_url>${esc(videoUrl)}</video_url>\n`;
 
     // ── Virtual tour ────────────────────────────────────────
-    if (p.virtual_tour_url) {
-      xml += `    <virtual_tour>${esc(p.virtual_tour_url)}</virtual_tour>\n`;
-    }
+    if (virtualTourUrl) xml += `    <virtual_tour_url>${esc(virtualTourUrl)}</virtual_tour_url>\n`;
 
     // ── URL & status ────────────────────────────────────────
-    xml += `    <url>https://www.legadocoleccion.es/propiedad/${p.id}</url>\n`;
-    if (p.is_featured) xml += `    <featured>1</featured>\n`;
+    xml += `    <url>\n`;
+    xml += `      <es>${esc(propertyUrl)}</es>\n`;
+    xml += `      <en>${esc(propertyUrl)}</en>\n`;
+    xml += `    </url>\n`;
+    if (p.is_featured) xml += `    <prime>1</prime>\n`;
     xml += `  </property>\n`;
   }
 
   xml += `</root>`;
   return xml;
 }
+
+function toThinkSpainXml(properties: PortalProperty[], supabaseUrl: string, translations: Translations = {}): string {
+  let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+  xml += `<root>\n`;
+  xml += `  <thinkspain>\n    <import_version>1.16</import_version>\n  </thinkspain>\n`;
+  xml += `  <agent>\n    <name>Legado Real Estate</name>\n  </agent>\n`;
+
+  for (const p of properties) {
+    const parsedFeatures = parseFeatures(p.features);
+    const englishDescription = cleanPortalText(translations[p.id]?.description_en);
+    if (!englishDescription) {
+      throw new Error(`[portal-xml-feed] Missing English copy for thinkSPAIN property ${p.id}`);
+    }
+
+    const descriptionEs = cleanPortalText(p.description);
+    const descriptionDe = cleanPortalText(
+      extractLocalizedText(readRawTagValue(p, ['description_de', 'desc_de', 'description_german']), ['de'], true),
+    );
+    const descriptionFr = cleanPortalText(
+      extractLocalizedText(readRawTagValue(p, ['description_fr', 'desc_fr', 'description_french']), ['fr'], true),
+    );
+    const descriptionNl = cleanPortalText(
+      extractLocalizedText(readRawTagValue(p, ['description_nl', 'desc_nl', 'description_dutch']), ['nl'], true),
+    );
+
+    const saleType = toThinkSpainSaleType(p.operation);
+    const propertyType = thinkSpainTypeMap[normalizePropertyTypeKey(p.property_type)] || 'Property';
+    const uniqueId = thinkSpainUniqueId(p);
+    const agentRef = String(p.crm_reference || p.id || uniqueId);
+    const euroPrice = Math.round(Number(p.price) || 0);
+    const rawCatastral = readRawTagValue(p, ['catastral', 'cadastral_reference', 'catastro_ref', 'catastro']);
+    const catastral = normalizeCatastralReference(rawCatastral);
+    const streetName = cleanPortalText(p.address);
+    const streetNumber = cleanPortalText(readRawTagValue(p, ['street_number', 'numero', 'number']));
+    const floorNumber = cleanPortalText(String(p.floor_number || p.floor || ''));
+    const doorNumber = cleanPortalText(String(p.door || ''));
+    const town = cleanPortalText(p.city);
+    const locationDetail = cleanPortalText(p.zone);
+    const province = cleanPortalText(p.province);
+    const postcode = cleanPortalText(p.zip_code);
+    const fullAddress = [
+      streetName,
+      streetNumber,
+      floorNumber,
+      doorNumber,
+      postcode,
+      town,
+      province,
+    ].filter(Boolean).join(', ');
+    const cert = resolveCert(p);
+
+    const imageUrls = resolvePortalImageUrls(p)
+      .slice(0, 50)
+      .map((url) => proxyImageUrl(url, supabaseUrl));
+      const videoUrls = Array.isArray(p.videos)
+        ? p.videos
+          .map((url) => sanitizeKyeroMediaUrl(url))
+          .filter((url): url is string => Boolean(url))
+        : [];
+      const virtualTourUrl = sanitizeKyeroMediaUrl(p.virtual_tour_url);
+      const floorPlanUrls = Array.isArray(p.floor_plans)
+        ? p.floor_plans
+          .map((url) => sanitizeKyeroMediaUrl(url))
+          .filter((url): url is string => Boolean(url))
+          .map((url) => /^https?:\/\//i.test(url) ? proxyImageUrl(url, supabaseUrl) : url)
+        : [];
+
+    const featureList = [
+      ...(parsedFeatures.rawFeatures || []),
+      parsedFeatures.seaView ? 'sea view' : '',
+      parsedFeatures.cityView ? 'city view' : '',
+      parsedFeatures.mountainView ? 'mountain view' : '',
+      p.has_terrace ? 'terrace' : '',
+      p.has_garden ? 'private garden' : '',
+      parsedFeatures.communityGarden ? 'community garden' : '',
+      parsedFeatures.communityPool ? 'community pool' : '',
+      p.has_elevator ? 'lift' : '',
+      parsedFeatures.solarium ? 'solarium' : '',
+      parsedFeatures.gatedCommunity ? 'gated community' : '',
+      parsedFeatures.furnished ? 'furnished' : '',
+    ]
+      .map((item) => cleanPortalText(item))
+      .filter(Boolean)
+      .filter((item, index, arr) => arr.indexOf(item) === index)
+      .slice(0, 20);
+
+    const distanceMap = new Map<string, number>();
+    for (const item of parsedFeatures.distances || []) {
+      const key = item.type.trim().toLowerCase();
+      const meters = Number(item.meters);
+      if (!key || !Number.isFinite(meters)) continue;
+      distanceMap.set(key, meters / 1000);
+    }
+
+    xml += `  <property>\n`;
+    xml += `    <last_amended_date>${formatThinkSpainDate(p.updated_at)}</last_amended_date>\n`;
+    xml += `    <unique_id>${esc(uniqueId)}</unique_id>\n`;
+    xml += `    <agent_ref>${esc(agentRef)}</agent_ref>\n`;
+    xml += `    <euro_price>${euroPrice}</euro_price>\n`;
+    xml += `    <currency>EUR</currency>\n`;
+    xml += `    <sale_type>${saleType}</sale_type>\n`;
+    xml += `    <property_type>${esc(propertyType)}</property_type>\n`;
+    if (p.new_build) xml += `    <new_build>1</new_build>\n`;
+    if (p.year_built) xml += `    <year_built>${esc(String(p.year_built))}</year_built>\n`;
+    if (streetName) xml += `    <street_name>${esc(streetName)}</street_name>\n`;
+    if (streetNumber) xml += `    <street_number>${esc(streetNumber)}</street_number>\n`;
+    if (floorNumber && ['Apartment', 'Flat', 'Penthouse', 'Studio', 'Office', 'Loft'].includes(propertyType)) {
+      xml += `    <floor_number>${esc(floorNumber)}</floor_number>\n`;
+    }
+    if (doorNumber && ['Apartment', 'Flat', 'Penthouse', 'Studio', 'Office', 'Loft'].includes(propertyType)) {
+      xml += `    <door_number>${esc(doorNumber)}</door_number>\n`;
+    }
+    if (town) xml += `    <town>${esc(town)}</town>\n`;
+    if (locationDetail) xml += `    <location_detail>${esc(locationDetail)}</location_detail>\n`;
+    if (province) xml += `    <province>${esc(province)}</province>\n`;
+    if (postcode) xml += `    <postcode>${esc(postcode)}</postcode>\n`;
+    if (fullAddress) xml += `    <full_address>${esc(fullAddress)}</full_address>\n`;
+    xml += `    <display_address>${streetName ? '1' : '0'}</display_address>\n`;
+    if (catastral) xml += `    <catastral>${esc(catastral)}</catastral>\n`;
+    if (p.latitude && p.longitude) {
+      xml += `    <location>\n`;
+      xml += `      <latitude>${p.latitude}</latitude>\n`;
+      xml += `      <longitude>${p.longitude}</longitude>\n`;
+      xml += `      <geoapprox>1</geoapprox>\n`;
+      xml += `    </location>\n`;
+    }
+    xml += `    <url>${esc(buildPortalPropertyUrl(p))}</url>\n`;
+    xml += `    <description>\n`;
+    xml += `      <en>${cdata(englishDescription)}</en>\n`;
+    if (descriptionEs) xml += `      <es>${cdata(descriptionEs)}</es>\n`;
+    if (descriptionDe) xml += `      <de>${cdata(descriptionDe)}</de>\n`;
+    if (descriptionNl) xml += `      <nl>${cdata(descriptionNl)}</nl>\n`;
+    if (descriptionFr) xml += `      <fr>${cdata(descriptionFr)}</fr>\n`;
+    xml += `    </description>\n`;
+    if (imageUrls.length > 0) {
+      xml += `    <images>\n`;
+      for (let i = 0; i < imageUrls.length; i += 1) {
+        xml += `      <photo id="${i + 1}">\n`;
+        xml += `        <url>${esc(imageUrls[i])}</url>\n`;
+        xml += `      </photo>\n`;
+      }
+      xml += `    </images>\n`;
+    }
+    if (videoUrls.length > 0 || virtualTourUrl || floorPlanUrls.length > 0) {
+      xml += `    <media>\n`;
+      for (const videoUrl of videoUrls) {
+        const provider = /youtu/i.test(videoUrl) ? 'youtube' : /vimeo/i.test(videoUrl) ? 'vimeo' : 'video';
+        xml += `      <video provider="${esc(provider)}">${esc(videoUrl)}</video>\n`;
+      }
+      if (virtualTourUrl) xml += `      <virtualtour provider="virtualtour">${esc(virtualTourUrl)}</virtualtour>\n`;
+      for (let i = 0; i < floorPlanUrls.length; i += 1) {
+        xml += `      <floorplan title="${esc(`Floorplan ${i + 1}`)}">${esc(floorPlanUrls[i])}</floorplan>\n`;
+      }
+      xml += `    </media>\n`;
+    }
+    if (Number(p.bedrooms) > 0) xml += `    <bedrooms>${Number(p.bedrooms)}</bedrooms>\n`;
+    if (Number(p.bathrooms) > 0) xml += `    <bathrooms>${Number(p.bathrooms)}</bathrooms>\n`;
+    if (Number(parsedFeatures.toilets) > 0) xml += `    <toilets>${Number(parsedFeatures.toilets)}</toilets>\n`;
+    if (Number(p.built_area || p.surface_area) > 0) xml += `    <living_area>${Math.round(Number(p.built_area || p.surface_area))}</living_area>\n`;
+    if (Number(parsedFeatures.plotSize) > 0) xml += `    <plot_size>${Math.round(Number(parsedFeatures.plotSize))}</plot_size>\n`;
+    if (p.has_pool || parsedFeatures.communityPool) xml += `    <pool>1</pool>\n`;
+    if (parsedFeatures.airConditioning) xml += `    <aircon>1</aircon>\n`;
+    if (parsedFeatures.heating) xml += `    <heating>1</heating>\n`;
+    if (p.has_garage || parsedFeatures.privateGarage > 0) xml += `    <garage>1</garage>\n`;
+    if (Number(p.floor_number) > 0) xml += `    <levels>${Number(p.floor_number)}</levels>\n`;
+    if (featureList.length > 0) {
+      xml += `    <features>\n`;
+      for (const feature of featureList) {
+        xml += `      <feature>${esc(feature)}</feature>\n`;
+      }
+      xml += `    </features>\n`;
+    }
+    if (cert && cert !== 'X') {
+      xml += `    <energy_rating>\n`;
+      xml += `      <consumption>${esc(cert)}</consumption>\n`;
+      xml += `      <emissions>${esc(cert)}</emissions>\n`;
+      xml += `    </energy_rating>\n`;
+    }
+    if (distanceMap.has('golf')) xml += `    <km_golf>${formatDistanceKm(distanceMap.get('golf'))}</km_golf>\n`;
+    if (distanceMap.has('town')) xml += `    <km_town>${formatDistanceKm(distanceMap.get('town'))}</km_town>\n`;
+    if (distanceMap.has('airport')) xml += `    <km_airport>${formatDistanceKm(distanceMap.get('airport'))}</km_airport>\n`;
+    if (distanceMap.has('beach')) xml += `    <km_beach>${formatDistanceKm(distanceMap.get('beach'))}</km_beach>\n`;
+    if (distanceMap.has('marina')) xml += `    <km_marina>${formatDistanceKm(distanceMap.get('marina'))}</km_marina>\n`;
+    if (distanceMap.has('countryside')) xml += `    <km_countryside>${formatDistanceKm(distanceMap.get('countryside'))}</km_countryside>\n`;
+    xml += `  </property>\n`;
+  }
+
+  xml += `</root>`;
+  return xml;
+}
+
 // ── Fotocasa format ─────────────────────────────────────────────────────────
-function toFotocasaXml(properties: any[], supabaseUrl: string): string {
+function toFotocasaXml(properties: PortalProperty[], supabaseUrl: string, translations: Translations): string {
   let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
   xml += `<feed xmlns="http://www.fotocasa.es" version="1.0">\n`;
   xml += `  <info>\n    <agency>Legado Real Estate</agency>\n    <date>${new Date().toISOString().substring(0, 10)}</date>\n  </info>\n`;
@@ -553,13 +1189,18 @@ function toFotocasaXml(properties: any[], supabaseUrl: string): string {
     const mapped = typeMap[normalizePropertyTypeKey(p.property_type)] || typeMap.otro;
     const op = operationMap[normalizeOperationKey(p.operation)] || 'sale';
     const pf = parseFeatures(p.features);
+    const translatedTitle = cleanPortalText(translations[p.id]?.title_en);
+    const translatedDescription = cleanPortalText(translations[p.id]?.description_en);
+    if (!translatedTitle || !translatedDescription) {
+      throw new Error(`[portal-xml-feed] Missing English copy for property ${p.id}`);
+    }
 
     xml += `  <ad>\n`;
     xml += `    <id>${esc(p.crm_reference || p.id)}</id>\n`;
     xml += `    <operation>${op === 'rent' ? 'rent' : 'sale'}</operation>\n`;
     xml += `    <property_type>${mapped.fotocasa}</property_type>\n`;
-    xml += `    <title>${cdata(p.title)}</title>\n`;
-    xml += `    <description>${cdata(p.description)}</description>\n`;
+    xml += `    <title>${cdata(translatedTitle)}</title>\n`;
+    xml += `    <description>${cdata(translatedDescription)}</description>\n`;
     xml += `    <price>${p.price || 0}</price>\n`;
 
     // ── Location ────────────────────────────────────────────
@@ -698,7 +1339,7 @@ const pisosEstadoConservacionMap: Record<string, string> = {
 
 const PISOS_INMOBILIARIA_ID = 'LEGADO';
 
-function toPisosXml(properties: any[], supabaseUrl: string): string {
+function toPisosXml(properties: PortalProperty[], supabaseUrl: string, translations: Translations): string {
   let xml = `<?xml version="1.0" encoding="utf-8"?>\n`;
   xml += `<Publicacion>\n`;
   xml += `  <Table Name="Inmuebles">\n`;
@@ -709,6 +1350,11 @@ function toPisosXml(properties: any[], supabaseUrl: string): string {
     const op = normalizeOperationKey(p.operation || 'venta');
     const cert = resolveCert(p);
     const propType = normalizePropertyTypeKey(p.property_type || 'piso');
+    const translatedTitle = cleanPortalText(translations[p.id]?.title_en);
+    const translatedDescription = cleanPortalText(translations[p.id]?.description_en);
+    if (!translatedTitle || !translatedDescription) {
+      throw new Error(`[portal-xml-feed] Missing English copy for property ${p.id}`);
+    }
 
     xml += `    <Inmueble>\n`;
 
@@ -757,7 +1403,7 @@ function toPisosXml(properties: any[], supabaseUrl: string): string {
     xml += `      <SuperficieSolar>${pf.plotSize || 0}</SuperficieSolar>\n`;
 
     // ── Description ─────────────────────────────────────────
-    xml += `      <Descripcion>${cdata(p.description || p.title || 'Propiedad en venta')}</Descripcion>\n`;
+    xml += `      <Descripcion>${cdata(translatedDescription || translatedTitle)}</Descripcion>\n`;
 
     // ── Conservation ────────────────────────────────────────
     xml += `      <EstadoConservacion>${pisosEstadoConservacionMap[pf.condition || ''] || '3'}</EstadoConservacion>\n`;
@@ -967,7 +1613,7 @@ Deno.serve(async (req) => {
       .from('portal_property_exclusions')
       .select('property_id')
       .eq('portal_feed_id', feed.id);
-    const excludedIds = new Set((exclusions || []).map((e: any) => e.property_id));
+    const excludedIds = new Set(((exclusions as ExclusionRow[] | null) || []).map((exclusion) => exclusion.property_id));
 
     // Fetch ALL useful fields for maximum portal quality
     const FIELDS = `id, crm_reference, title, description, property_type, secondary_property_type, operation, price,
@@ -975,8 +1621,9 @@ Deno.serve(async (req) => {
       floor, staircase, door, country,
       city, province, address, zip_code, zone,
       energy_cert, energy_consumption_value, energy_emissions_value, has_elevator, has_garage, has_pool, has_terrace, has_garden,
-      features, images, image_order, videos, virtual_tour_url,
-      latitude, longitude, status, updated_at, is_featured, floor_plans, tags, xml_id, year_built`;
+      features, images, image_order, videos, virtual_tour_url, tags,
+      latitude, longitude, status, updated_at, is_featured, floor_plans, xml_id, year_built, source_metadata,
+      source, source_feed_name`;
 
     const { data: properties, error: propErr } = await supabase
       .from('properties')
@@ -987,32 +1634,58 @@ Deno.serve(async (req) => {
     if (propErr) throw propErr;
 
     // Filter out excluded properties, 'otro' type, and international properties
-    let filtered = (properties || []).filter((p: any) =>
+    let filtered = ((properties as PortalProperty[] | null) || []).filter((p) =>
       !excludedIds.has(p.id) &&
       p.property_type !== 'otro' &&
       (!p.country || p.country === 'España')
     );
 
     const format = feed.format || 'kyero';
+    const sharedKyeroCohortFeed = isSharedKyeroCohortFeed(feed);
 
     // ── Apply feed-level filters ────────────────────────────────────────────
-    const filters = feed.filters as Record<string, any> | null;
+    const filters = feed.filters as Record<string, unknown> | null;
     if (filters?.min_price) {
-      filtered = filtered.filter((p: any) => (p.price || 0) >= filters.min_price);
+      filtered = filtered.filter((p) => (p.price || 0) >= Number(filters.min_price));
     }
     if (filters?.min_images) {
-      filtered = filtered.filter((p: any) => resolvePortalImageUrls(p).length >= filters.min_images);
+      filtered = filtered.filter((p) => resolvePortalImageUrls(p).length >= Number(filters.min_images));
+    }
+    const requiredTags = normalizeTagList(filters?.required_tags);
+    if (requiredTags.length > 0) {
+      filtered = filtered.filter((p) => {
+        const propertyTags = Array.isArray(p.tags) ? p.tags : [];
+        return requiredTags.every((tag) => propertyTags.includes(tag));
+      });
+    }
+    const anyTags = normalizeTagList(filters?.any_tags);
+    if (anyTags.length > 0) {
+      filtered = filtered.filter((p) => {
+        const propertyTags = Array.isArray(p.tags) ? p.tags : [];
+        return anyTags.some((tag) => propertyTags.includes(tag));
+      });
+    }
+    const excludedTags = normalizeTagList(filters?.exclude_tags);
+    if (excludedTags.length > 0) {
+      filtered = filtered.filter((p) => {
+        const propertyTags = Array.isArray(p.tags) ? p.tags : [];
+        return excludedTags.every((tag) => !propertyTags.includes(tag));
+      });
+    }
+
+    if (sharedKyeroCohortFeed) {
+      filtered = filtered.filter((p) => hasKyeroPublicationEligibility(p));
     }
 
     // Auto-tag: add tag to properties that pass filters but don't have it yet
     if (filters?.auto_tag) {
       const tag = filters.auto_tag as string;
       const idsToTag = filtered
-        .filter((p: any) => !(p.tags || []).includes(tag))
-        .map((p: any) => p.id);
+        .filter((p) => !(p.tags || []).includes(tag))
+        .map((p) => p.id);
       if (idsToTag.length > 0) {
         for (const pid of idsToTag) {
-          const prop = filtered.find((p: any) => p.id === pid);
+          const prop = filtered.find((p) => p.id === pid);
           const currentTags = prop?.tags || [];
           await supabase
             .from('properties')
@@ -1021,23 +1694,9 @@ Deno.serve(async (req) => {
         }
       }
     }
-    // ── Duplicate entries for properties with secondary_property_type ───────
-    // Each duplicate gets a suffixed id/ref and the secondary type as primary
-    const extras: any[] = [];
-    for (const p of filtered) {
-      if (p.secondary_property_type && p.secondary_property_type !== p.property_type) {
-        extras.push({
-          ...p,
-          property_type: p.secondary_property_type,
-          secondary_property_type: null,
-          id: p.id + '-T2',
-          crm_reference: p.crm_reference ? p.crm_reference + '-T2' : '',
-        });
-      }
-    }
-    filtered = [...filtered, ...extras];
+    const uniquePreparedCount = filtered.length;
 
-    const activeIds = new Set(filtered.map((p: any) => p.id));
+    const activeIds = new Set(filtered.map((p) => p.id));
 
     // ── Tracking: detect deleted properties ─────────────────────────────────
     // Get all properties previously sent to this portal
@@ -1051,7 +1710,7 @@ Deno.serve(async (req) => {
     const alreadyRemoved: { property_id: string; removed_at: string }[] = [];
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
-    for (const t of (tracking || [])) {
+    for (const t of ((tracking as TrackingRow[] | null) || [])) {
       if (activeIds.has(t.property_id)) continue; // still active, skip
       if (!t.removed_at) {
         newlyRemoved.push(t.property_id);
@@ -1060,23 +1719,20 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Get crm_reference for deleted properties (we need it for the XML)
+    // Get CRM reference for deleted properties so active and deleted records share the same canonical id
     const deletedIds = [...newlyRemoved, ...alreadyRemoved.map(r => r.property_id)];
-    let deletedRefs: Record<string, string> = {};
+    const deletedRefs: Record<string, string> = {};
     if (deletedIds.length > 0) {
       const { data: delProps } = await supabase
         .from('properties')
         .select('id, crm_reference')
         .in('id', deletedIds);
-      for (const dp of (delProps || [])) {
+      for (const dp of ((delProps as PropertyRefRow[] | null) || [])) {
         deletedRefs[dp.id] = dp.crm_reference || dp.id;
       }
     }
 
-    let translations: Translations = {};
-    if (format === 'kyero') {
-      translations = await translatePremiumProperties(filtered);
-    }
+    const translations = buildFastEnglishTranslations(filtered);
 
     // Generate output based on format
     let output: string;
@@ -1085,7 +1741,7 @@ Deno.serve(async (req) => {
     const deletedRefList = deletedIds.map(id => deletedRefs[id] || id);
 
     if (format === 'fotocasa') {
-      output = toFotocasaXml(filtered, sUrl);
+      output = toFotocasaXml(filtered, sUrl, translations);
       if (deletedRefList.length > 0) {
         const deletedXml = deletedRefList.map(ref =>
           `  <ad>\n    <id>${esc(ref)}</id>\n    <status>deleted</status>\n  </ad>`
@@ -1093,8 +1749,11 @@ Deno.serve(async (req) => {
         output = output.replace('</feed>', deletedXml + '\n</feed>');
       }
       contentType = 'application/xml; charset=utf-8';
+    } else if (format === 'thinkspain') {
+      output = toThinkSpainXml(filtered, sUrl, translations);
+      contentType = 'application/xml; charset=utf-8';
     } else if (format === 'pisos' || format === 'todopisos') {
-      output = toPisosXml(filtered, sUrl);
+      output = toPisosXml(filtered, sUrl, translations);
       contentType = 'application/xml; charset=utf-8';
     } else {
       output = toKyeroXml(filtered, feed.portal_name, sUrl, translations);
@@ -1112,9 +1771,9 @@ Deno.serve(async (req) => {
 
     // Upsert active properties
     // Filter out duplicated -T2 entries (non-UUID) for tracking
-    const trackableProperties = filtered.filter((p: any) => !p.id.includes('-T2'));
+    const trackableProperties = filtered.filter((p) => !p.id.includes('-T2'));
     if (trackableProperties.length > 0) {
-      const upsertRows = trackableProperties.map((p: any) => ({
+      const upsertRows = trackableProperties.map((p) => ({
         portal_feed_id: feed.id,
         property_id: p.id,
         first_sent_at: now,
@@ -1151,24 +1810,27 @@ Deno.serve(async (req) => {
         if (error) console.warn('[portal-xml-feed] purge error:', error.message);
       });
 
-    // Update last_accessed_at and properties_count (fire-and-forget)
-    supabase
+    // Persist feed access stats before returning so we can diagnose whether
+    // portals are hitting the current URL/token or an outdated one.
+    const { error: feedUpdateError } = await supabase
       .from('portal_feeds')
       .update({
         last_accessed_at: now,
-        properties_count: filtered.length,
+        updated_at: now,
+        properties_count: uniquePreparedCount,
       })
-      .eq('id', feed.id)
-      .then(({ error }) => {
-        if (error) console.warn('[portal-xml-feed] update error:', error.message);
-      });
+      .eq('id', feed.id);
+
+    if (feedUpdateError) {
+      console.warn('[portal-xml-feed] update error:', feedUpdateError.message);
+    }
 
     return new Response(output, {
       status: 200,
       headers: {
         ...corsHeaders,
         'Content-Type': contentType,
-        'Cache-Control': 'public, max-age=900',
+        'Cache-Control': 'no-store, max-age=0',
       },
     });
   } catch (err) {

@@ -25,7 +25,7 @@ interface UseSupabaseFetchResult<T> {
  *   deps: [user?.id, filterType],
  * });
  */
-export function useSupabaseFetch<T = any>({
+export function useSupabaseFetch<T = unknown>({
   fetcher,
   deps = [],
   debounce = 0,

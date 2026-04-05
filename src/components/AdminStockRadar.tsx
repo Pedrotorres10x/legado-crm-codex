@@ -11,10 +11,11 @@ type Profile = {
   user_id: string;
   full_name: string | null;
 };
+type PropertyStockRow = Parameters<typeof getPropertyStockSummary>[0][number];
 
 const AdminStockRadar = () => {
   const navigate = useNavigate();
-  const [properties, setProperties] = useState<any[]>([]);
+  const [properties, setProperties] = useState<PropertyStockRow[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
 

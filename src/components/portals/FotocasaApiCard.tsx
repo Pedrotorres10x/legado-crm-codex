@@ -45,11 +45,26 @@ export function FotocasaApiCard() {
   const [syncing, setSyncing] = useState(false);
   const [lastResult, setLastResult] = useState<FotocasaSyncResult | null>(null);
   const [lastSync, setLastSync] = useState<string | null>(null);
+  const [bulkSyncState, setBulkSyncState] = useState<{ status: string; sync_run_id?: string | null } | null>(null);
   const [singleRef, setSingleRef] = useState('');
   const [syncProgress, setSyncProgress] = useState<{ offset: number; total: number; succeeded: number; failed: number } | null>(null);
   const [activeSyncRunId, setActiveSyncRunId] = useState<string | null>(null);
   const stagnantPollsRef = useRef(0);
   const lastProcessedRef = useRef<number | null>(null);
+
+  const fetchBulkSyncState = async () => {
+    const { data } = await supabase
+      .from('portal_sync_state')
+      .select('status, metadata')
+      .eq('sync_key', 'fotocasa_bulk_sync')
+      .maybeSingle();
+
+    const metadata = (data?.metadata || {}) as { sync_run_id?: string | null };
+    setBulkSyncState({
+      status: data?.status || 'idle',
+      sync_run_id: typeof metadata.sync_run_id === 'string' ? metadata.sync_run_id : null,
+    });
+  };
 
   useEffect(() => {
     supabase
@@ -83,6 +98,8 @@ export function FotocasaApiCard() {
           sync_run_id: typeof payload.sync_run_id === 'string' ? payload.sync_run_id : undefined,
         });
       });
+
+    void fetchBulkSyncState();
   }, []);
 
   useEffect(() => {
@@ -142,12 +159,14 @@ export function FotocasaApiCard() {
 
         if (!hasMore) {
           setSyncing(false);
+          void fetchBulkSyncState();
           toast.success(`Fotocasa: sincronización completa (${total} inmuebles)`);
           return;
         }
 
         if (stagnantPollsRef.current >= 6) {
           setSyncing(false);
+          void fetchBulkSyncState();
           toast.warning('Fotocasa sigue procesando en segundo plano. Revisa de nuevo en 1-2 minutos.');
         }
       }
@@ -156,7 +175,7 @@ export function FotocasaApiCard() {
     const interval = setInterval(poll, 5000);
     poll();
     return () => clearInterval(interval);
-  }, [syncing]);
+  }, [activeSyncRunId, syncing]);
 
   const callFotocasa = async (action: string) => {
     setSyncing(true);
@@ -182,19 +201,27 @@ export function FotocasaApiCard() {
       if (action === 'sync_all') {
         setLastResult(data);
         setActiveSyncRunId(typeof data.sync_run_id === 'string' ? data.sync_run_id : null);
+        setBulkSyncState({
+          status: data.has_more ? 'running' : 'idle',
+          sync_run_id: typeof data.sync_run_id === 'string' ? data.sync_run_id : null,
+        });
         if (data.has_more) toast.success(`Fotocasa: lote ${data.succeeded}/${data.total_available} enviado, sincronizando el resto automáticamente…`);
         else if (data.succeeded > 0) {
           toast.success(`Fotocasa: ${data.succeeded} sincronizados, ${data.failed} errores`);
           setSyncing(false);
+          void fetchBulkSyncState();
         } else if (hasAuthorizationDenied(data.results)) {
           toast.error('Fotocasa ha rechazado la credencial API');
           setSyncing(false);
+          void fetchBulkSyncState();
         } else if (data.failed > 0) {
           toast.error(`Fotocasa: ${data.failed} errores de ${data.total}`);
           setSyncing(false);
+          void fetchBulkSyncState();
         } else {
           toast.info('Fotocasa: sin inmuebles para sincronizar');
           setSyncing(false);
+          void fetchBulkSyncState();
         }
         setLastSync(new Date().toISOString());
       } else {
@@ -212,6 +239,11 @@ export function FotocasaApiCard() {
       setSyncing(false);
     }
   };
+
+  const isBackendStillRunning =
+    bulkSyncState?.status === 'running' &&
+    !!lastResult?.sync_run_id &&
+    bulkSyncState.sync_run_id === lastResult.sync_run_id;
 
   const handleSingleAction = async (action: 'sync_one' | 'delete') => {
     setSyncing(true);
@@ -276,8 +308,8 @@ export function FotocasaApiCard() {
         {!syncing && lastResult && (
           <div className="flex gap-2 text-xs">
             <Badge variant="secondary">{lastResult.total_available ?? lastResult.total} inmuebles</Badge>
-            <Badge variant={lastResult.has_more ? 'outline' : 'default'}>
-              {lastResult.has_more ? 'En progreso' : `${lastResult.succeeded} ok`}
+            <Badge variant={isBackendStillRunning ? 'outline' : 'default'}>
+              {isBackendStillRunning ? 'En progreso' : `${lastResult.succeeded} ok`}
             </Badge>
             {lastResult.failed > 0 && <Badge variant="destructive">{lastResult.failed} errores</Badge>}
           </div>

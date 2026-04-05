@@ -7,12 +7,31 @@ import { corsHeaders, json, handleCors } from "../_shared/cors.ts";
  * Deduplicates by email/phone, creates contacts + portal_leads + interactions.
  */
 
+type SheetLeadRow = {
+  id?: string | null;
+  full_name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  ad_name?: string | null;
+  campaign_name?: string | null;
+  form_name?: string | null;
+  platform?: string | null;
+  created_time?: string | null;
+  is_organic?: boolean | string | null;
+  [key: string]: unknown;
+};
+
+type GsheetWebhookBody = {
+  secret?: string;
+  rows?: SheetLeadRow[];
+};
+
 Deno.serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
 
   try {
-    const body = await req.json();
+    const body = await req.json() as GsheetWebhookBody;
     const { secret, rows } = body;
 
     // Auth via shared secret
@@ -29,7 +48,7 @@ Deno.serve(async (req) => {
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, serviceKey);
 
-    const results: any[] = [];
+    const results: Array<Record<string, unknown>> = [];
 
     for (const row of rows) {
       const fullName = (row.full_name || "Lead Facebook").trim().substring(0, 100);
@@ -144,8 +163,9 @@ Deno.serve(async (req) => {
 
     console.log(`[gsheet-lead-webhook] Processed ${results.length} leads`);
     return json({ ok: true, processed: results.length, results });
-  } catch (err: any) {
-    console.error("[gsheet-lead-webhook] Error:", err.message || err);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[gsheet-lead-webhook] Error:", message);
     return json({ ok: false, error: "Error al procesar leads" }, 500);
   }
 });

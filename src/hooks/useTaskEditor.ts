@@ -15,6 +15,18 @@ type TaskLike = {
   recurrence?: string | null;
 };
 
+type TaskMutationPayload = {
+  title: string;
+  description: string | null;
+  due_date: string;
+  priority: string;
+  task_type: string;
+  contact_id: string | null;
+  property_id: string | null;
+  agent_id: string;
+  recurrence: string | null;
+};
+
 export const TASK_EDITOR_EMPTY_FORM = {
   title: '',
   description: '',
@@ -95,7 +107,7 @@ export const useTaskEditor = ({
     setFormErrors({});
     setSaving(true);
 
-    const payload: any = {
+    const payload: TaskMutationPayload = {
       title: form.title,
       description: form.description || null,
       due_date: new Date(form.due_date).toISOString(),

@@ -95,7 +95,7 @@ const AdminSatellites = () => {
     }
     const { error } = await supabase
       .from('satellite_config')
-      .update({ config: parsed as any, base_url: editUrl, display_name: editName })
+      .update({ config: parsed, base_url: editUrl, display_name: editName })
       .eq('id', editingSatellite.id);
     if (error) { toast.error('Error al guardar'); return; }
     toast.success('Configuración guardada');

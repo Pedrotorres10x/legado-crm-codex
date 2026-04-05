@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
       .eq('signature_token', token)
       .maybeSingle();
 
-    let title = '📝 Firma de Documento · Legado Inmobiliaria';
+    const title = '📝 Firma de Documento · Legado Inmobiliaria';
     let description = 'Has recibido un documento para firmar de forma digital. Verifica tu identidad, revisa el contenido y firma electrónicamente de forma segura.';
 
     if (signer) {
@@ -45,7 +45,8 @@ Deno.serve(async (req) => {
       }
     }
 
-    const canonicalUrl = `https://legadocrm.lovable.app/firmar/${token}`;
+    const publicAppUrl = (Deno.env.get('PUBLIC_APP_URL') || 'https://legado-crm-codex.vercel.app').replace(/\/+$/, '');
+    const canonicalUrl = `${publicAppUrl}/firmar/${token}`;
 
     // Detect bot vs real browser
     const userAgent = req.headers.get('user-agent') || '';

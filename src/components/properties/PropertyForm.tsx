@@ -9,7 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { MapPinned, Search, Loader2, Sparkles, ImagePlus, Video, Globe, Trash2 } from 'lucide-react';
 import DocumentScanner from '@/components/DocumentScanner';
 import { SPANISH_PROVINCES } from '@/lib/spanish-geo';
-import { propertyTypes } from './PropertyFilters';
+import { propertyTypes } from './property-filters-config';
 import { usePropertyCreateForm } from '@/hooks/usePropertyCreateForm';
 import { useToast } from '@/hooks/use-toast';
 
@@ -18,6 +18,19 @@ interface PropertyFormProps {
   onOpenChange: (open: boolean) => void;
   onCreated: () => void;
 }
+
+type PropertyFormWithExtras = typeof usePropertyCreateForm extends (...args: never[]) => infer T
+  ? T extends { form: infer F }
+    ? F & {
+        zone?: string;
+        has_elevator?: boolean;
+        has_garage?: boolean;
+        has_pool?: boolean;
+        has_terrace?: boolean;
+        has_garden?: boolean;
+      }
+    : never
+  : never;
 
 export const PropertyForm = ({ open, onOpenChange, onCreated }: PropertyFormProps) => {
   const { toast } = useToast();
@@ -52,6 +65,7 @@ export const PropertyForm = ({ open, onOpenChange, onCreated }: PropertyFormProp
     handleReferenceChange,
     handleZipCodeChange,
   } = usePropertyCreateForm({ onCreated, onOpenChange });
+  const propertyForm = form as PropertyFormWithExtras;
 
   return (
     <>
@@ -323,7 +337,7 @@ export const PropertyForm = ({ open, onOpenChange, onCreated }: PropertyFormProp
               </div>
               <div className="space-y-2">
                 <Label>Zona</Label>
-                <Input value={(form as any).zone || ''} onChange={(event) => patch({ zone: event.target.value } as any)} placeholder="Ej: Costa Blanca, Downtown..." />
+                <Input value={propertyForm.zone || ''} onChange={(event) => patch({ zone: event.target.value })} placeholder="Ej: Costa Blanca, Downtown..." />
               </div>
             </div>
 
@@ -338,7 +352,7 @@ export const PropertyForm = ({ open, onOpenChange, onCreated }: PropertyFormProp
               ].map(({ key, label }) => (
                 <div key={key} className="flex items-center justify-between rounded-lg border p-3">
                   <Label className="text-sm">{label}</Label>
-                  <Switch checked={(form as any)[key]} onCheckedChange={(value) => patch({ [key]: value } as any)} />
+                  <Switch checked={Boolean(propertyForm[key as keyof PropertyFormWithExtras])} onCheckedChange={(value) => patch({ [key]: value })} />
                 </div>
               ))}
             </div>

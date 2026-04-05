@@ -25,6 +25,22 @@ interface Props {
   label?: string;
 }
 
+type ChangeRequestInsert = {
+  entity_type: 'contact' | 'property';
+  entity_id: string;
+  entity_label: string;
+  requested_by: string;
+  field_name: string | null;
+  current_value: string | null;
+  new_value: string | null;
+  description: string;
+  status: 'pendiente';
+};
+
+type UserRoleRow = {
+  user_id: string;
+};
+
 const ChangeRequestButton = ({
   entityType,
   entityId,
@@ -53,7 +69,7 @@ const ChangeRequestButton = ({
     setSaving(true);
     try {
       // 1. Guardar solicitud
-      const { error: insertError } = await (supabase as any).from('change_requests').insert({
+      const payload: ChangeRequestInsert = {
         entity_type: entityType,
         entity_id: entityId,
         entity_label: entityLabel,
@@ -63,7 +79,10 @@ const ChangeRequestButton = ({
         new_value: newValue.trim() || null,
         description: description.trim(),
         status: 'pendiente',
-      });
+      };
+      const { error: insertError } = await (supabase.from('change_requests' as never) as {
+        insert: (values: ChangeRequestInsert) => Promise<{ error: Error | null }>;
+      }).insert(payload);
       if (insertError) throw insertError;
 
       // 2. Notificación para admin/coordinadora
@@ -74,13 +93,13 @@ const ChangeRequestButton = ({
 
       if (admins?.length) {
         await supabase.from('notifications').insert(
-          admins.map((a: any) => ({
+          (admins as UserRoleRow[]).map((admin) => ({
             event_type: 'change_request',
             entity_type: entityType,
             entity_id: entityId,
             title: `✏️ Solicitud de cambio: ${entityLabel}`,
             description: description.trim().slice(0, 120),
-            agent_id: a.user_id,
+            agent_id: admin.user_id,
           }))
         );
       }
@@ -89,8 +108,9 @@ const ChangeRequestButton = ({
       setOpen(false);
       setDescription('');
       setNewValue('');
-    } catch (err: any) {
-      toast.error('Error al enviar la solicitud: ' + err.message);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Error desconocido';
+      toast.error('Error al enviar la solicitud: ' + message);
     } finally {
       setSaving(false);
     }

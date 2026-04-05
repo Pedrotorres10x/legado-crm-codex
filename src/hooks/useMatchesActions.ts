@@ -29,6 +29,27 @@ type OfferResolutionDialog = {
   currentNotes: string | null;
 } | null;
 
+type SendVisitDialogData = {
+  id: string;
+  contact_id: string | null;
+  confirmation_token: string;
+  visit_date: string;
+  contacts?: {
+    full_name: string | null;
+    phone: string | null;
+    email: string | null;
+  } | null;
+  properties?: {
+    title: string | null;
+  } | null;
+};
+
+type OfferUpdatePayload = {
+  status: string;
+  response_date?: string;
+  notes?: string | null;
+};
+
 const generateToken = () => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   let result = '';
@@ -49,7 +70,7 @@ export const useMatchesActions = ({
 }) => {
   const [visitDialog, setVisitDialog] = useState(false);
   const [offerDialog, setOfferDialog] = useState(false);
-  const [sendDialog, setSendDialog] = useState<any>(null);
+  const [sendDialog, setSendDialog] = useState<SendVisitDialogData | null>(null);
   const [offerResolutionDialog, setOfferResolutionDialog] = useState<OfferResolutionDialog>(null);
   const [offerLossReason, setOfferLossReason] = useState('');
   const [formLoading, setFormLoading] = useState(false);
@@ -87,7 +108,7 @@ export const useMatchesActions = ({
         agent_id: userId,
         confirmation_token: token,
         confirmation_status: 'pendiente',
-      } as any)
+      })
       .select('*, properties(title), contacts(full_name, phone, email)')
       .single();
     setFormLoading(false);
@@ -125,7 +146,7 @@ export const useMatchesActions = ({
     await onRefresh();
   };
 
-  const sendVisitWhatsApp = async (visit: any) => {
+  const sendVisitWhatsApp = async (visit: SendVisitDialogData) => {
     const contactId = visit.contact_id;
     if (!contactId) {
       toast({
@@ -142,7 +163,13 @@ export const useMatchesActions = ({
 
     try {
       const { data, error } = await supabase.functions.invoke('multichannel-send', {
-        body: { channel: 'whatsapp', contact_id: contactId, text: msg, source: 'visit_confirmation' },
+        body: {
+          channel: 'whatsapp',
+          contact_id: contactId,
+          text: msg,
+          source: 'visit_confirmation',
+          allow_first_whatsapp_links: true,
+        },
       });
       if (error || !data?.ok) {
         throw new Error(data?.error || error?.message || 'Error enviando WhatsApp');
@@ -151,8 +178,8 @@ export const useMatchesActions = ({
         title: '✅ WhatsApp enviado',
         description: `Confirmación enviada a ${visit.contacts?.full_name}`,
       });
-    } catch (error: any) {
-      toast({ title: 'Error WhatsApp', description: error.message, variant: 'destructive' });
+    } catch (error: unknown) {
+      toast({ title: 'Error WhatsApp', description: error instanceof Error ? error.message : 'No se pudo enviar el WhatsApp', variant: 'destructive' });
     }
   };
 
@@ -221,7 +248,7 @@ export const useMatchesActions = ({
 
   const updateOfferStatus = async (id: string, status: string, lossReason?: string) => {
     setFormLoading(true);
-    const payload: Record<string, any> = { status };
+    const payload: OfferUpdatePayload = { status };
 
     if (['aceptada', 'rechazada', 'retirada'].includes(status)) {
       payload.response_date = new Date().toISOString();

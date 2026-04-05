@@ -1,11 +1,20 @@
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 
+type AiSearchFilters = {
+  explanation?: string;
+  [key: string]: unknown;
+};
+
+type AiSearchResponse = {
+  filters?: AiSearchFilters;
+};
+
 export function useAiSearch() {
   const { toast } = useToast();
   const [aiQuery, setAiQuery] = useState('');
   const [aiSearchLoading, setAiSearchLoading] = useState(false);
-  const [aiFilters, setAiFilters] = useState<any>(null);
+  const [aiFilters, setAiFilters] = useState<AiSearchFilters | null>(null);
   const [aiExplanation, setAiExplanation] = useState('');
 
   const doSearch = async (query: string) => {
@@ -22,7 +31,7 @@ export function useAiSearch() {
         },
         body: JSON.stringify({ query }),
       });
-      const data = await resp.json();
+      const data = (await resp.json()) as AiSearchResponse;
       if (data.filters) {
         setAiFilters(data.filters);
         setAiExplanation(data.filters.explanation || '');

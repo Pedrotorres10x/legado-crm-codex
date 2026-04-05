@@ -5,6 +5,28 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 }
 
+interface OrderedImageEntry {
+  name?: string
+}
+
+interface OgPropertyRow {
+  id: string
+  title: string | null
+  description: string | null
+  property_type: string | null
+  operation: string | null
+  price: number | null
+  surface_area: number | null
+  bedrooms: number | null
+  bathrooms: number | null
+  city: string | null
+  province: string | null
+  images: string[] | null
+  status: string | null
+  image_order: Array<string | OrderedImageEntry> | null
+  updated_at: string | null
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -28,7 +50,7 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     )
 
-    let property: any = null
+    let property: OgPropertyRow | null = null
 
     if (id) {
       const { data, error } = await supabase

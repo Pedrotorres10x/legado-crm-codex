@@ -12,9 +12,36 @@ interface Props {
   contactId: string;
 }
 
+type CommunicationLogRow = {
+  id: string;
+  channel: string;
+  direction: string;
+  status: string;
+  source: string | null;
+  subject: string | null;
+  body_preview: string | null;
+  created_at: string;
+  properties?: {
+    id: string;
+    title: string;
+  } | null;
+};
+
+type MatchEmailRow = {
+  id: string;
+  subject: string;
+  status: string;
+  sent_at: string;
+  properties?: {
+    id: string;
+    title: string;
+    city?: string | null;
+  } | null;
+};
+
 const ContactCommunicationHistory = ({ contactId }: Props) => {
-  const [commLogs, setCommLogs] = useState<any[]>([]);
-  const [matchEmails, setMatchEmails] = useState<any[]>([]);
+  const [commLogs, setCommLogs] = useState<CommunicationLogRow[]>([]);
+  const [matchEmails, setMatchEmails] = useState<MatchEmailRow[]>([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
@@ -35,8 +62,8 @@ const ContactCommunicationHistory = ({ contactId }: Props) => {
           .order('sent_at', { ascending: false })
           .limit(200),
       ]);
-      setCommLogs(logsRes.data || []);
-      setMatchEmails(emailsRes.data || []);
+      setCommLogs((logsRes.data || []) as CommunicationLogRow[]);
+      setMatchEmails((emailsRes.data || []) as MatchEmailRow[]);
       setLoading(false);
     };
     load();
@@ -82,7 +109,7 @@ const ContactCommunicationHistory = ({ contactId }: Props) => {
     return null;
   };
 
-  const renderLogRow = (log: any) => (
+  const renderLogRow = (log: CommunicationLogRow) => (
     <div key={log.id} className="flex items-start gap-3 py-2.5 border-b border-border/40 last:border-0">
       <div className="mt-0.5">{directionIcon(log.direction)}</div>
       <div className="flex-1 min-w-0">
@@ -111,7 +138,7 @@ const ContactCommunicationHistory = ({ contactId }: Props) => {
     </div>
   );
 
-  const renderMatchEmailRow = (email: any) => (
+  const renderMatchEmailRow = (email: MatchEmailRow) => (
     <div key={email.id} className="flex items-start gap-3 py-2.5 border-b border-border/40 last:border-0">
       <div className="mt-0.5"><ArrowUpRight className="h-3.5 w-3.5 text-emerald-500" /></div>
       <div className="flex-1 min-w-0">

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -36,20 +36,29 @@ type StagnantContact = {
   severity: 'warn' | 'critical';
 };
 
+type PipelineContactRow = {
+  id: string;
+  full_name: string;
+  pipeline_stage: string;
+  updated_at: string;
+};
+
+type AuditEntryRow = {
+  record_id: string;
+  created_at: string;
+};
+
 const PipelineVelocity = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [stagnant, setStagnant] = useState<StagnantContact[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
+  const userId = user?.id;
 
-  useEffect(() => {
-    if (!user?.id) return;
-    fetchVelocity();
-  }, [user?.id]);
-
-  const fetchVelocity = async () => {
-    const uid = user!.id;
+  const fetchVelocity = useCallback(async () => {
+    if (!userId) return;
+    const uid = userId;
     const now = new Date();
 
     const { data: contacts } = await supabase
@@ -58,13 +67,13 @@ const PipelineVelocity = () => {
       .eq('agent_id', uid)
       .in('status', ['nuevo', 'en_seguimiento', 'activo'])
       .not('pipeline_stage', 'is', null)
-      .in('pipeline_stage', ACTIVE_PIPELINE_STAGES as any);
+      .in('pipeline_stage', ACTIVE_PIPELINE_STAGES);
 
-    const contactList = contacts || [];
+    const contactList = (contacts ?? []) as PipelineContactRow[];
     const contactIds = contactList.map(c => c.id);
 
     // Get latest pipeline_stage change from audit_log
-    let latestStageChangeByContact: Record<string, string> = {};
+    const latestStageChangeByContact: Record<string, string> = {};
     if (contactIds.length > 0) {
       const { data: auditEntries } = await supabase
         .from('audit_log')
@@ -74,7 +83,7 @@ const PipelineVelocity = () => {
         .in('record_id', contactIds)
         .order('created_at', { ascending: false });
 
-      (auditEntries || []).forEach((entry: any) => {
+      ((auditEntries ?? []) as AuditEntryRow[]).forEach((entry) => {
         if (!latestStageChangeByContact[entry.record_id]) {
           latestStageChangeByContact[entry.record_id] = entry.created_at;
         }
@@ -111,7 +120,11 @@ const PipelineVelocity = () => {
     result.sort((a, b) => b.daysSinceMove - a.daysSinceMove);
     setStagnant(result);
     setLoading(false);
-  };
+  }, [userId]);
+
+  useEffect(() => {
+    fetchVelocity();
+  }, [fetchVelocity]);
 
   if (loading || stagnant.length === 0) return null;
 

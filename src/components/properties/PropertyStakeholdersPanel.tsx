@@ -3,6 +3,7 @@ import { ExternalLink, Plus, Rss, User, X } from 'lucide-react';
 
 import PhoneLink from '@/components/PhoneLink';
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 import { useToast } from '@/hooks/use-toast';
 import * as AccordionUI from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
@@ -11,17 +12,67 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 
+type PropertyStakeholderProperty = Pick<
+  Database['public']['Tables']['properties']['Row'],
+  'id' | 'owner_id' | 'source_url' | 'xml_id'
+>;
+
+type OwnerContact = Pick<
+  Database['public']['Tables']['contacts']['Row'],
+  'id' | 'full_name' | 'phone' | 'email'
+>;
+
+type PropertyOwnerRow = {
+  id: string;
+  contact_id: string;
+  role: string;
+  ownership_pct?: number | null;
+  contact?: OwnerContact | null;
+};
+
+type AgentProfile = {
+  id?: string;
+  user_id: string;
+  full_name: string;
+  phone?: string | null;
+  avatar_url?: string | null;
+};
+
+type VisitRow = {
+  contact_id: string;
+  contacts?: { full_name: string | null } | null;
+};
+
+type OfferRow = {
+  contact_id: string;
+  amount?: number | null;
+  status?: string | null;
+  contacts?: OwnerContact | null;
+};
+
+type MatchRow = {
+  demands?: {
+    contact_id?: string | null;
+    contacts?: { full_name: string | null } | null;
+  } | null;
+};
+
+type ContactSearchRow = Pick<
+  Database['public']['Tables']['contacts']['Row'],
+  'id' | 'full_name' | 'contact_type' | 'phone'
+>;
+
 type PropertyStakeholdersPanelProps = {
-  property: any;
-  propertyOwners: any[];
-  agentProfile: any;
-  propertyVisits: any[];
-  propertyOffers: any[];
-  propertyMatches: any[];
+  property: PropertyStakeholderProperty;
+  propertyOwners: PropertyOwnerRow[];
+  agentProfile: AgentProfile | null;
+  propertyVisits: VisitRow[];
+  propertyOffers: OfferRow[];
+  propertyMatches: MatchRow[];
   isAdmin: boolean;
   onNavigateContact: (contactId: string) => void;
   onRefreshOwnersOffers: () => void;
-  onSaveField: (updates: Record<string, any>) => Promise<void>;
+  onSaveField: (updates: Record<string, unknown>) => Promise<void>;
 };
 
 const PropertyStakeholdersPanel = ({
@@ -37,15 +88,15 @@ const PropertyStakeholdersPanel = ({
   onSaveField,
 }: PropertyStakeholdersPanelProps) => {
   const { toast } = useToast();
-  const [allContacts, setAllContacts] = useState<any[]>([]);
+  const [allContacts, setAllContacts] = useState<ContactSearchRow[]>([]);
   const [ownerSearchOpen, setOwnerSearchOpen] = useState(false);
   const [ownerSearch, setOwnerSearch] = useState('');
   const [agentSearchOpen, setAgentSearchOpen] = useState(false);
   const [agentSearch, setAgentSearch] = useState('');
-  const [allProfiles, setAllProfiles] = useState<any[]>([]);
+  const [allProfiles, setAllProfiles] = useState<AgentProfile[]>([]);
 
   const interestedBuyers = useMemo(() => {
-    const buyerMap = new Map<string, { contact: any; hasVisit: boolean; hasOffer: boolean; offerAmount?: number; offerStatus?: string }>();
+    const buyerMap = new Map<string, { contact: Pick<OwnerContact, 'id' | 'full_name'>; hasVisit: boolean; hasOffer: boolean; offerAmount?: number; offerStatus?: string }>();
 
     propertyVisits.forEach((visit) => {
       if (!visit.contacts) return;
@@ -111,12 +162,12 @@ const PropertyStakeholdersPanel = ({
     setAllContacts(data || []);
   };
 
-  const handleAddOwner = async (contact: any) => {
+  const handleAddOwner = async (contact: ContactSearchRow) => {
     const { error } = await supabase.from('property_owners').insert({
       property_id: property.id,
       contact_id: contact.id,
       role: 'propietario',
-    } as any);
+    });
 
     if (error) {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
@@ -156,7 +207,7 @@ const PropertyStakeholdersPanel = ({
     setAllProfiles(data || []);
   };
 
-  const handleAssignAgent = async (profile: any) => {
+  const handleAssignAgent = async (profile: AgentProfile) => {
     await onSaveField({ agent_id: profile.user_id });
     setAgentSearchOpen(false);
     setAgentSearch('');

@@ -1,5 +1,5 @@
 import { useAuth } from '@/contexts/AuthContext';
-import { Home, Shield } from 'lucide-react';
+import { Home, Search, Shield, UserRoundSearch } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import MobileDashboard from '@/components/MobileDashboard';
 import DashboardAgent from '@/pages/DashboardAgent';
@@ -38,6 +38,20 @@ const Dashboard = () => {
               </p>
             </div>
             <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="gap-2"
+                onClick={() => navigate('/demands')}
+              >
+                <Search className="h-4 w-4" />Demandas
+              </Button>
+              <Button
+                variant="outline"
+                className="gap-2"
+                onClick={() => navigate('/buyers-without-demand')}
+              >
+                <UserRoundSearch className="h-4 w-4" />Sin demanda
+              </Button>
               <Button
                 variant={persona === 'agent' ? 'default' : 'outline'}
                 className="gap-2"

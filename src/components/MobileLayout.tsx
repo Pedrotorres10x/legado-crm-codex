@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { hapticLight, hapticMedium } from '@/lib/haptics';
 import {
   LayoutDashboard, Users, Building2,
-  MoreHorizontal, Search, Phone,
+  MoreHorizontal, Search,
   Shield, Globe, LogOut, UserCircle, TrendingUp, ChevronRight, Rss, Wrench, Radar, CheckSquare
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -15,7 +15,6 @@ import { useWorkspacePersona } from '@/hooks/useWorkspacePersona';
 
 import CrmNotificationBell from './CrmNotificationBell';
 import GlobalSearch from './GlobalSearch';
-import { supabase } from '@/integrations/supabase/client';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from './ui/sheet';
 
 const tabs = [
@@ -28,7 +27,7 @@ const tabs = [
 const MobileLayout = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, isAdmin, canViewAll } = useAuth();
+  const { user, canViewAll, signOut } = useAuth();
   const { isAgentMode } = useWorkspacePersona(canViewAll);
   const [moreOpen, setMoreOpen] = useState(false);
 
@@ -37,7 +36,6 @@ const MobileLayout = () => {
 
   const moreLinks = [
     { to: '/tasks', icon: CheckSquare, label: 'Planificación' },
-    { to: '/comms?tab=calls', icon: Phone, label: 'Llamadas' },
     { to: '/profile', icon: UserCircle, label: 'Mi ficha' },
     ...(!isAgentMode
       ? [
@@ -65,7 +63,7 @@ const MobileLayout = () => {
   const handleSignOut = async () => {
     hapticMedium();
     setMoreOpen(false);
-    await supabase.auth.signOut();
+    await signOut();
   };
 
   const isMoreActive = moreLinks.some(l => isActive(l.to));

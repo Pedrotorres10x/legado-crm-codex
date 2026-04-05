@@ -2,6 +2,22 @@ import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
 type ExclusionType = 'email' | 'ip';
+type AnalyticsExclusionInsert = {
+  type: ExclusionType;
+  value: string;
+  label: string;
+};
+
+type AnalyticsExclusionsClient = {
+  from: (table: 'analytics_exclusions') => {
+    insert: (values: AnalyticsExclusionInsert) => Promise<unknown>;
+    delete: () => {
+      eq: (column: 'id', value: string) => Promise<unknown>;
+    };
+  };
+};
+
+const exclusionsClient = supabase as unknown as AnalyticsExclusionsClient;
 
 export function useWebLeadsExclusions(refetchExclusions: () => Promise<unknown>) {
   const [newExcType, setNewExcType] = useState<ExclusionType>('email');
@@ -12,7 +28,7 @@ export function useWebLeadsExclusions(refetchExclusions: () => Promise<unknown>)
   const addExclusion = async () => {
     if (!newExcValue.trim()) return;
     setSavingExc(true);
-    await (supabase as any).from('analytics_exclusions').insert({
+    await exclusionsClient.from('analytics_exclusions').insert({
       type: newExcType,
       value: newExcValue.trim().toLowerCase(),
       label: newExcLabel.trim() || newExcValue.trim(),
@@ -24,7 +40,7 @@ export function useWebLeadsExclusions(refetchExclusions: () => Promise<unknown>)
   };
 
   const removeExclusion = async (id: string) => {
-    await (supabase as any).from('analytics_exclusions').delete().eq('id', id);
+    await exclusionsClient.from('analytics_exclusions').delete().eq('id', id);
     await refetchExclusions();
   };
 

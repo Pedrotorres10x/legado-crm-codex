@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { supabase } from '@/integrations/supabase/client';
@@ -7,14 +7,60 @@ import { useToast } from '@/hooks/use-toast';
 
 const BUCKET = 'property-documents';
 
+type ContractTemplateRow = {
+  id: string;
+  name: string;
+  category: string | null;
+  content: string;
+  agent_id?: string | null;
+};
+
+type GeneratedContractRow = {
+  id: string;
+  agent_id: string | null;
+  created_at: string;
+  content: string;
+  signature_status?: string | null;
+  contract_templates?: {
+    name: string | null;
+    category?: string | null;
+  } | null;
+  contract_signers?: unknown[] | null;
+  contacts?: {
+    full_name: string | null;
+  } | null;
+};
+
+type ProfileRow = {
+  user_id: string;
+  full_name: string | null;
+};
+
+type ContractSignerDetail = {
+  id?: string;
+  signer_label: string;
+  signer_name?: string | null;
+  signer_id_number?: string | null;
+  signer_email?: string | null;
+  signed_at?: string | null;
+  signer_ip?: string | null;
+  signer_user_agent?: string | null;
+  otp_verified?: boolean | null;
+  otp_attempts?: number | null;
+  signature_hash?: string | null;
+  document_hash?: string | null;
+  signature_url?: string | null;
+  signature_status?: string | null;
+};
+
 export function useFreeSignatureManager() {
   const { user, canViewAll } = useAuth();
   const { toast } = useToast();
 
-  const [contracts, setContracts] = useState<any[]>([]);
-  const [templates, setTemplates] = useState<any[]>([]);
+  const [contracts, setContracts] = useState<GeneratedContractRow[]>([]);
+  const [templates, setTemplates] = useState<ContractTemplateRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [profile, setProfile] = useState<any>(null);
+  const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [agentNames, setAgentNames] = useState<Record<string, string>>({});
 
   const [newFromTemplateOpen, setNewFromTemplateOpen] = useState(false);
@@ -33,12 +79,12 @@ export function useFreeSignatureManager() {
   const [previewContent, setPreviewContent] = useState('');
   const [previewTitle, setPreviewTitle] = useState('');
 
-  const [signersDetail, setSignersDetail] = useState<any[]>([]);
+  const [signersDetail, setSignersDetail] = useState<ContractSignerDetail[]>([]);
   const [signersDialogOpen, setSignersDialogOpen] = useState(false);
   const [signersLoading, setSignersLoading] = useState(false);
-  const [certContract, setCertContract] = useState<any>(null);
+  const [certContract, setCertContract] = useState<(GeneratedContractRow & { template_name: string }) | null>(null);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
 
     let contractsQuery = supabase
@@ -56,20 +102,20 @@ export function useFreeSignatureManager() {
       supabase.from('profiles').select('*').eq('user_id', user?.id ?? '').maybeSingle(),
     ]);
 
-    const allContracts = contractsRes.data || [];
+    const allContracts = (contractsRes.data || []) as GeneratedContractRow[];
     setContracts(allContracts);
-    setTemplates(templatesRes.data || []);
-    setProfile(profileRes.data);
+    setTemplates((templatesRes.data || []) as ContractTemplateRow[]);
+    setProfile((profileRes.data || null) as ProfileRow | null);
 
     if (canViewAll && allContracts.length > 0) {
-      const agentIds = [...new Set(allContracts.map((contract: any) => contract.agent_id).filter(Boolean))];
+      const agentIds = [...new Set(allContracts.map((contract) => contract.agent_id).filter(Boolean))];
       if (agentIds.length > 0) {
         const { data: profiles } = await supabase
           .from('profiles')
           .select('user_id, full_name')
           .in('user_id', agentIds);
         const names: Record<string, string> = {};
-        for (const profileItem of profiles || []) {
+        for (const profileItem of (profiles || []) as ProfileRow[]) {
           names[profileItem.user_id] = profileItem.full_name;
         }
         setAgentNames(names);
@@ -77,11 +123,11 @@ export function useFreeSignatureManager() {
     }
 
     setLoading(false);
-  };
+  }, [canViewAll, user?.id]);
 
   useEffect(() => {
-    loadData();
-  }, []);
+    void loadData();
+  }, [loadData]);
 
   const fillTemplate = (content: string) => {
     const today = format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: es });
@@ -99,7 +145,7 @@ export function useFreeSignatureManager() {
   const generateFromTemplate = async () => {
     if (!selectedTemplateId) return;
     setGenerating(true);
-    const template = templates.find((item) => item.id === selectedTemplateId);
+      const template = templates.find((item) => item.id === selectedTemplateId);
     if (!template) {
       setGenerating(false);
       return;
@@ -168,9 +214,9 @@ export function useFreeSignatureManager() {
       if (insertError) throw insertError;
 
       toast({ title: '✅ Documento subido y listo para firmar' });
-      loadData();
-    } catch (error: any) {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+      void loadData();
+    } catch (error: unknown) {
+      toast({ title: 'Error', description: error instanceof Error ? error.message : 'No se pudo subir el documento', variant: 'destructive' });
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -219,9 +265,9 @@ export function useFreeSignatureManager() {
       setNewTextOpen(false);
       setFreeTitle('');
       setFreeContent('');
-      loadData();
-    } catch (error: any) {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+      void loadData();
+    } catch (error: unknown) {
+      toast({ title: 'Error', description: error instanceof Error ? error.message : 'No se pudo crear el documento', variant: 'destructive' });
     } finally {
       setCreatingText(false);
     }
@@ -236,11 +282,11 @@ export function useFreeSignatureManager() {
       supabase.from('generated_contracts').select('*, contract_templates(name)').eq('id', contractId).single(),
     ]);
 
-    setSignersDetail(signersRes.data || []);
+    setSignersDetail((signersRes.data || []) as ContractSignerDetail[]);
     if (contractRes.data) {
       setCertContract({
-        ...contractRes.data,
-        template_name: (contractRes.data as any).contract_templates?.name || 'Documento',
+        ...(contractRes.data as GeneratedContractRow),
+        template_name: (contractRes.data as GeneratedContractRow).contract_templates?.name || 'Documento',
       });
     }
 
@@ -255,7 +301,7 @@ export function useFreeSignatureManager() {
       return;
     }
     toast({ title: 'Documento eliminado' });
-    loadData();
+    void loadData();
   };
 
   const openPreview = (content: string, title: string) => {
@@ -277,7 +323,8 @@ export function useFreeSignatureManager() {
       return;
     }
 
-    const templateName = (contractData as any).contract_templates?.name || 'Documento';
+    const contractRow = contractData as GeneratedContractRow;
+    const templateName = contractRow.contract_templates?.name || 'Documento';
     const now = new Date();
     const formatDate = (date: string) => {
       try {
@@ -302,7 +349,7 @@ export function useFreeSignatureManager() {
       return `${browser} en ${os}`;
     };
 
-    const signersHtml = signersList.map((signer: any, index: number) => `
+    const signersHtml = ((signersList || []) as ContractSignerDetail[]).map((signer, index: number) => `
       <div class="signer-block">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
           <div style="display:flex;align-items:center;gap:10px">
@@ -362,19 +409,19 @@ export function useFreeSignatureManager() {
         <h2>📄 Información del documento</h2>
         <div class="info-grid">
           <div><div class="field-label">Documento</div><div class="field-value">${templateName}</div></div>
-          <div><div class="field-label">Estado</div><div class="field-value">${contractData.signature_status}</div></div>
-          <div><div class="field-label">Fecha de creación</div><div class="field-value">${formatDate(contractData.created_at)}</div></div>
-          <div><div class="field-label">ID Contrato</div><div class="mono" style="font-size:10px;color:#6b7280">${contractData.id}</div></div>
-          ${contractData.content_hash || contractData.document_hash ? `<div style="grid-column:span 2"><div class="field-label">Hash SHA-256 del documento</div><div class="mono" style="font-size:10px;word-break:break-all;color:#6b7280">${contractData.content_hash || contractData.document_hash}</div></div>` : ''}
+          <div><div class="field-label">Estado</div><div class="field-value">${contractRow.signature_status}</div></div>
+          <div><div class="field-label">Fecha de creación</div><div class="field-value">${formatDate(contractRow.created_at)}</div></div>
+          <div><div class="field-label">ID Contrato</div><div class="mono" style="font-size:10px;color:#6b7280">${contractRow.id}</div></div>
+          ${(contractRow as GeneratedContractRow & { content_hash?: string | null; document_hash?: string | null }).content_hash || (contractRow as GeneratedContractRow & { content_hash?: string | null; document_hash?: string | null }).document_hash ? `<div style="grid-column:span 2"><div class="field-label">Hash SHA-256 del documento</div><div class="mono" style="font-size:10px;word-break:break-all;color:#6b7280">${(contractRow as GeneratedContractRow & { content_hash?: string | null; document_hash?: string | null }).content_hash || (contractRow as GeneratedContractRow & { content_hash?: string | null; document_hash?: string | null }).document_hash}</div></div>` : ''}
         </div>
         <h2>📎 Contenido del documento</h2>
         ${(() => {
-          const urlMatch = contractData.content?.match(/https?:\/\/[^\\s]+\\.(pdf|PDF)(?:\\?[^\\s]*)?/);
+          const urlMatch = contractRow.content?.match(/https?:\/\/[^\s]+\.(pdf|PDF)(?:\?[^\s]*)?/);
           const pdfUrl = urlMatch?.[0];
           if (pdfUrl) {
             return `<div style="margin-bottom:20px"><a href="${pdfUrl}" target="_blank" rel="noopener noreferrer" style="color:#6d28d9;text-decoration:underline;font-size:13px">📄 Ver documento PDF adjunto ↗</a></div>`;
           }
-          return `<div class="doc-section" style="margin-bottom:20px">${contractData.content?.replace(/\\n/g, '<br>') || ''}</div>`;
+          return `<div class="doc-section" style="margin-bottom:20px">${contractRow.content?.replace(/\n/g, '<br>') || ''}</div>`;
         })()}
         <h2>✍️ Firmantes (${signersList.length})</h2>
         ${signersHtml}

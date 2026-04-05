@@ -10,6 +10,8 @@ interface Props {
   propertyStatus: string;
 }
 
+type PropertyDocumentsManagerResult = ReturnType<typeof usePropertyDocumentsManager>;
+
 const PropertyDocumentsSection = ({ propertyId, propertyStatus }: Props) => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -56,6 +58,11 @@ const PropertyDocumentsSection = ({ propertyId, propertyStatus }: Props) => {
     toast,
   });
 
+  const typedLegalTrafficLight = legalTrafficLight as PropertyDocumentsManagerResult['legalTrafficLight'];
+  const typedDocsWithAiIssues = docsWithAiIssues as PropertyDocumentsManagerResult['docsWithAiIssues'];
+  const typedDocsValidatedByAi = docsValidatedByAi as PropertyDocumentsManagerResult['docsValidatedByAi'];
+  const typedGetAiSummary = getAiSummary as PropertyDocumentsManagerResult['getAiSummary'];
+
   return (
     <Card className="animate-fade-in-up">
       <PropertyDocumentsChecklistPanel
@@ -63,16 +70,16 @@ const PropertyDocumentsSection = ({ propertyId, propertyStatus }: Props) => {
         reanalyzingAll={reanalyzingAll}
         handleReanalyzeAll={handleReanalyzeAll}
         onAddDocument={() => setShowAdd(true)}
-        legalTrafficLight={legalTrafficLight as any}
+        legalTrafficLight={typedLegalTrafficLight}
         expiredDocs={expiredDocs}
         expiringDocs={expiringDocs}
         missingRequired={missingRequired}
         horusDocs={horusDocs}
-        docsWithAiIssues={docsWithAiIssues as any}
-        docsValidatedByAi={docsValidatedByAi as any}
+        docsWithAiIssues={typedDocsWithAiIssues}
+        docsValidatedByAi={typedDocsValidatedByAi}
         docs={docs}
         propertyStatus={propertyStatus}
-        getAiSummary={getAiSummary as any}
+        getAiSummary={typedGetAiSummary}
         reanalyzingDocId={reanalyzingDocId}
         handleReanalyzeDocument={handleReanalyzeDocument}
         handleDelete={handleDelete}

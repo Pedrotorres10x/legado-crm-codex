@@ -17,8 +17,33 @@ import { corsHeaders, json, handleCors } from '../_shared/cors.ts';
  * Setup required:
  * 1. Configure MX record for inbound.planhogar.es → Brevo inbound servers
  * 2. In Brevo dashboard → Transactional → Inbound Parsing → Add domain
- * 3. Set webhook URL: https://srhkvthmzusfrbqtijlw.supabase.co/functions/v1/brevo-inbound
+ * 3. Set webhook URL: https://edeprsrdumcnhixijlfu.supabase.co/functions/v1/brevo-inbound
  */
+
+interface BrevoRecipient {
+  Address?: string | null;
+  Email?: string | null;
+}
+
+interface BrevoItem {
+  RawTextBody?: string | null;
+  TextBody?: string | null;
+}
+
+interface BrevoInboundPayload {
+  Sender?: {
+    Email?: string | null;
+    Name?: string | null;
+  } | null;
+  Recipient?: BrevoRecipient[] | BrevoRecipient | string | null;
+  Recipients?: BrevoRecipient[] | BrevoRecipient | string | null;
+  Subject?: string | null;
+  RawTextBody?: string | null;
+  TextBody?: string | null;
+  ExtractedMarkdownMessage?: string | null;
+  Items?: BrevoItem[] | null;
+  MessageId?: string | null;
+}
 
 Deno.serve(async (req) => {
   const corsResponse = handleCors(req);
@@ -39,20 +64,20 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: "unauthorized" }, 401);
     }
 
-    let body: any;
+    let body: BrevoInboundPayload;
     const contentType = req.headers.get("content-type") || "";
 
     // Brevo can send as JSON or multipart form data
     if (contentType.includes("application/json")) {
-      body = await req.json();
+      body = await req.json() as BrevoInboundPayload;
     } else if (contentType.includes("multipart/form-data") || contentType.includes("application/x-www-form-urlencoded")) {
       const formData = await req.formData();
       // Brevo sends the payload in an "items" field or as individual fields
       const itemsRaw = formData.get("items");
       if (itemsRaw) {
-        body = JSON.parse(itemsRaw as string);
+        body = JSON.parse(itemsRaw as string) as BrevoInboundPayload;
         // items is an array, take first
-        if (Array.isArray(body)) body = body[0];
+        if (Array.isArray(body)) body = (body[0] ?? {}) as BrevoInboundPayload;
       } else {
         // Try individual fields
         body = {
@@ -64,7 +89,7 @@ Deno.serve(async (req) => {
         };
       }
     } else {
-      body = await req.json();
+      body = await req.json() as BrevoInboundPayload;
     }
 
     console.log("[brevo-inbound] Received email from:", body?.Sender?.Email, "to:", JSON.stringify(body?.Recipient));
@@ -75,7 +100,7 @@ Deno.serve(async (req) => {
     let contactId: string | null = null;
 
     for (const r of (Array.isArray(recipients) ? recipients : [recipients])) {
-      const addr = r?.Address || r?.Email || r || "";
+      const addr = typeof r === "string" ? r : r?.Address || r?.Email || "";
       const match = addr.match(/campaign\+([a-f0-9-]{36})@/i);
       if (match) {
         contactId = match[1];
@@ -136,7 +161,7 @@ Deno.serve(async (req) => {
       }),
     });
 
-    const fwdResult = await fwdResponse.json();
+    const fwdResult = await fwdResponse.json() as Record<string, unknown>;
     console.log(`[brevo-inbound] Forwarded to inbound handler:`, fwdResult);
 
     return json({
@@ -145,8 +170,9 @@ Deno.serve(async (req) => {
       subject: body?.Subject,
       forwarded: fwdResult,
     });
-  } catch (e: any) {
-    console.error("[brevo-inbound] Error:", e.message);
-    return json({ ok: false, error: e.message }, 500);
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+    console.error("[brevo-inbound] Error:", message);
+    return json({ ok: false, error: message }, 500);
   }
 });

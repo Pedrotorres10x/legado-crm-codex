@@ -25,7 +25,7 @@ export type SessionDetail = {
   pageCount: number;
 };
 
-const NOISE_PATTERNS = [/__lovable_token/, /forceHideBadge/, /fbclid/, /gclid/, /utm_/];
+const NOISE_PATTERNS = [/forceHideBadge/, /fbclid/, /gclid/, /utm_/];
 
 function madridNow(): Date {
   return toMadrid(new Date().toISOString());
@@ -59,7 +59,6 @@ function trafficSource(referrer: string | null, pageview?: { utm_source?: string
   if (hostname.includes('linkedin')) return 'LinkedIn';
   if (hostname.includes('youtube')) return 'YouTube';
   if (hostname.includes('whatsapp')) return 'WhatsApp';
-  if (hostname.includes('lovable')) return 'Preview (internal)';
   return hostname || 'Otros';
 }
 

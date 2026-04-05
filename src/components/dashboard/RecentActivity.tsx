@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { TrendingUp, ArrowUpRight, Phone, Mail, Eye, MessageCircle, Users, FileText, PenTool, ShieldAlert } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -18,6 +19,27 @@ type ActivityItem = {
   at: string;
   icon: React.ElementType;
 };
+
+type InteractionRow = Pick<
+  Database['public']['Tables']['interactions']['Row'],
+  'id' | 'interaction_type' | 'subject' | 'interaction_date'
+> & {
+  contacts: { full_name: string | null } | null;
+};
+
+type ContractRow = Pick<
+  Database['public']['Tables']['generated_contracts']['Row'],
+  'id' | 'created_at' | 'signature_status'
+> & {
+  contacts: { full_name: string | null } | null;
+  properties: { title: string | null } | null;
+  contract_templates: { name: string | null; category: string | null } | null;
+};
+
+type ClosingTaskRow = Pick<
+  Database['public']['Tables']['tasks']['Row'],
+  'id' | 'title' | 'source' | 'created_at'
+>;
 
 const RecentActivity = () => {
   const { user } = useAuth();
@@ -54,7 +76,7 @@ const RecentActivity = () => {
         tasksQuery,
       ]);
 
-      const interactionItems: ActivityItem[] = (interactionsRes.data || []).map((activity: any) => ({
+      const interactionItems: ActivityItem[] = ((interactionsRes.data || []) as InteractionRow[]).map((activity) => ({
         id: `interaction-${activity.id}`,
         kind: 'interaction',
         title: activity.subject || activity.interaction_type,
@@ -63,7 +85,7 @@ const RecentActivity = () => {
         icon: typeIcons[activity.interaction_type] || FileText,
       }));
 
-      const contractItems: ActivityItem[] = (contractsRes.data || []).map((contract: any) => {
+      const contractItems: ActivityItem[] = ((contractsRes.data || []) as ContractRow[]).map((contract) => {
         const statusLabel = contract.signature_status === 'firmado'
           ? 'Contrato firmado'
           : contract.signature_status === 'pendiente'
@@ -81,7 +103,7 @@ const RecentActivity = () => {
         };
       });
 
-      const taskItems: ActivityItem[] = (tasksRes.data || []).map((task: any) => ({
+      const taskItems: ActivityItem[] = ((tasksRes.data || []) as ClosingTaskRow[]).map((task) => ({
         id: `task-${task.id}`,
         kind: 'closing_task',
         title: task.title,

@@ -12,6 +12,16 @@ type SimpleOption = {
   full_name?: string | null;
 };
 
+type VisitConfirmation = {
+  confirmation_token: string;
+};
+
+type MatchAiResult = {
+  score: number;
+  reasons?: string[];
+  recommendation?: string | null;
+} | null;
+
 type VisitForm = {
   property_id: string;
   contact_id: string;
@@ -119,9 +129,9 @@ export const MatchVisitDialog = ({
 );
 
 type VisitConfirmationDialogProps = {
-  visit: any;
+  visit: VisitConfirmation | null;
   onOpenChange: () => void;
-  onSendWhatsApp: (visit: any) => void;
+  onSendWhatsApp: (visit: VisitConfirmation) => void;
   onCopyLink: (token: string) => void;
 };
 
@@ -359,7 +369,7 @@ export const MatchDiscardDialog = ({
 type AiDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  result: any;
+  result: MatchAiResult;
 };
 
 export const MatchAiScoringDialog = ({ open, onOpenChange, result }: AiDialogProps) => (

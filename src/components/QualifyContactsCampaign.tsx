@@ -16,15 +16,43 @@ interface ReviewItem {
   created_at: string;
 }
 
+type QualifyStats = {
+  pending_send: number;
+  pending_response: number;
+  converted_comprador: number;
+  converted_prospecto: number;
+  no_contactar: number;
+  needs_review: number;
+};
+
+type CommunicationLogRow = {
+  id: string;
+  contact_id: string;
+  body_preview?: string | null;
+  metadata?: {
+    contact_name?: string;
+    original_text?: string;
+    classification?: string;
+  } | null;
+  created_at: string;
+  status?: string | null;
+};
+
 const QualifyContactsCampaign = () => {
   const queryClient = useQueryClient();
-  const [previewData, setPreviewData] = useState<any>(null);
+  const [previewData, setPreviewData] = useState<{
+    contact_name?: string;
+    contact_type?: string;
+    channel?: string;
+    remaining?: number;
+    message?: { subject?: string; html?: string; text?: string };
+  } | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
   // Fetch stats from edge function
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['qualify-stats'],
-    queryFn: async () => {
+    queryFn: async (): Promise<QualifyStats> => {
       const { data, error } = await supabase.functions.invoke('campaign-qualify', {
         body: { stats_only: true },
       });
@@ -46,7 +74,7 @@ const QualifyContactsCampaign = () => {
         .order('created_at', { ascending: false })
         .limit(100);
 
-      return (data || []).map((item: any) => ({
+      return ((data || []) as CommunicationLogRow[]).map((item) => ({
         id: item.id,
         contact_id: item.contact_id,
         contact_name: item.metadata?.contact_name || 'Desconocido',
@@ -72,7 +100,10 @@ const QualifyContactsCampaign = () => {
       if (data.errors?.length) toast.warning(`${data.errors.length} errores`);
       queryClient.invalidateQueries({ queryKey: ['qualify-stats'] });
     },
-    onError: (error: any) => toast.error(`Error: ${error.message}`),
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : 'Error desconocido';
+      toast.error(`Error: ${message}`);
+    },
   });
 
   const handlePreview = async () => {
@@ -83,8 +114,9 @@ const QualifyContactsCampaign = () => {
       });
       if (error) throw error;
       setPreviewData(data);
-    } catch (e: any) {
-      toast.error(`Error: ${e.message}`);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Error desconocido';
+      toast.error(`Error: ${message}`);
     } finally {
       setPreviewLoading(false);
     }
@@ -92,7 +124,7 @@ const QualifyContactsCampaign = () => {
 
   // Manual classification
   const manualClassify = async (contactId: string, classification: string, logId: string) => {
-    const updateData: any = {};
+    const updateData: Record<string, string | string[] | null> = {};
     const { data: contact } = await supabase
       .from('contacts')
       .select('tags')
@@ -122,7 +154,7 @@ const QualifyContactsCampaign = () => {
     await supabase.from('contacts').update(updateData).eq('id', contactId);
     await supabase.from('communication_logs').update({
       status: 'clasificado',
-      metadata: { classification, manual: true } as any,
+      metadata: { classification, manual: true },
     }).eq('id', logId);
 
     toast.success('Contacto reclasificado manualmente');

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Activity, ArrowRight, Building2, Handshake, Home } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 import { getTeamKpiSummaries } from '@/lib/agent-kpis';
 import { getAgentAutonomyStatus, getAgentCommercialFocus, getAgentStockRows, getPropertyStockSummary } from '@/lib/property-stock-health';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,6 +14,11 @@ type AgentProfile = {
   user_id: string;
   full_name: string | null;
 };
+
+type StockPropertyRow = Pick<
+  Database['public']['Tables']['properties']['Row'],
+  'id' | 'title' | 'status' | 'agent_id' | 'mandate_type' | 'mandate_end' | 'xml_id' | 'source' | 'price' | 'images' | 'description'
+>;
 
 type EngineState = {
   activity: {
@@ -139,9 +145,10 @@ const AdminCommercialEngine = () => {
       ]);
 
       const agents = ((profiles || []) as AgentProfile[]).filter((agent) => agent.full_name);
+      const stockProperties = (properties as StockPropertyRow[] | null) || [];
       const { summaries } = await getTeamKpiSummaries(agents);
-      const stock = getPropertyStockSummary((properties || []) as any[]);
-      const stockRows = getAgentStockRows((properties || []) as any[]);
+      const stock = getPropertyStockSummary(stockProperties);
+      const stockRows = getAgentStockRows(stockProperties);
       const agentNames = new Map(agents.map((agent) => [agent.user_id, agent.full_name || 'Sin nombre']));
 
       const touchesGapAgents = summaries.filter(

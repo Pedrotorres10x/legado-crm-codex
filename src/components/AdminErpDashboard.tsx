@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useCallback, useEffect, useState, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -31,6 +31,15 @@ interface LogEntry {
   http_status: number | null;
   created_at: string;
 }
+type SatelliteConfigRow = {
+  satellite_key: string;
+  display_name?: string | null;
+  is_active: boolean;
+  last_heartbeat?: string | null;
+};
+type ChartEntry = {
+  day: string;
+} & Record<string, number | string>;
 
 const TARGET_LABELS: Record<string, string> = {
   website: 'Legado Colección',
@@ -62,7 +71,7 @@ const AdminErpDashboard = () => {
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     const since = getSince(period).toISOString();
 
@@ -72,7 +81,7 @@ const AdminErpDashboard = () => {
         .gte('created_at', since).order('created_at', { ascending: false }).limit(500),
     ]);
 
-    const satData = (satRes.data || []) as any[];
+    const satData = (satRes.data || []) as SatelliteConfigRow[];
     const logData = (logsRes.data || []) as LogEntry[];
 
     const statuses: SatelliteStatus[] = satData.map(s => {
@@ -95,9 +104,9 @@ const AdminErpDashboard = () => {
     setLogs(logData);
     setPage(0);
     setLoading(false);
-  };
+  }, [period]);
 
-  useEffect(() => { fetchData(); }, [period]);
+  useEffect(() => { void fetchData(); }, [fetchData]);
 
   // Filtered logs for table
   const filteredLogs = useMemo(() => {
@@ -123,7 +132,7 @@ const AdminErpDashboard = () => {
 
     const days = Object.keys(dayMap).reverse();
     return days.map(day => {
-      const entry: any = { day };
+      const entry: ChartEntry = { day };
       satellites.forEach(s => {
         entry[`${s.key}_ok`] = dayMap[day]?.[s.key]?.ok || 0;
         entry[`${s.key}_error`] = dayMap[day]?.[s.key]?.error || 0;

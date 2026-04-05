@@ -4,6 +4,7 @@ import { es } from 'date-fns/locale';
 import { supabase } from '@/integrations/supabase/client';
 import { buildClosingOperationalBlockers } from '@/lib/closing-ops';
 import { hasDistributionReady, hasPublishBasics, isAvailablePropertyStock, isMandateExpired } from '@/lib/property-stock-health';
+import { sortOperationsItems } from '@/lib/operations-feed';
 
 type PropertyRow = {
   id: string;
@@ -118,6 +119,16 @@ type LeadContactRow = {
   updated_at: string;
   agent_id: string | null;
   tags: string[] | null;
+};
+
+type PropertyDocumentTypeRow = {
+  doc_type: string | null;
+};
+
+type GeneratedContractRow = {
+  generated_contracts?: {
+    signature_status?: string | null;
+  } | null;
 };
 
 const AUTO_TASK_SOURCE_LABELS: Record<string, string> = {
@@ -325,9 +336,9 @@ export const useOperationsFeed = ({
           supabase.from('property_owners').select('id', { count: 'exact', head: true }).eq('property_id', property.id),
         ]);
 
-        const uploadedDocTypes = Array.from(new Set((docsRes.data || []).map((doc: any) => doc.doc_type).filter(Boolean)));
-        const pendingSignatureCount = (signaturesRes.data || [])
-          .filter((doc: any) => doc.generated_contracts?.signature_status === 'pendiente')
+        const uploadedDocTypes = Array.from(new Set(((docsRes.data || []) as PropertyDocumentTypeRow[]).map((doc) => doc.doc_type).filter(Boolean)));
+        const pendingSignatureCount = ((signaturesRes.data || []) as GeneratedContractRow[])
+          .filter((doc) => doc.generated_contracts?.signature_status === 'pendiente')
           .length;
         const ownerCount = ownersRes.count || 0;
         const analysis = buildClosingOperationalBlockers({
@@ -372,10 +383,10 @@ export const useOperationsFeed = ({
       }
 
       const stockRows = [...new Map([...legalRows, ...closingRows].map((property) => [property.id, property])).values()]
-        .filter((property) => isAvailablePropertyStock(property as any));
+        .filter((property) => isAvailablePropertyStock(property));
 
       for (const property of stockRows) {
-        if (isMandateExpired(property as any)) {
+        if (isMandateExpired(property)) {
           nextItems.push({
             id: `stock-mandate-${property.id}`,
             kind: 'stock',
@@ -393,14 +404,14 @@ export const useOperationsFeed = ({
           });
         }
 
-        if (!hasPublishBasics(property as any)) {
+        if (!hasPublishBasics(property)) {
           nextItems.push({
             id: `stock-publish-${property.id}`,
             kind: 'stock',
             severity: 'media',
             title: `Ficha floja: ${property.title || 'Inmueble'}`,
             summary: 'Faltan básicos de publicación como precio, fotos o descripción consistente para mover mejor este stock.',
-            meta: [property.city, hasDistributionReady(property as any) ? 'Feed activo' : 'Sin feed'].filter(Boolean).join(' · ') || 'Stock publicable',
+            meta: [property.city, hasDistributionReady(property) ? 'Feed activo' : 'Sin feed'].filter(Boolean).join(' · ') || 'Stock publicable',
             route: `/properties/${property.id}#ficha`,
             routeLabel: 'Completar ficha',
             secondaryRoute: `/properties/${property.id}#fotos`,
@@ -411,7 +422,7 @@ export const useOperationsFeed = ({
           });
         }
 
-        if (hasPublishBasics(property as any) && !hasDistributionReady(property as any)) {
+        if (hasPublishBasics(property) && !hasDistributionReady(property)) {
           nextItems.push({
             id: `stock-distribution-${property.id}`,
             kind: 'stock',
@@ -753,22 +764,9 @@ export const useOperationsFeed = ({
         });
       }
 
-      const severityWeight = { alta: 0, media: 1 };
-      const kindWeight = { closing: 0, signature: 1, deed: 2, offer: 3, visit: 4, lead: 5, legal: 6, task: 7 };
-
-      nextItems.sort((left, right) => {
-        const severityDiff = severityWeight[left.severity] - severityWeight[right.severity];
-        if (severityDiff !== 0) return severityDiff;
-
-        const kindDiff = kindWeight[left.kind] - kindWeight[right.kind];
-        if (kindDiff !== 0) return kindDiff;
-
-        return new Date(right.updatedAt || 0).getTime() - new Date(left.updatedAt || 0).getTime();
-      });
-
       if (cancelled) return;
 
-      setItems(nextItems);
+      setItems(sortOperationsItems(nextItems));
       setLoading(false);
     };
 

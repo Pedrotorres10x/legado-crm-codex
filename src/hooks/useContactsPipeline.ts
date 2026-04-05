@@ -61,6 +61,13 @@ type Params = {
   stageFilter: string | null;
 };
 
+type PipelineContact = {
+  id: string;
+  created_at: string;
+  contact_type: string;
+  pipeline_stage?: string | null;
+};
+
 export const useContactsPipeline = ({
   userId,
   effectiveViewMode,
@@ -71,11 +78,11 @@ export const useContactsPipeline = ({
   pipelineTab,
   stageFilter,
 }: Params) => {
-  const [contacts, setContacts] = useState<any[]>([]);
+  const [contacts, setContacts] = useState<PipelineContact[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [typeCounts, setTypeCounts] = useState<Record<string, number>>({});
-  const [kanbanContacts, setKanbanContacts] = useState<any[]>([]);
+  const [kanbanContacts, setKanbanContacts] = useState<PipelineContact[]>([]);
   const [kanbanPage, setKanbanPage] = useState(1);
   const [kanbanTotal, setKanbanTotal] = useState(0);
 
@@ -87,13 +94,13 @@ export const useContactsPipeline = ({
     if (!hasSearch) {
       if (pipelineTypes && pipelineTypes.length > 0) {
         query = pipelineTypes.length === 1
-          ? query.eq('contact_type', pipelineTypes[0] as any)
-          : query.in('contact_type', pipelineTypes as any);
+          ? query.eq('contact_type', pipelineTypes[0])
+          : query.in('contact_type', pipelineTypes);
       } else if (typeFilterValue !== 'all') {
-        query = query.eq('contact_type', typeFilterValue as any);
+        query = query.eq('contact_type', typeFilterValue);
       }
       if (stage) {
-        query = query.eq('pipeline_stage', stage as any);
+        query = query.eq('pipeline_stage', stage);
       }
     }
 
@@ -125,7 +132,7 @@ export const useContactsPipeline = ({
           query = query.contains('tags', [term]);
           break;
         default: {
-          const isPhone = /^[\d\s\+\-()]{3,}$/.test(term);
+          const isPhone = /^[\d\s+\-()]{3,}$/.test(term);
           const isEmail = /@/.test(term);
           if (isPhone) {
             const digits = term.replace(/\D/g, '');
@@ -148,7 +155,7 @@ export const useContactsPipeline = ({
     const to = from + CONTACTS_PAGE_SIZE - 1;
     const types = PIPELINE_TYPE_MAP[pipelineTab] ?? ['comprador'];
     const { data, count } = await buildQuery(search, filterType, showAll, types, stageFilter).range(from, to);
-    setContacts(data || []);
+    setContacts((data || []) as PipelineContact[]);
     setTotalCount(count ?? 0);
   }, [buildQuery, filterType, pipelineTab, search, showAll, stageFilter]);
 
@@ -156,7 +163,7 @@ export const useContactsPipeline = ({
     const types = ['comprador', 'ambos', 'propietario', 'prospecto', 'contacto', 'comprador_cerrado', 'vendedor_cerrado', 'colaborador', 'statefox'];
     const typeResults = await Promise.all(
       types.map((type) =>
-        supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('contact_type', type as any).then(({ count }) => ({ type, count: count ?? 0 }))
+        supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('contact_type', type).then(({ count }) => ({ type, count: count ?? 0 }))
       )
     );
     const counts: Record<string, number> = {};
@@ -170,9 +177,9 @@ export const useContactsPipeline = ({
     const to = from + CONTACTS_PAGE_SIZE - 1;
     let query = supabase.from('contacts').select('*', { count: 'exact' }).order('created_at', { ascending: false });
     if (!showAll && userId) query = query.eq('agent_id', userId);
-    query = types.length === 1 ? query.eq('contact_type', types[0] as any) : query.in('contact_type', types as any);
+    query = types.length === 1 ? query.eq('contact_type', types[0]) : query.in('contact_type', types);
     const { data, count } = await query.range(from, to);
-    setKanbanContacts(data || []);
+    setKanbanContacts((data || []) as PipelineContact[]);
     setKanbanTotal(count ?? 0);
   }, [pipelineTab, showAll, userId]);
 

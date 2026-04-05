@@ -17,6 +17,79 @@ import { corsHeaders, json, handleCors } from '../_shared/cors.ts';
 const FOLLOWUP_CADENCE_DAYS = [3, 5, 7]; // after 1st, 2nd, 3rd message
 const MAX_ATTEMPTS = 4; // initial + 3 follow-ups
 
+type SupabaseClient = ReturnType<typeof createClient>;
+
+interface CampaignClassifyBody {
+  batch_size?: number;
+  preview?: boolean;
+  agent_name?: string;
+  mode?: "initial" | "followup";
+}
+
+interface ClassifyContact {
+  id: string;
+  full_name: string | null;
+  phone: string | null;
+  phone2: string | null;
+  email: string | null;
+  city: string | null;
+  nationality: string | null;
+  notes: string | null;
+  preferred_language: string | null;
+  tags: string[] | null;
+  agent_id?: string | null;
+}
+
+interface ClassifyCommunicationLog {
+  created_at: string;
+  metadata: {
+    message_preview?: string;
+  } | null;
+}
+
+interface FollowupContact extends ClassifyContact {
+  _attemptNumber: number;
+  _previousMessages: string[];
+}
+
+interface ClassifyInteraction {
+  subject: string | null;
+  description: string | null;
+  interaction_type: string | null;
+}
+
+interface ClassifyDemand {
+  operation: string | null;
+  property_type: string | null;
+  cities: string[] | null;
+  zones: string[] | null;
+  min_price: number | null;
+  max_price: number | null;
+}
+
+interface ClassifyContext {
+  interactions: ClassifyInteraction[];
+  demands: ClassifyDemand[];
+}
+
+interface AiMessageResponse {
+  ok?: boolean;
+  error?: string;
+  text?: string;
+  subject?: string;
+  html?: string;
+}
+
+interface CampaignSendPayload {
+  channel: "whatsapp" | "email";
+  contact_id: string;
+  text?: string;
+  source: string;
+  reply_to?: string;
+  subject?: string;
+  html?: string;
+}
+
 Deno.serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
@@ -61,7 +134,7 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: "Campaña de clasificación desactivada" });
     }
 
-    const body = await req.json();
+    const body = await req.json() as CampaignClassifyBody;
     const batchSize = Math.min(body.batch_size || 50, 100);
     const preview = body.preview === true;
     const agentName = body.agent_name || "Alicia";
@@ -72,21 +145,22 @@ Deno.serve(async (req) => {
     }
 
     return await handleInitial(supabase, supabaseUrl, serviceKey, batchSize, preview, agentName);
-  } catch (e: any) {
-    console.error("campaign-classify error:", e.message);
-    return json({ ok: false, error: e.message }, 500);
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+    console.error("campaign-classify error:", message);
+    return json({ ok: false, error: message }, 500);
   }
 });
 
 /** Handle initial outreach to uncontacted contacts */
 async function handleInitial(
-  supabase: any, supabaseUrl: string, serviceKey: string,
+  supabase: SupabaseClient, supabaseUrl: string, serviceKey: string,
   batchSize: number, preview: boolean, agentName: string
 ) {
   // Query unclassified contacts without campaign tags
   const { data: contacts, error: queryError } = await supabase
     .from("contacts")
-    .select("id, full_name, phone, phone2, email, city, nationality, notes, tags")
+    .select("id, full_name, phone, phone2, email, city, nationality, notes, preferred_language, tags")
     .eq("contact_type", "contacto")
     .not("tags", "cs", "{clasificacion-pendiente}")
     .not("tags", "cs", "{clasificado-campana}")
@@ -116,13 +190,13 @@ async function handleInitial(
 
 /** Handle follow-ups for contacts who haven't responded yet */
 async function handleFollowups(
-  supabase: any, supabaseUrl: string, serviceKey: string,
+  supabase: SupabaseClient, supabaseUrl: string, serviceKey: string,
   batchSize: number, preview: boolean, agentName: string
 ) {
   // Find contacts with tag 'clasificacion-pendiente' who need a follow-up
   const { data: pendingContacts, error } = await supabase
     .from("contacts")
-    .select("id, full_name, phone, phone2, email, city, nationality, notes, tags")
+    .select("id, full_name, phone, phone2, email, city, nationality, notes, preferred_language, tags")
     .contains("tags", ["clasificacion-pendiente"])
     .eq("contact_type", "contacto")
     .limit(200); // get more to filter by cadence
@@ -136,7 +210,7 @@ async function handleFollowups(
   // 1. How many attempts have been made
   // 2. When was the last one
   // 3. Whether it's time for a follow-up
-  const contactsReadyForFollowup: any[] = [];
+  const contactsReadyForFollowup: FollowupContact[] = [];
   const now = new Date();
 
   for (const contact of pendingContacts) {
@@ -165,7 +239,9 @@ async function handleFollowups(
 
     if (daysSinceLast >= requiredDays) {
       // Collect previous messages for AI context
-      const previousMessages = logs.map((l: any) => l.metadata?.message_preview || "").filter(Boolean);
+      const previousMessages = ((logs ?? []) as ClassifyCommunicationLog[])
+        .map((l) => l.metadata?.message_preview || "")
+        .filter(Boolean);
       contactsReadyForFollowup.push({
         ...contact,
         _attemptNumber: attemptNumber + 1,
@@ -207,8 +283,9 @@ async function handleFollowups(
       if (sent < contactsReadyForFollowup.length) {
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
-    } catch (contactError: any) {
-      errors.push(`${contact.full_name}: ${contactError.message}`);
+    } catch (contactError: unknown) {
+      const message = contactError instanceof Error ? contactError.message : String(contactError);
+      errors.push(`${contact.full_name}: ${message}`);
     }
   }
 
@@ -222,11 +299,11 @@ async function handleFollowups(
 
 /** Generate a preview message without sending */
 async function generatePreview(
-  supabase: any, supabaseUrl: string, serviceKey: string,
-  contact: any, agentName: string, attemptNumber: number,
+  supabase: SupabaseClient, supabaseUrl: string, serviceKey: string,
+  contact: ClassifyContact, agentName: string, attemptNumber: number,
   previousMessages: string[], remaining: number | null
 ) {
-  const channel = contact.phone ? "whatsapp" : "email";
+  const channel: "whatsapp" | "email" = contact.phone ? "whatsapp" : "email";
   const context = await loadContactContext(supabase, contact);
 
   const msgRes = await fetch(`${supabaseUrl}/functions/v1/ai-classify-message`, {
@@ -244,7 +321,7 @@ async function generatePreview(
     }),
   });
 
-  const msgData = await msgRes.json();
+  const msgData = await msgRes.json() as AiMessageResponse;
   return json({
     ok: true,
     preview: true,
@@ -258,11 +335,11 @@ async function generatePreview(
 
 /** Send a message to a single contact */
 async function sendMessage(
-  supabase: any, supabaseUrl: string, serviceKey: string,
-  contact: any, agentName: string,
+  supabase: SupabaseClient, supabaseUrl: string, serviceKey: string,
+  contact: ClassifyContact, agentName: string,
   attemptNumber: number, previousMessages: string[]
 ) {
-  const channel = contact.phone ? "whatsapp" : "email";
+  const channel: "whatsapp" | "email" = contact.phone ? "whatsapp" : "email";
   const context = await loadContactContext(supabase, contact);
 
   // Generate AI message
@@ -281,7 +358,7 @@ async function sendMessage(
     }),
   });
 
-  const msgData = await msgRes.json();
+  const msgData = await msgRes.json() as AiMessageResponse;
   if (!msgData.ok) {
     throw new Error(`AI error: ${msgData.error}`);
   }
@@ -290,7 +367,7 @@ async function sendMessage(
   const replyTo = "noreply@planhogar.es";
 
   // Send via send function
-  const sendPayload: any = {
+  const sendPayload: CampaignSendPayload = {
     channel,
     contact_id: contact.id,
     text: msgData.text,
@@ -311,7 +388,7 @@ async function sendMessage(
     body: JSON.stringify(sendPayload),
   });
 
-  const sendData = await sendRes.json();
+  const sendData = await sendRes.json() as { ok?: boolean; error?: string };
   if (!sendData.ok) {
     throw new Error(`Send error: ${sendData.error}`);
   }
@@ -356,8 +433,8 @@ async function sendMessage(
 
 /** Send a batch of initial messages */
 async function sendBatch(
-  supabase: any, supabaseUrl: string, serviceKey: string,
-  contacts: any[], agentName: string, attemptNumber: number,
+  supabase: SupabaseClient, supabaseUrl: string, serviceKey: string,
+  contacts: ClassifyContact[], agentName: string, attemptNumber: number,
   remainingCount: number | null
 ) {
   let sent = 0;
@@ -370,8 +447,9 @@ async function sendBatch(
       if (sent < contacts.length) {
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
-    } catch (contactError: any) {
-      errors.push(`${contact.full_name}: ${contactError.message}`);
+    } catch (contactError: unknown) {
+      const message = contactError instanceof Error ? contactError.message : String(contactError);
+      errors.push(`${contact.full_name}: ${message}`);
     }
   }
 
@@ -384,7 +462,7 @@ async function sendBatch(
 }
 
 /** Mark contact as sin_respuesta after max attempts */
-async function markNoResponse(supabase: any, contact: any) {
+async function markNoResponse(supabase: SupabaseClient, contact: ClassifyContact) {
   const currentTags = (contact.tags || []).filter(
     (t: string) => t !== "clasificacion-pendiente"
   );
@@ -404,7 +482,7 @@ async function markNoResponse(supabase: any, contact: any) {
 
 /** Notify coordinadoras and the contact's assigned agent about campaign results */
 async function notifyCampaignResult(
-  supabase: any, contact: any, channel: string,
+  supabase: SupabaseClient, contact: ClassifyContact, channel: string,
   attemptNumber: number, preview: string | null, exhausted = false,
 ) {
   try {
@@ -450,13 +528,13 @@ async function notifyCampaignResult(
 
     const { error } = await supabase.from("notifications").insert(notifs);
     if (error) console.error("[campaign-classify] Notification error:", error);
-  } catch (err) {
+  } catch (err: unknown) {
     console.error("[campaign-classify] Notification error (non-fatal):", err);
   }
 }
 
 /** Load interactions and demands for a contact to give AI context */
-async function loadContactContext(supabase: any, contact: any) {
+async function loadContactContext(supabase: SupabaseClient, contact: ClassifyContact): Promise<ClassifyContext> {
   const [interactionsRes, demandsRes] = await Promise.all([
     supabase
       .from("interactions")
@@ -472,7 +550,7 @@ async function loadContactContext(supabase: any, contact: any) {
   ]);
 
   return {
-    interactions: interactionsRes.data || [],
-    demands: demandsRes.data || [],
+    interactions: (interactionsRes.data ?? []) as ClassifyInteraction[],
+    demands: (demandsRes.data ?? []) as ClassifyDemand[],
   };
 }

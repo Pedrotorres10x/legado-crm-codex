@@ -22,13 +22,51 @@ import {
 import { Switch } from '@/components/ui/switch';
 import PhoneLink from '@/components/PhoneLink';
 
+type ContactOverview = {
+  id: string;
+  full_name: string;
+  phone: string | null;
+  phone2: string | null;
+  email: string | null;
+  city: string | null;
+  address: string | null;
+  id_number: string | null;
+  nationality: string | null;
+  birth_date: string | null;
+  purchase_date: string | null;
+  sale_date: string | null;
+  tags: string[] | null;
+  listing_price: number | null;
+  source_url: string | null;
+  source_ref: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  gdpr_consent: boolean | null;
+  gdpr_legal_basis: string | null;
+  gdpr_consent_at: string | null;
+  gdpr_opt_out: boolean | null;
+};
+
+type VisitItem = {
+  confirmation_status: string | null;
+};
+
+type OfferItem = {
+  id: string;
+};
+
+type InteractionItem = {
+  interaction_type: string | null;
+  subject: string | null;
+  interaction_date: string;
+};
+
 interface ContactOverviewCardsProps {
-  contact: any;
-  visits: any[];
-  offers: any[];
-  interactions: any[];
-  callReady: boolean;
-  onDial: (phone: string) => void;
+  contact: ContactOverview;
+  visits: VisitItem[];
+  offers: OfferItem[];
+  interactions: InteractionItem[];
   onLogged: () => void;
   canManagePrivacy: boolean;
   onRegisterConsent: () => void;
@@ -40,8 +78,6 @@ const ContactOverviewCards = ({
   visits,
   offers,
   interactions,
-  callReady,
-  onDial,
   onLogged,
   canManagePrivacy,
   onRegisterConsent,
@@ -71,10 +107,6 @@ const ContactOverviewCards = ({
             {contact.phone ? (
               <div className="flex items-center gap-2">
                 <PhoneLink phone={contact.phone} contactId={contact.id} contactName={contact.full_name} onLogged={onLogged} />
-                <Button size="sm" variant="outline" className="h-7 shrink-0 gap-1.5 text-xs" disabled={!callReady} onClick={() => onDial(contact.phone)}>
-                  <Phone className="h-3 w-3" />
-                  VoIP
-                </Button>
               </div>
             ) : (
               <p className="flex items-center gap-2 text-sm italic text-muted-foreground"><Phone className="h-4 w-4" />Sin teléfono</p>
@@ -82,10 +114,6 @@ const ContactOverviewCards = ({
             {contact.phone2 && (
               <div className="flex items-center gap-2">
                 <PhoneLink phone={contact.phone2} contactId={contact.id} contactName={contact.full_name} onLogged={onLogged} />
-                <Button size="sm" variant="outline" className="h-7 shrink-0 gap-1.5 text-xs" disabled={!callReady} onClick={() => onDial(contact.phone2)}>
-                  <Phone className="h-3 w-3" />
-                  VoIP
-                </Button>
               </div>
             )}
             {contact.email ? (

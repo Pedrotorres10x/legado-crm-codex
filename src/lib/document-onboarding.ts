@@ -209,7 +209,7 @@ export const ensurePropertyFromDocument = async (data: PropertyDocData, agentId?
     .from('properties')
     .insert({
       title: buildPropertyTitle(data),
-      property_type: (data.property_type || 'otro') as any,
+      property_type: data.property_type || 'otro',
       operation: 'venta',
       status: 'disponible',
       address: data.property_address?.trim() || null,

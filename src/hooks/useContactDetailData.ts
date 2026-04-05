@@ -1,6 +1,76 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
+type ContactDetailRow = {
+  id: string;
+  agent_id?: string | null;
+};
+
+type PropertyCardRow = {
+  id: string;
+  title: string | null;
+  address?: string | null;
+  price?: number | null;
+  status?: string | null;
+  images?: string[] | null;
+};
+
+type VisitDetailRow = {
+  id: string;
+  visit_date: string;
+  properties?: PropertyCardRow | null;
+};
+
+type OfferDetailRow = {
+  id: string;
+  created_at: string;
+  properties?: PropertyCardRow | null;
+};
+
+type InteractionDetailRow = {
+  id: string;
+  interaction_date: string;
+  properties?: { title: string | null } | null;
+};
+
+type DemandDetailRow = {
+  id: string;
+  created_at: string;
+};
+
+type MatchDetailRow = {
+  id: string;
+  properties?: PropertyCardRow | null;
+  demands?: { property_type?: string | null; operation?: string | null } | null;
+};
+
+type OwnerReengagementRow = {
+  id: string;
+  sent_at: string;
+};
+
+type ArrasBuyerPropertyRow = PropertyCardRow & {
+  arras_status?: string | null;
+  arras_date?: string | null;
+  arras_amount?: number | null;
+};
+
+type TaskDetailRow = {
+  id: string;
+  due_date: string;
+  properties?: { title: string | null } | null;
+};
+
+type CommunicationLogRow = {
+  id: string;
+  created_at: string;
+};
+
+type ContactInvoiceRow = {
+  id: string;
+  created_at: string;
+};
+
 export const useContactDetailData = (
   contactId?: string,
   options?: {
@@ -8,18 +78,18 @@ export const useContactDetailData = (
     canViewAll?: boolean;
   },
 ) => {
-  const [contact, setContact] = useState<any>(null);
-  const [visits, setVisits] = useState<any[]>([]);
-  const [offers, setOffers] = useState<any[]>([]);
-  const [interactions, setInteractions] = useState<any[]>([]);
-  const [ownedProperties, setOwnedProperties] = useState<any[]>([]);
-  const [demands, setDemands] = useState<any[]>([]);
-  const [contactMatches, setContactMatches] = useState<any[]>([]);
-  const [reengagementHistory, setReengagementHistory] = useState<any[]>([]);
-  const [arrasBuyerProperties, setArrasBuyerProperties] = useState<any[]>([]);
-  const [contactTasks, setContactTasks] = useState<any[]>([]);
-  const [communicationLogs, setCommunicationLogs] = useState<any[]>([]);
-  const [contactInvoices, setContactInvoices] = useState<any[]>([]);
+  const [contact, setContact] = useState<ContactDetailRow | null>(null);
+  const [visits, setVisits] = useState<VisitDetailRow[]>([]);
+  const [offers, setOffers] = useState<OfferDetailRow[]>([]);
+  const [interactions, setInteractions] = useState<InteractionDetailRow[]>([]);
+  const [ownedProperties, setOwnedProperties] = useState<PropertyCardRow[]>([]);
+  const [demands, setDemands] = useState<DemandDetailRow[]>([]);
+  const [contactMatches, setContactMatches] = useState<MatchDetailRow[]>([]);
+  const [reengagementHistory, setReengagementHistory] = useState<OwnerReengagementRow[]>([]);
+  const [arrasBuyerProperties, setArrasBuyerProperties] = useState<ArrasBuyerPropertyRow[]>([]);
+  const [contactTasks, setContactTasks] = useState<TaskDetailRow[]>([]);
+  const [communicationLogs, setCommunicationLogs] = useState<CommunicationLogRow[]>([]);
+  const [contactInvoices, setContactInvoices] = useState<ContactInvoiceRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadData = useCallback(async () => {
@@ -59,21 +129,21 @@ export const useContactDetailData = (
       supabase.from('demands').select('*').eq('contact_id', contactId).order('created_at', { ascending: false }),
     ]);
 
-    setContact(contactRes.data);
-    setVisits(visitsRes.data || []);
-    setOffers(offersRes.data || []);
-    setInteractions(interactionsRes.data || []);
-    setOwnedProperties(ownedRes.data || []);
-    setDemands(demandsRes.data || []);
+    setContact((contactRes.data || null) as ContactDetailRow | null);
+    setVisits((visitsRes.data || []) as VisitDetailRow[]);
+    setOffers((offersRes.data || []) as OfferDetailRow[]);
+    setInteractions((interactionsRes.data || []) as InteractionDetailRow[]);
+    setOwnedProperties((ownedRes.data || []) as PropertyCardRow[]);
+    setDemands((demandsRes.data || []) as DemandDetailRow[]);
 
-    const demandIds = (demandsRes.data || []).map((d: any) => d.id);
+    const demandIds = ((demandsRes.data || []) as DemandDetailRow[]).map((demand) => demand.id);
     if (demandIds.length > 0) {
       const { data: matchesData } = await supabase
         .from('matches')
         .select('*, properties(id, title, address, price, status, images), demands(property_type, operation)')
         .in('demand_id', demandIds)
         .order('created_at', { ascending: false });
-      setContactMatches(matchesData || []);
+      setContactMatches((matchesData || []) as MatchDetailRow[]);
     } else {
       setContactMatches([]);
     }
@@ -82,29 +152,29 @@ export const useContactDetailData = (
       supabase.from('owner_reengagement').select('*').eq('contact_id', contactId).order('sent_at', { ascending: false }),
       supabase.from('properties').select('id, title, address, price, status, images, arras_status, arras_date, arras_amount').eq('arras_buyer_id', contactId),
     ]);
-    setReengagementHistory(reengData || []);
-    setArrasBuyerProperties(arrasProps || []);
+    setReengagementHistory((reengData || []) as OwnerReengagementRow[]);
+    setArrasBuyerProperties((arrasProps || []) as ArrasBuyerPropertyRow[]);
 
     const { data: tasksData } = await supabase
       .from('tasks')
       .select('*, properties(title)')
       .eq('contact_id', contactId)
       .order('due_date', { ascending: false });
-    setContactTasks(tasksData || []);
+    setContactTasks((tasksData || []) as TaskDetailRow[]);
 
     const { data: commLogsData } = await supabase
       .from('communication_logs')
       .select('*')
       .eq('contact_id', contactId)
       .order('created_at', { ascending: false });
-    setCommunicationLogs(commLogsData || []);
+    setCommunicationLogs((commLogsData || []) as CommunicationLogRow[]);
 
     const { data: invoicesData } = await supabase
       .from('contact_invoices')
       .select('*')
       .eq('contact_id', contactId)
       .order('created_at', { ascending: false });
-    setContactInvoices(invoicesData || []);
+    setContactInvoices((invoicesData || []) as ContactInvoiceRow[]);
 
     setLoading(false);
   }, [contactId, options?.canViewAll, options?.viewerUserId]);

@@ -64,6 +64,15 @@ type Params = {
   onCreated: () => Promise<void> | void;
 };
 
+type CreatedContactRow = {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+  phone: string | null;
+  contact_type: string | null;
+  city: string | null;
+};
+
 export const useContactCreate = ({ userId, toast, onCreated }: Params) => {
   const [loading, setLoading] = useState(false);
 
@@ -88,7 +97,7 @@ export const useContactCreate = ({ userId, toast, onCreated }: Params) => {
       email: form.email || null,
       phone: form.phone || null,
       city: form.city || null,
-      contact_type: form.contact_type as any,
+      contact_type: form.contact_type,
       notes: form.notes || null,
       agent_id: userId,
       pipeline_stage: defaultStage,
@@ -98,7 +107,8 @@ export const useContactCreate = ({ userId, toast, onCreated }: Params) => {
       tags: formTags.length > 0 ? formTags : [],
       source_url: form.source_url || null,
       source_ref: form.source_ref || null,
-    } as any]).select().single();
+    }]).select().single();
+    const createdContact = (contactData || null) as CreatedContactRow | null;
 
     if (error) {
       setLoading(false);
@@ -106,13 +116,13 @@ export const useContactCreate = ({ userId, toast, onCreated }: Params) => {
       return { ok: false as const };
     }
 
-    if (form.contact_type === 'comprador' && contactData) {
+    if (form.contact_type === 'comprador' && createdContact) {
       const citiesArray = form.desired_cities ? form.desired_cities.split(',').map((value) => value.trim()).filter(Boolean) : [];
       const zonesArray = form.desired_zones ? form.desired_zones.split(',').map((value) => value.trim()).filter(Boolean) : [];
       await supabase.from('demands').insert([{
-        contact_id: contactData.id,
-        property_type: form.desired_property_type as any,
-        operation: form.desired_operation as any,
+        contact_id: createdContact.id,
+        property_type: form.desired_property_type,
+        operation: form.desired_operation,
         min_price: form.budget_min ? parseFloat(form.budget_min) : null,
         max_price: form.budget_max ? parseFloat(form.budget_max) : null,
         min_bedrooms: form.desired_bedrooms ? parseInt(form.desired_bedrooms) : null,
@@ -124,20 +134,20 @@ export const useContactCreate = ({ userId, toast, onCreated }: Params) => {
 
     toast({ title: 'Contacto añadido' });
 
-    if (contactData) {
+    if (createdContact) {
       notifyERP('contact_created', {
-        contact_id: contactData.id,
-        full_name: contactData.full_name,
-        email: contactData.email,
-        phone: contactData.phone,
-        contact_type: contactData.contact_type,
-        city: contactData.city,
+        contact_id: createdContact.id,
+        full_name: createdContact.full_name,
+        email: createdContact.email,
+        phone: createdContact.phone,
+        contact_type: createdContact.contact_type,
+        city: createdContact.city,
       });
     }
 
     await onCreated();
     setLoading(false);
-    return { ok: true as const, contactId: contactData?.id as string | undefined };
+    return { ok: true as const, contactId: createdContact?.id };
   }, [onCreated, toast, userId]);
 
   return {

@@ -13,8 +13,25 @@ interface MatchEmailHistoryProps {
   propertyId?: string;
 }
 
+type MatchEmailRow = {
+  id: string;
+  email_to?: string | null;
+  subject: string;
+  status: string;
+  sent_at: string;
+  contacts?: {
+    id: string;
+    full_name?: string | null;
+  } | null;
+  properties?: {
+    id: string;
+    title?: string | null;
+    city?: string | null;
+  } | null;
+};
+
 const MatchEmailHistory = ({ contactId, propertyId }: MatchEmailHistoryProps) => {
-  const [emails, setEmails] = useState<any[]>([]);
+  const [emails, setEmails] = useState<MatchEmailRow[]>([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
@@ -31,7 +48,7 @@ const MatchEmailHistory = ({ contactId, propertyId }: MatchEmailHistoryProps) =>
       if (propertyId) query = query.eq('property_id', propertyId);
 
       const { data } = await query;
-      setEmails(data || []);
+      setEmails((data || []) as MatchEmailRow[]);
       setLoading(false);
     };
     fetchEmails();
@@ -71,7 +88,7 @@ const MatchEmailHistory = ({ contactId, propertyId }: MatchEmailHistoryProps) =>
                     >
                       <div className="flex items-center gap-1.5">
                         <User className="h-3.5 w-3.5 text-muted-foreground" />
-                        <span className="text-sm">{(e.contacts as any)?.full_name || e.email_to}</span>
+                        <span className="text-sm">{e.contacts?.full_name || e.email_to}</span>
                       </div>
                     </TableCell>
                   )}
@@ -82,7 +99,7 @@ const MatchEmailHistory = ({ contactId, propertyId }: MatchEmailHistoryProps) =>
                     >
                       <div className="flex items-center gap-1.5">
                         <Home className="h-3.5 w-3.5 text-muted-foreground" />
-                        <span className="text-sm">{(e.properties as any)?.title || '-'}</span>
+                        <span className="text-sm">{e.properties?.title || '-'}</span>
                       </div>
                     </TableCell>
                   )}

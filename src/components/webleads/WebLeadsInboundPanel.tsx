@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 
 type LeadFilter = 'all' | 'needs_follow_up' | 'missing_property' | 'general_inquiry' | 'with_offer' | 'with_visit' | 'with_open_task' | 'discarded';
 type LeadSourceFilter = 'all' | 'web' | 'portal' | 'fb';
+type LeadOriginFilter = 'all' | 'legadocoleccion' | 'alicanteconnectnews';
 
 type ChannelFunnelItem = {
   id: string;
@@ -41,6 +42,8 @@ type LeadRow = {
   full_name: string;
   status: string;
   lead_source: string;
+  web_origin?: 'legadocoleccion' | 'alicanteconnectnews' | null;
+  web_origin_label?: string | null;
   portal_name?: string | null;
   pipeline_stage?: string | null;
   needs_follow_up: boolean;
@@ -94,6 +97,8 @@ type WebLeadsInboundPanelProps = {
   setLeadFilter: (value: LeadFilter) => void;
   leadSourceFilter: LeadSourceFilter;
   setLeadSourceFilter: (value: LeadSourceFilter) => void;
+  leadOriginFilter: LeadOriginFilter;
+  setLeadOriginFilter: (value: LeadOriginFilter) => void;
   onDiscardLead: (leadId: string, reason: string) => Promise<void>;
 };
 
@@ -127,6 +132,8 @@ export function WebLeadsInboundPanel({
   setLeadFilter,
   leadSourceFilter,
   setLeadSourceFilter,
+  leadOriginFilter,
+  setLeadOriginFilter,
   onDiscardLead,
 }: WebLeadsInboundPanelProps) {
   const [discardLeadId, setDiscardLeadId] = useState<string | null>(null);
@@ -298,6 +305,25 @@ export function WebLeadsInboundPanel({
                   </button>
                 ))}
               </div>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { id: 'all' as const, label: 'Todos los orígenes web' },
+                  { id: 'legadocoleccion' as const, label: 'Legado Colección' },
+                  { id: 'alicanteconnectnews' as const, label: 'Costa Blanca Chronicle' },
+                ].map((filter) => (
+                  <button
+                    key={filter.id}
+                    onClick={() => setLeadOriginFilter(filter.id)}
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
+                      leadOriginFilter === filter.id
+                        ? 'bg-primary/10 text-primary border-primary/30'
+                        : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/30'
+                    }`}
+                  >
+                    {filter.label}
+                  </button>
+                ))}
+              </div>
               {topLossReasons.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
                   {topLossReasons.slice(0, 3).map(([reason, count]) => (
@@ -375,6 +401,12 @@ export function WebLeadsInboundPanel({
                       }`}>
                         {lead.lead_source === 'fb' ? `📱 ${lead.portal_name || 'Facebook Ads'}` : lead.lead_source === 'portal' ? `🏠 ${lead.portal_name || 'Portal'}` : '🌐 Formulario web'}
                       </span>
+                      {lead.lead_source === 'web' && lead.web_origin_label && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-700 dark:bg-slate-900/30 dark:text-slate-300 font-medium">
+                          {lead.web_origin === 'alicanteconnectnews' ? '📰 ' : '✨ '}
+                          {lead.web_origin_label}
+                        </span>
+                      )}
                       {lead.pipeline_stage && lead.pipeline_stage !== 'nuevo' && (
                         <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
                           {STAGE_LABEL[lead.pipeline_stage] ?? lead.pipeline_stage}

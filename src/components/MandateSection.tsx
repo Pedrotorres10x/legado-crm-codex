@@ -14,7 +14,7 @@ interface MandateSectionProps {
   mandateStart: string | null;
   mandateEnd: string | null;
   mandateNotes: string | null;
-  onSave: (updates: Record<string, any>) => Promise<void>;
+  onSave: (updates: Record<string, string | null>) => Promise<void>;
 }
 
 const mandateLabels: Record<string, string> = {

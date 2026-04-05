@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { subDays } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 
-export const TRACK_URL = 'https://srhkvthmzusfrbqtijlw.supabase.co/functions/v1/web-track';
+export const TRACK_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/web-track`;
 
 export const RANGE_OPTIONS = [
   { label: 'Hoy', days: 0 },
@@ -46,6 +46,8 @@ export type WebLead = {
     reference: string | null;
   } | null;
   lead_source: 'web' | 'portal' | 'fb';
+  web_origin: 'legadocoleccion' | 'alicanteconnectnews' | null;
+  web_origin_label: string | null;
   portal_name: string | null;
   open_task_count: number;
   total_task_count: number;
@@ -137,8 +139,8 @@ export function toMadrid(utcDateStr: string): Date {
 }
 
 const BOT_RE = /bot|crawl|spider|slurp|fetch|scrape|headless|phantom|selenium|puppeteer|playwright|googlebot|bingbot|yandex|baidu|duckduck|facebookexternal|twitterbot|linkedinbot|applebot|curl|wget|python-requests|axios|go-http-client|semrush|ahrefs|mj12bot|dotbot/i;
-const INTERNAL_REF_RE = /lovable\.dev|lovableproject\.com|lovable\.app|127\.0\.0\.1|localhost/i;
-const INTERNAL_PAGE_RE = /__lovable_token|forceHideBadge/;
+const INTERNAL_REF_RE = /127\.0\.0\.1|localhost/i;
+const INTERNAL_PAGE_RE = /forceHideBadge/;
 
 function isSuspectedBot(ua: string): boolean {
   if (!ua) return false;
@@ -320,6 +322,16 @@ export function useWebLeads() {
         const isPortalLead = tags.includes('portal-lead');
         const isFbLead = tags.includes('fb-lead-ads');
         const isGeneralInquiry = tags.includes('general-web-lead');
+        const webOrigin = tags.includes('alicanteconnectnews')
+          ? 'alicanteconnectnews'
+          : tags.includes('legadocoleccion')
+            ? 'legadocoleccion'
+            : null;
+        const webOriginLabel = webOrigin === 'alicanteconnectnews'
+          ? 'Costa Blanca Chronicle'
+          : webOrigin === 'legadocoleccion'
+            ? 'Legado Colección'
+            : null;
         const portalTag = tags.find((tag: string) => tag.startsWith('portal:'));
         const portalName = portalTag ? portalTag.split(':')[1] : null;
         const interactions = contact.interactions ?? [];
@@ -349,6 +361,8 @@ export function useWebLeads() {
           ...contact,
           linked_property: propertyInteraction?.properties ?? null,
           lead_source: isFbLead ? 'fb' : isPortalLead ? 'portal' : 'web',
+          web_origin: webOrigin,
+          web_origin_label: webOriginLabel,
           portal_name: isFbLead
             ? 'Facebook Ads'
             : portalName

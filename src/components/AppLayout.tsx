@@ -10,7 +10,6 @@ import { useRealtimeNotifications } from '@/hooks/useRealtimeNotifications';
 import { useAuth } from '@/contexts/AuthContext';
 import { useIsMobile } from '@/hooks/use-mobile';
 import MobileLayout from './MobileLayout';
-import ActiveCallOverlay from './ActiveCallOverlay';
 
 const AppLayout = () => {
   const navigate = useNavigate();
@@ -24,7 +23,7 @@ const AppLayout = () => {
   
 
   // On mobile, render the simplified layout
-  if (isMobile) return <><MobileLayout /><ActiveCallOverlay /></>;
+  if (isMobile) return <MobileLayout />;
 
   return (
     <div className="flex min-h-screen bg-background">

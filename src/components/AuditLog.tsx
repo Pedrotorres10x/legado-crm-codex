@@ -15,10 +15,18 @@ interface AuditEntry {
   field_name: string | null;
   old_value: string | null;
   new_value: string | null;
-  record_snapshot: any;
+  record_snapshot: {
+    title?: string | null;
+    full_name?: string | null;
+  } | null;
   user_id: string | null;
   created_at: string;
 }
+
+type ProfileRow = {
+  user_id: string;
+  full_name: string | null;
+};
 
 const fieldLabels: Record<string, string> = {
   status: 'Estado',
@@ -48,12 +56,12 @@ const AuditLog = () => {
         .select('*')
         .order('created_at', { ascending: false })
         .limit(200);
-      setEntries((data as any[]) || []);
+      setEntries((data as AuditEntry[]) || []);
 
       // Fetch profiles for user names
       const { data: profs } = await supabase.from('profiles').select('user_id, full_name');
       const map: Record<string, string> = {};
-      (profs || []).forEach((p: any) => { map[p.user_id] = p.full_name; });
+      ((profs || []) as ProfileRow[]).forEach((profile) => { map[profile.user_id] = profile.full_name || 'Sin nombre'; });
       setProfiles(map);
       setLoading(false);
     };

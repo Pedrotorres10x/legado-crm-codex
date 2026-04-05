@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Hash, MessageCircle, Plus, Users } from 'lucide-react';
@@ -28,22 +28,16 @@ const ChannelList = ({ selectedChannelId, onSelectChannel, unreadCounts }: Chann
   const [showCreate, setShowCreate] = useState(false);
   const [profiles, setProfiles] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    if (!user) return;
-    loadChannels();
-    loadProfiles();
-  }, [user]);
-
-  const loadProfiles = async () => {
+  const loadProfiles = useCallback(async () => {
     const { data } = await supabase.from('profiles').select('user_id, full_name');
     if (data) {
       const map: Record<string, string> = {};
       data.forEach(p => { map[p.user_id] = p.full_name; });
       setProfiles(map);
     }
-  };
+  }, []);
 
-  const loadChannels = async () => {
+  const loadChannels = useCallback(async () => {
     if (!user) return;
     const { data: memberOf } = await supabase
       .from('chat_channel_members')
@@ -75,12 +69,18 @@ const ChannelList = ({ selectedChannelId, onSelectChannel, unreadCounts }: Chann
       }));
       setDirectChannels(directWithNames);
     }
-  };
+  }, [profiles, user]);
+
+  useEffect(() => {
+    if (!user) return;
+    loadChannels();
+    loadProfiles();
+  }, [loadChannels, loadProfiles, user]);
 
   // Reload when profiles change (for DM names)
   useEffect(() => {
     if (Object.keys(profiles).length > 0 && user) loadChannels();
-  }, [profiles]);
+  }, [loadChannels, profiles, user]);
 
   const startDirectMessage = async (targetUserId: string) => {
     if (!user) return;

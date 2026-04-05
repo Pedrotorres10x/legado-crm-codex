@@ -37,6 +37,37 @@ const DURATIONS = [
   { value: '30', label: '30+ min' },
 ];
 
+type SpeechRecognitionResultLike = {
+  transcript: string;
+};
+
+type SpeechRecognitionAlternativeListLike = {
+  0: SpeechRecognitionResultLike;
+};
+
+type SpeechRecognitionEntryLike = {
+  isFinal: boolean;
+  0: SpeechRecognitionResultLike;
+};
+
+type SpeechRecognitionEventLike = {
+  resultIndex: number;
+  results: ArrayLike<SpeechRecognitionEntryLike>;
+};
+
+type BrowserSpeechRecognition = {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
+type SpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
+
 const LogCallDialog = ({ open, onOpenChange, contactId, contactName, phone, onLogged, defaultDirection = 'saliente' }: LogCallDialogProps) => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -48,7 +79,7 @@ const LogCallDialog = ({ open, onOpenChange, contactId, contactName, phone, onLo
   const [listening, setListening] = useState(false);
   const [summarizing, setSummarizing] = useState(false);
   const [createTask, setCreateTask] = useState(true);
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
 
   const toggleDictation = useCallback(() => {
     if (listening) {
@@ -57,7 +88,11 @@ const LogCallDialog = ({ open, onOpenChange, contactId, contactName, phone, onLo
       return;
     }
 
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const speechWindow = window as Window & {
+      SpeechRecognition?: SpeechRecognitionConstructor;
+      webkitSpeechRecognition?: SpeechRecognitionConstructor;
+    };
+    const SpeechRecognition = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
     if (!SpeechRecognition) {
       toast({ title: 'No soportado', description: 'Tu navegador no soporta dictado por voz.', variant: 'destructive' });
       return;
@@ -70,7 +105,7 @@ const LogCallDialog = ({ open, onOpenChange, contactId, contactName, phone, onLo
 
     let finalTranscript = '';
 
-    recognition.onresult = (event: any) => {
+    recognition.onresult = (event: SpeechRecognitionEventLike) => {
       let interim = '';
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const transcript = event.results[i][0].transcript;
@@ -118,8 +153,9 @@ const LogCallDialog = ({ open, onOpenChange, contactId, contactName, phone, onLo
         setNotes(data.summary);
         toast({ title: 'Resumen generado', description: 'Las notas han sido resumidas por IA.' });
       }
-    } catch (e: any) {
-      toast({ title: 'Error al resumir', description: e.message || 'Inténtalo de nuevo.', variant: 'destructive' });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Inténtalo de nuevo.';
+      toast({ title: 'Error al resumir', description: message, variant: 'destructive' });
     } finally {
       setSummarizing(false);
     }
@@ -148,7 +184,7 @@ const LogCallDialog = ({ open, onOpenChange, contactId, contactName, phone, onLo
 
     const { error } = await supabase.from('interactions').insert({
       contact_id: contactId,
-      interaction_type: 'llamada' as any,
+      interaction_type: 'llamada',
       subject: resultLabel,
       description,
       agent_id: user?.id,

@@ -37,10 +37,30 @@ import {
 import { useClosingPostSale } from '@/hooks/useClosingPostSale';
 
 interface ClosingWorkflowProps {
-  property: any;
-  propertyOwners: any[];
-  onCommitField: (updates: Record<string, any>) => void;
-  onSetProperty: (fn: (p: any) => any) => void;
+  property: {
+    id: string;
+    status?: string | null;
+    reservation_date?: string | null;
+    reservation_amount?: number | string | null;
+    arras_status?: string | null;
+    arras_date?: string | null;
+    arras_amount?: number | string | null;
+    arras_buyer_id?: string | null;
+    deed_date?: string | null;
+    deed_notary?: string | null;
+    closing_notes?: string | null;
+    legal_risk_level?: string | null;
+  };
+  propertyOwners: Array<{
+    id: string;
+    contact_id?: string | null;
+    contact?: {
+      id?: string | null;
+      full_name?: string | null;
+    } | null;
+  }>;
+  onCommitField: (updates: Record<string, string | number | null>) => void;
+  onSetProperty: (fn: (p: ClosingWorkflowProps['property']) => ClosingWorkflowProps['property']) => void;
 }
 
 const STEPS = [
@@ -138,16 +158,16 @@ const ClosingWorkflow = ({ property, propertyOwners, onCommitField, onSetPropert
 
       if (cancelled) return;
 
-      const uploadedDocTypes = Array.from(new Set((docsRes.data || []).map((doc: any) => doc.doc_type).filter(Boolean)));
+      const uploadedDocTypes = Array.from(new Set((docsRes.data || []).map((doc: { doc_type?: string | null }) => doc.doc_type).filter(Boolean)));
       const contracts = (contractsRes.data || [])
-        .map((doc: any) => doc.generated_contracts)
+        .map((doc: { generated_contracts?: { signature_status?: string | null } | null }) => doc.generated_contracts)
         .filter(Boolean);
 
       setOpsSnapshot({
         requiredDocs: CLOSING_REQUIRED_DOCS[activeStep],
         uploadedDocTypes,
-        pendingSignatureCount: contracts.filter((contract: any) => contract.signature_status === 'pendiente').length,
-        signedContractsCount: contracts.filter((contract: any) => contract.signature_status === 'firmado').length,
+        pendingSignatureCount: contracts.filter((contract) => contract.signature_status === 'pendiente').length,
+        signedContractsCount: contracts.filter((contract) => contract.signature_status === 'firmado').length,
       });
       setLoadingOps(false);
     };
@@ -453,7 +473,7 @@ const ClosingWorkflow = ({ property, propertyOwners, onCommitField, onSetPropert
                 value={property.reservation_amount || ''}
                 placeholder="0"
                 onBlur={e => onCommitField({ reservation_amount: parseFloat(e.target.value) || null })}
-                onChange={e => onSetProperty((p: any) => ({ ...p, reservation_amount: e.target.value }))}
+                onChange={e => onSetProperty((p) => ({ ...p, reservation_amount: e.target.value }))}
               />
             </div>
           </div>
@@ -498,7 +518,7 @@ const ClosingWorkflow = ({ property, propertyOwners, onCommitField, onSetPropert
                 value={property.arras_amount || ''}
                 placeholder="0"
                 onBlur={e => onCommitField({ arras_amount: parseFloat(e.target.value) || 0 })}
-                onChange={e => onSetProperty((p: any) => ({ ...p, arras_amount: e.target.value }))}
+                onChange={e => onSetProperty((p) => ({ ...p, arras_amount: e.target.value }))}
               />
             </div>
           </div>
@@ -524,7 +544,7 @@ const ClosingWorkflow = ({ property, propertyOwners, onCommitField, onSetPropert
                 value={property.deed_notary || ''}
                 placeholder="Nombre de la notaría..."
                 onBlur={e => onCommitField({ deed_notary: e.target.value || null })}
-                onChange={e => onSetProperty((p: any) => ({ ...p, deed_notary: e.target.value }))}
+                onChange={e => onSetProperty((p) => ({ ...p, deed_notary: e.target.value }))}
               />
             </div>
           </div>
@@ -539,7 +559,7 @@ const ClosingWorkflow = ({ property, propertyOwners, onCommitField, onSetPropert
             <div>
               <Label className="text-xs text-muted-foreground">Vendedor(es)</Label>
               <div className="flex flex-wrap gap-2 mt-1">
-                {propertyOwners.map((po: any) => (
+                {propertyOwners.map((po) => (
                   <Badge
                     key={po.id}
                     variant="outline"
@@ -689,7 +709,7 @@ const ClosingWorkflow = ({ property, propertyOwners, onCommitField, onSetPropert
             placeholder="Observaciones sobre el proceso de cierre..."
             rows={2}
             onBlur={e => onCommitField({ closing_notes: e.target.value || null })}
-            onChange={e => onSetProperty((p: any) => ({ ...p, closing_notes: e.target.value }))}
+            onChange={e => onSetProperty((p) => ({ ...p, closing_notes: e.target.value }))}
           />
         </div>
 

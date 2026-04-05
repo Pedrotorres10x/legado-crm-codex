@@ -3,6 +3,45 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { corsHeaders, json } from '../_shared/cors.ts';
 import { getAIContext, logAIInteraction, saveMemory } from '../_shared/ai-context.ts';
 
+interface ChatMessage {
+  role: string;
+  content?: string;
+}
+
+interface ContactSummaryRow {
+  id: string;
+  full_name: string | null;
+}
+
+interface InteractionEventRow {
+  contact_id: string;
+  subject: string | null;
+  interaction_date: string;
+}
+
+interface TaskSummaryRow {
+  title: string | null;
+  due_date: string | null;
+  status: string | null;
+}
+
+interface VisitSummaryRow {
+  visit_date: string;
+  confirmation_status: string | null;
+}
+
+interface OfferSummaryRow {
+  amount: number | null;
+  status: string | null;
+  created_at: string;
+}
+
+interface CaptacionSummaryRow {
+  address: string | null;
+  status: string | null;
+  estimated_price: number | null;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -28,9 +67,9 @@ serve(async (req) => {
       return json({ error: "Token inválido" }, 401);
     }
 
-    const { messages } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+    const { messages } = await req.json() as { messages: ChatMessage[] };
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+    if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is not configured");
 
     // ── Fetch CRM context using user-scoped client (RLS enforced) ───────────
     const [
@@ -91,13 +130,13 @@ serve(async (req) => {
     }
 
     // Build engagement summary
-    const contactNames = Object.fromEntries((contactsRes.data || []).map((c: any) => [c.id, c.full_name]));
+    const contactNames = Object.fromEntries(((contactsRes.data || []) as ContactSummaryRow[]).map((c) => [c.id, c.full_name]));
     const topEngaged = Object.entries(engagementByContact)
       .map(([cid, data]) => ({ name: contactNames[cid] || cid, ...data, total: data.opens + data.clicks }))
       .sort((a, b) => b.total - a.total)
       .slice(0, 10);
 
-    const hotAlertsSummary = (hotAlertsRes.data || []).slice(0, 5).map((a: any) => 
+    const hotAlertsSummary = ((hotAlertsRes.data || []) as InteractionEventRow[]).slice(0, 5).map((a) =>
       `${contactNames[a.contact_id] || "Desconocido"}: ${a.subject} (${new Date(a.interaction_date).toLocaleDateString("es-ES")})`
     );
 
@@ -108,16 +147,16 @@ DEMANDAS ACTIVAS (${demandsRes.data?.length || 0}): ${JSON.stringify(demandsRes.
 MATCHES (${matchesRes.data?.length || 0}): ${JSON.stringify(matchesRes.data?.slice(0, 10))}
 
 📋 TAREAS PENDIENTES (${tasksRes.data?.length || 0}):
-${(tasksRes.data || []).slice(0, 10).map((t: any) => `- ${t.title} (vence: ${t.due_date ? new Date(t.due_date).toLocaleDateString("es-ES") : "sin fecha"}, estado: ${t.status})`).join("\n") || "Sin tareas pendientes."}
+${((tasksRes.data || []) as TaskSummaryRow[]).slice(0, 10).map((t) => `- ${t.title} (vence: ${t.due_date ? new Date(t.due_date).toLocaleDateString("es-ES") : "sin fecha"}, estado: ${t.status})`).join("\n") || "Sin tareas pendientes."}
 
 📅 VISITAS PRÓXIMAS (${visitsRes.data?.length || 0}):
-${(visitsRes.data || []).slice(0, 10).map((v: any) => `- ${new Date(v.visit_date).toLocaleDateString("es-ES")} ${new Date(v.visit_date).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })} · Confirmación: ${v.confirmation_status || "pendiente"}`).join("\n") || "Sin visitas próximas."}
+${((visitsRes.data || []) as VisitSummaryRow[]).slice(0, 10).map((v) => `- ${new Date(v.visit_date).toLocaleDateString("es-ES")} ${new Date(v.visit_date).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })} · Confirmación: ${v.confirmation_status || "pendiente"}`).join("\n") || "Sin visitas próximas."}
 
 💰 OFERTAS RECIENTES (${offersRes.data?.length || 0}):
-${(offersRes.data || []).slice(0, 10).map((o: any) => `- ${o.amount} € · Estado: ${o.status} · ${new Date(o.created_at).toLocaleDateString("es-ES")}`).join("\n") || "Sin ofertas recientes."}
+${((offersRes.data || []) as OfferSummaryRow[]).slice(0, 10).map((o) => `- ${o.amount} € · Estado: ${o.status} · ${new Date(o.created_at).toLocaleDateString("es-ES")}`).join("\n") || "Sin ofertas recientes."}
 
 🏠 CAPTACIONES ACTIVAS (${captacionesRes.data?.length || 0}):
-${(captacionesRes.data || []).slice(0, 10).map((c: any) => `- ${c.address || "Sin dirección"} · Estado: ${c.status} · Precio est.: ${c.estimated_price ? c.estimated_price + " €" : "N/A"}`).join("\n") || "Sin captaciones activas."}
+${((captacionesRes.data || []) as CaptacionSummaryRow[]).slice(0, 10).map((c) => `- ${c.address || "Sin dirección"} · Estado: ${c.status} · Precio est.: ${c.estimated_price ? c.estimated_price + " €" : "N/A"}`).join("\n") || "Sin captaciones activas."}
 
 📊 EMAIL ENGAGEMENT (últimos 7 días desde Brevo):
 Top contactos más activos:
@@ -153,9 +192,8 @@ Cuando el usuario pregunte cómo hacer algo, guíale paso a paso. Conoces a fond
 | Chat interno | /chat | Mensajería en tiempo real entre equipo |
 | Herramientas | /tools | Asistente IA, email marketing, reengagement, duplicados, portales XML, firma digital libre |
 | Panel Admin | /admin | Solo admin: gestión de equipo, KPIs, importaciones, costes, anuncios |
-| Llamadas | /calls | Marcador Twilio integrado, historial, conferencia, transferencia |
 | Link In Bio | /linkinbio-stats | Página pública del agente con analytics de visitas y clics |
-| Perfil | /profile | Datos personales, avatar, slug público, Google Calendar, Twilio caller ID |
+| Perfil | /profile | Datos personales, avatar, slug público y enlaces públicos |
 
 ### B. TIPOS DE CONTACTO Y CICLO DE VIDA
 
@@ -407,16 +445,7 @@ Al crear o modificar un inmueble (si auto_match=true), se dispara un trigger que
 - Crear documentos ad-hoc y enviarlos a firmar
 - Mismo flujo que los contratos pero sin plantilla previa
 
-### L. LLAMADAS (TWILIO)
-
-- **Marcador integrado**: Llamar desde el CRM directamente
-- **Historial de llamadas**: Todas las llamadas se registran como interacciones
-- **Caller ID verificado**: Cada agente puede verificar su número en Perfil
-- **Conferencia**: Unir a varias personas en una llamada
-- **Transferencia**: Pasar la llamada a otro agente
-- **Resumen automático IA**: Al terminar una llamada, la IA genera un resumen que se guarda como nota
-
-### M. ROLES Y PERMISOS
+### L. ROLES Y PERMISOS
 
 | Rol | Acceso | Características |
 |---|---|---|
@@ -426,7 +455,7 @@ Al crear o modificar un inmueble (si auto_match=true), se dispara un trigger que
 
 **Nota**: Los roles se gestionan en la tabla user_roles con RLS. La función has_role() verifica permisos a nivel de base de datos.
 
-### N. FUNCIONALIDADES TRANSVERSALES
+### M. FUNCIONALIDADES TRANSVERSALES
 
 **Búsqueda IA (lenguaje natural):**
 - En Inmuebles, Contactos, Demandas y Cruces hay una barra de búsqueda IA
@@ -460,7 +489,7 @@ Al crear o modificar un inmueble (si auto_match=true), se dispara un trigger que
 - Visibles solo para el equipo
 - Se pueden borrar por el autor o por admin
 
-### O. DASHBOARD
+### N. DASHBOARD
 
 **Widget "¿Qué toca hoy?":**
 - Prioridades del día basadas en tareas pendientes, visitas programadas y seguimientos
@@ -503,14 +532,14 @@ Responde siempre en español, de forma concisa y profesional. Usa emojis moderad
     const aiCtx = await getAIContext(serviceClient, "ai-chat");
     const finalSystemPrompt = (aiCtx.systemPromptOverride || systemPrompt) + aiCtx.contextBlock;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "gpt-4.1-mini",
         messages: [
           { role: "system", content: finalSystemPrompt },
           ...messages,
@@ -522,11 +551,11 @@ Responde siempre en español, de forma concisa y profesional. Usa emojis moderad
     if (!response.ok) {
       if (response.status === 429) return json({ error: "Demasiadas solicitudes." }, 429);
       if (response.status === 402) return json({ error: "Créditos IA agotados." }, 402);
-      throw new Error(`AI gateway error: ${response.status}`);
+      throw new Error(`OpenAI error: ${response.status}`);
     }
 
     // Log interaction asynchronously (fire & forget)
-    const lastUserMsg = messages.filter((m: any) => m.role === "user").pop();
+    const lastUserMsg = messages.filter((m) => m.role === "user").pop();
     logAIInteraction(serviceClient, {
       functionName: "ai-chat",
       inputSummary: lastUserMsg?.content?.substring(0, 300) || "",

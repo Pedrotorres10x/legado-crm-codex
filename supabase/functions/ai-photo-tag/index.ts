@@ -10,6 +10,14 @@ const ROOM_ORDER: Record<string, number> = {
   trastero: 15, escalera: 16, pasillo: 17, vistas: 18, plano: 19, otro: 20,
 };
 
+interface PhotoTagRequest {
+  images?: Array<{ url: string }>;
+}
+
+type PhotoTagMessagePart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } };
+
 Deno.serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
@@ -31,7 +39,7 @@ Deno.serve(async (req) => {
       return json({ error: "Invalid token" }, 401);
     }
 
-    const { images } = await req.json();
+    const { images } = await req.json() as PhotoTagRequest;
 
     if (!images || !Array.isArray(images) || images.length === 0) {
       return json({ error: "No images provided" }, 400);
@@ -39,7 +47,7 @@ Deno.serve(async (req) => {
 
     const roomLabels = Object.keys(ROOM_ORDER);
 
-    const userContent: any[] = [
+    const userContent: PhotoTagMessagePart[] = [
       {
         type: "text",
         text: `Eres un experto en fotografía inmobiliaria y marketing digital. Analiza estas ${images.length} imágenes de un inmueble.
@@ -68,7 +76,7 @@ No añadas texto extra, solo el JSON array.`,
     }
 
     const aiResult = await callAI('google/gemini-2.5-flash', [
-      { role: 'user', content: userContent as any },
+      { role: 'user', content: userContent },
     ]);
 
     const rawText = aiResult.content || "[]";

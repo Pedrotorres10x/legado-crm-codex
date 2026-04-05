@@ -7,13 +7,53 @@ type AnomalyNotification = {
   created_at: string;
 };
 
+type PropertyMatchRow = {
+  id: string;
+};
+
+type PropertyVisitRow = {
+  id: string;
+  contacts?: { full_name: string } | null;
+};
+
+type PropertyOwnerContact = {
+  id: string;
+  full_name: string | null;
+  phone: string | null;
+  email: string | null;
+  contact_type: string | null;
+};
+
+type PropertyOwnerRow = {
+  id: string;
+  contact_id: string;
+  role: string | null;
+  ownership_pct: number | null;
+  contacts?: PropertyOwnerContact | null;
+  contact?: PropertyOwnerContact | null;
+};
+
+type AgentProfileRow = {
+  id: string;
+  user_id: string;
+  full_name: string | null;
+  phone: string | null;
+  email: string | null;
+  avatar_url: string | null;
+};
+
+type PropertyOfferRow = {
+  id: string;
+  contacts?: PropertyOwnerContact | null;
+};
+
 export const usePropertyDetailRelatedData = (propertyId?: string) => {
-  const [propertyMatches, setPropertyMatches] = useState<any[]>([]);
-  const [propertyVisits, setPropertyVisits] = useState<any[]>([]);
-  const [ownerContact, setOwnerContact] = useState<any>(null);
-  const [propertyOwners, setPropertyOwners] = useState<any[]>([]);
-  const [agentProfile, setAgentProfile] = useState<any>(null);
-  const [propertyOffers, setPropertyOffers] = useState<any[]>([]);
+  const [propertyMatches, setPropertyMatches] = useState<PropertyMatchRow[]>([]);
+  const [propertyVisits, setPropertyVisits] = useState<PropertyVisitRow[]>([]);
+  const [ownerContact, setOwnerContact] = useState<PropertyOwnerContact | null>(null);
+  const [propertyOwners, setPropertyOwners] = useState<PropertyOwnerRow[]>([]);
+  const [agentProfile, setAgentProfile] = useState<AgentProfileRow | null>(null);
+  const [propertyOffers, setPropertyOffers] = useState<PropertyOfferRow[]>([]);
   const [anomalyNotifications, setAnomalyNotifications] = useState<AnomalyNotification[]>([]);
 
   const fetchMatches = useCallback(async () => {
@@ -23,7 +63,7 @@ export const usePropertyDetailRelatedData = (propertyId?: string) => {
       .select('*, demands(id, property_type, operation, min_price, max_price, cities, contact_id, contacts(full_name)), properties(title)')
       .eq('property_id', propertyId)
       .order('created_at', { ascending: false });
-    setPropertyMatches(data || []);
+    setPropertyMatches((data || []) as PropertyMatchRow[]);
   }, [propertyId]);
 
   const fetchVisits = useCallback(async () => {
@@ -33,7 +73,7 @@ export const usePropertyDetailRelatedData = (propertyId?: string) => {
       .select('*, contacts(full_name)')
       .eq('property_id', propertyId)
       .order('visit_date', { ascending: false });
-    setPropertyVisits(data || []);
+    setPropertyVisits((data || []) as PropertyVisitRow[]);
   }, [propertyId]);
 
   const fetchAnomalyNotifications = useCallback(async () => {
@@ -51,7 +91,7 @@ export const usePropertyDetailRelatedData = (propertyId?: string) => {
   }, [propertyId]);
 
   const dismissAnomaly = useCallback(async (notificationId: string) => {
-    await supabase.from('notifications').update({ is_read: true } as any).eq('id', notificationId);
+    await supabase.from('notifications').update({ is_read: true }).eq('id', notificationId);
     setAnomalyNotifications((current) => current.filter((notification) => notification.id !== notificationId));
   }, []);
 
@@ -69,7 +109,7 @@ export const usePropertyDetailRelatedData = (propertyId?: string) => {
       .select('id, contact_id, role, ownership_pct, contacts(id, full_name, phone, email, contact_type)')
       .eq('property_id', propertyId)
       .order('created_at', { ascending: true });
-    setPropertyOwners((owners || []).map((owner: any) => ({ ...owner, contact: owner.contacts })));
+    setPropertyOwners(((owners || []) as PropertyOwnerRow[]).map((owner) => ({ ...owner, contact: owner.contacts })));
 
     if (property?.owner_id) {
       const { data: owner } = await supabase
@@ -77,7 +117,7 @@ export const usePropertyDetailRelatedData = (propertyId?: string) => {
         .select('id, full_name, phone, email, contact_type')
         .eq('id', property.owner_id)
         .single();
-      setOwnerContact(owner);
+      setOwnerContact((owner || null) as PropertyOwnerContact | null);
     } else {
       setOwnerContact(null);
     }
@@ -88,7 +128,7 @@ export const usePropertyDetailRelatedData = (propertyId?: string) => {
         .select('id, user_id, full_name, phone, email, avatar_url')
         .eq('user_id', property.agent_id)
         .single();
-      setAgentProfile(agent);
+      setAgentProfile((agent || null) as AgentProfileRow | null);
     } else {
       setAgentProfile(null);
     }
@@ -98,7 +138,7 @@ export const usePropertyDetailRelatedData = (propertyId?: string) => {
       .select('*, contacts(id, full_name, phone, email, contact_type)')
       .eq('property_id', propertyId)
       .order('created_at', { ascending: false });
-    setPropertyOffers(offers || []);
+    setPropertyOffers((offers || []) as PropertyOfferRow[]);
   }, [propertyId]);
 
   const refreshRelatedData = useCallback(async () => {

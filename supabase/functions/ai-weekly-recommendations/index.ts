@@ -6,6 +6,40 @@ import { corsHeaders, handleCors, json } from "../_shared/cors.ts";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+interface ActiveContactRow {
+  id: string;
+  full_name: string | null;
+  contact_type: string | null;
+  status: string | null;
+  agent_id: string | null;
+  email: string | null;
+  phone: string | null;
+  updated_at: string;
+}
+
+interface ContactActivitySummary {
+  contact: ActiveContactRow | undefined;
+  emails_out: number;
+  emails_in: number;
+  wa_out: number;
+  wa_in: number;
+  match_emails: number;
+  interactions: number;
+  last_activity: string;
+  logs_summary: string[];
+}
+
+interface AiWeeklyRecommendation {
+  title: string;
+  description: string;
+  urgency: string;
+  contact_name: string;
+}
+
+interface UserRoleRow {
+  user_id: string;
+}
+
 serve(async (req) => {
   const cors = handleCors(req);
   if (cors) return cors;
@@ -49,19 +83,9 @@ serve(async (req) => {
       .limit(1000);
 
     // Group activity by contact
-    const contactActivity: Record<string, {
-      contact: any;
-      emails_out: number;
-      emails_in: number;
-      wa_out: number;
-      wa_in: number;
-      match_emails: number;
-      interactions: number;
-      last_activity: string;
-      logs_summary: string[];
-    }> = {};
+    const contactActivity: Record<string, ContactActivitySummary> = {};
 
-    const contactMap = new Map((activeContacts || []).map(c => [c.id, c]));
+    const contactMap = new Map(((activeContacts ?? []) as ActiveContactRow[]).map((c) => [c.id, c]));
 
     // Process communication logs
     for (const log of recentLogs || []) {
@@ -159,12 +183,12 @@ Devuelve SOLO un JSON array con objetos: {"title": "...", "description": "...", 
     ], { max_tokens: 2000 });
 
     // 3. Parse recommendations
-    let recommendations: { title: string; description: string; urgency: string; contact_name: string }[] = [];
+    let recommendations: AiWeeklyRecommendation[] = [];
     try {
       const text = result.content || "";
       const jsonMatch = text.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
-        recommendations = JSON.parse(jsonMatch[0]);
+        recommendations = JSON.parse(jsonMatch[0]) as AiWeeklyRecommendation[];
       }
     } catch (e) {
       console.error("Failed to parse AI recommendations:", e);
@@ -181,7 +205,7 @@ Devuelve SOLO un JSON array con objetos: {"title": "...", "description": "...", 
       .select("user_id")
       .in("role", ["admin", "coordinadora"]);
 
-    const targetUserIds = [...new Set((roleUsers || []).map((r: any) => r.user_id))];
+    const targetUserIds = [...new Set(((roleUsers ?? []) as UserRoleRow[]).map((r) => r.user_id))];
 
     // Create notifications
     const notifications = [];

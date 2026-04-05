@@ -33,6 +33,14 @@ const LIST_FIELDS = `
 
 const ACTIVE_STATUSES = ['disponible', 'reservado'];
 
+interface PropertyIdRow {
+  id: string;
+}
+
+interface PropertyCityRow {
+  city: string | null;
+}
+
 Deno.serve(async (req) => {
   const cors = handleCors(req);
   if (cors) return cors;
@@ -75,7 +83,7 @@ Deno.serve(async (req) => {
           .select('id')
           .in('status', ACTIVE_STATUSES)
           .limit(500);
-        const match = (allData || []).find((row: any) =>
+        const match = ((allData || []) as PropertyIdRow[]).find((row) =>
           row.id.replace(/-/g, '').endsWith(idSuffix.toLowerCase())
         );
         if (match) return json({ success: true, property_id: match.id });
@@ -131,7 +139,7 @@ Deno.serve(async (req) => {
       .in('status', ACTIVE_STATUSES)
       .not('city', 'is', null);
 
-    const cities = [...new Set((citiesData || []).map((c: any) => c.city).filter(Boolean))].sort();
+    const cities = [...new Set(((citiesData || []) as PropertyCityRow[]).map((c) => c.city).filter(Boolean))].sort();
 
     return json({
       success: true,

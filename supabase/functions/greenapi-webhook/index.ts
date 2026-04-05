@@ -14,15 +14,36 @@ import { corsHeaders, json, handleCors } from '../_shared/cors.ts';
  * }
  */
 
+type GreenApiWebhookBody = {
+  typeWebhook?: string;
+  senderData?: {
+    chatId?: string | null;
+    sender?: string | null;
+    senderName?: string | null;
+  } | null;
+  messageData?: {
+    typeMessage?: string | null;
+    textMessageData?: { textMessage?: string | null } | null;
+    extendedTextMessageData?: { text?: string | null } | null;
+    buttonsResponseMessageData?: { selectedButtonText?: string | null } | null;
+    listResponseMessageData?: { title?: string | null } | null;
+  } | null;
+  idMessage?: string | null;
+};
+
 Deno.serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
 
   try {
     const webhookSecret = Deno.env.get("GREENAPI_WEBHOOK_SECRET");
+    const authorizationHeader = req.headers.get("authorization");
+    const normalizedAuthorization = authorizationHeader?.replace(/^Bearer\s+/i, "").trim();
     const providedSecret =
       req.headers.get("x-greenapi-key") ||
-      req.headers.get("x-webhook-secret");
+      req.headers.get("x-webhook-secret") ||
+      normalizedAuthorization ||
+      authorizationHeader;
 
     if (!webhookSecret) {
       console.error("[greenapi-webhook] GREENAPI_WEBHOOK_SECRET not configured");
@@ -33,7 +54,7 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: "unauthorized" }, 401);
     }
 
-    const body = await req.json();
+    const body = await req.json() as GreenApiWebhookBody;
     console.log("[greenapi-webhook] Received:", body.typeWebhook, body.senderData?.sender);
 
     // Only process incoming text messages
@@ -77,25 +98,55 @@ Deno.serve(async (req) => {
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, serviceKey);
 
-    // Try matching with different phone formats
-    const phoneCandidates = [phone, rawPhone];
-    // Also try without country code prefix for common formats
-    if (rawPhone.length > 9) {
-      phoneCandidates.push(rawPhone.slice(-9)); // last 9 digits
-    }
+    const normalizeDigits = (value?: string | null) => String(value || "").replace(/\D+/g, "");
+    const senderDigits = normalizeDigits(rawPhone);
+    const senderLast9 = senderDigits.slice(-9);
+    const senderLast7 = senderDigits.slice(-7);
+    const senderCandidates = new Set([
+      senderDigits,
+      senderDigits.startsWith("34") ? senderDigits.slice(2) : senderDigits,
+      senderLast9,
+    ].filter(Boolean));
 
     let contact = null;
-    for (const candidate of phoneCandidates) {
+
+    // Fast path: exact or raw contains
+    const fastCandidates = Array.from(new Set([phone, rawPhone, senderDigits, senderLast9].filter(Boolean)));
+    for (const candidate of fastCandidates) {
       const { data } = await supabase
         .from("contacts")
         .select("id, full_name, phone, phone2")
         .or(`phone.eq.${candidate},phone2.eq.${candidate},phone.like.%${candidate},phone2.like.%${candidate}`)
         .limit(1)
-        .single();
+        .maybeSingle();
 
       if (data) {
         contact = data;
         break;
+      }
+    }
+
+    // Slow path: fetch likely candidates by suffix and normalize locally
+    if (!contact && senderLast7) {
+      const { data: possibleContacts } = await supabase
+        .from("contacts")
+        .select("id, full_name, phone, phone2")
+        .or(`phone.like.%${senderLast7}%,phone2.like.%${senderLast7}%`)
+        .limit(50);
+
+      for (const item of possibleContacts || []) {
+        const phone1 = normalizeDigits(item.phone);
+        const phone2 = normalizeDigits(item.phone2);
+        const matches =
+          senderCandidates.has(phone1) ||
+          senderCandidates.has(phone2) ||
+          (senderLast9 && phone1.endsWith(senderLast9)) ||
+          (senderLast9 && phone2.endsWith(senderLast9));
+
+        if (matches) {
+          contact = item;
+          break;
+        }
       }
     }
 
@@ -175,8 +226,9 @@ Deno.serve(async (req) => {
     console.log(`[greenapi-webhook] Forwarded to inbound handler:`, fwdResult);
 
     return json({ ok: true, contact: contact.full_name, forwarded: fwdResult });
-  } catch (e: any) {
-    console.error("[greenapi-webhook] Error:", e.message);
-    return json({ ok: false, error: e.message }, 500);
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : "unexpected_error";
+    console.error("[greenapi-webhook] Error:", message);
+    return json({ ok: false, error: message }, 500);
   }
 });

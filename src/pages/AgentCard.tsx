@@ -1,16 +1,13 @@
 import { useParams } from 'react-router-dom';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { lazy, Suspense, useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Star, Lightbulb, MapPin, MessageCircle, ArrowRight, Award, Users, Home, Sparkles, ShieldCheck, Phone, Mail } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
-import backgroundImage from '@/assets/background-mediterranean.jpg';
+import backgroundImage from '@/assets/background-mediterranean-optimized.jpg';
 import logoRk from '@/assets/logo-rk-legado.jpg';
-import certRaicv from '@/assets/cert-raicv.jpg';
-import certCrs from '@/assets/cert-crs.png';
-import certApi from '@/assets/cert-api.png';
-import certMeta from '@/assets/cert-meta.png';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const AgentCardCertifications = lazy(() => import('@/components/agent-card/AgentCardCertifications'));
 
 interface LinkConfig {
   id: string;
@@ -249,6 +246,8 @@ export default function AgentCard() {
   const [error, setError] = useState(false);
   const trackedPageview = useRef(false);
   const [isSelfVisit, setIsSelfVisit] = useState(false);
+  const certificationsRef = useRef<HTMLDivElement>(null);
+  const [showCertifications, setShowCertifications] = useState(false);
 
   // Detect if the logged-in user is the card owner
   useEffect(() => {
@@ -293,6 +292,27 @@ export default function AgentCard() {
     }
   }, [agent, trackEvent]);
 
+  useEffect(() => {
+    if (showCertifications) return;
+
+    const node = certificationsRef.current;
+    if (!node) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setShowCertifications(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '240px 0px' },
+    );
+
+    observer.observe(node);
+
+    return () => observer.disconnect();
+  }, [showCertifications]);
+
   if (loading) return <LoadingSkeleton />;
   if (error || !agent) return <NotFoundState />;
 
@@ -332,7 +352,7 @@ export default function AgentCard() {
           <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, hsla(210,20%,20%,0.35), hsla(210,15%,25%,0.3), hsla(210,20%,15%,0.45))' }} />
           {/* Logo watermark */}
           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <img src={logoRk} alt="" style={{ width: '60vw', maxWidth: 500, minWidth: 250, height: '60vw', maxHeight: 500, minHeight: 250, objectFit: 'cover', borderRadius: '1.5rem', opacity: 0.12, filter: 'brightness(1.2) saturate(0.2)' }} />
+            <img src={logoRk} alt="" loading="lazy" decoding="async" style={{ width: '60vw', maxWidth: 500, minWidth: 250, height: '60vw', maxHeight: 500, minHeight: 250, objectFit: 'cover', borderRadius: '1.5rem', opacity: 0.12, filter: 'brightness(1.2) saturate(0.2)' }} />
           </div>
           <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(transparent 40%, rgba(238,242,246,0.4) 100%)' }} />
         </div>
@@ -349,6 +369,8 @@ export default function AgentCard() {
                   <img
                     src={agent.avatar}
                     alt={agent.name}
+                    loading="eager"
+                    decoding="async"
                     style={{ width: 100, height: 100, borderRadius: '1.25rem', objectFit: 'cover', boxShadow: '0 8px 32px rgba(0,0,0,0.15)', border: '3px solid rgba(255,255,255,0.6)' }}
                   />
                 </div>
@@ -358,6 +380,8 @@ export default function AgentCard() {
                   <img
                     src={logoRk}
                     alt={company.name}
+                    loading="lazy"
+                    decoding="async"
                     style={{ width: 100, height: 100, borderRadius: '1.25rem', objectFit: 'cover', boxShadow: '0 8px 32px rgba(0,0,0,0.15)', border: '3px solid rgba(255,255,255,0.6)' }}
                   />
                 </div>
@@ -527,32 +551,21 @@ export default function AgentCard() {
             </section>
 
             {/* ─── Certifications ─── */}
-            <section className="ac-fade-in-up ac-delay-500" style={{ marginTop: '2.5rem', opacity: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginBottom: '1.25rem' }}>
-                <div style={{ height: 1, flex: 1, background: 'linear-gradient(to right, transparent, hsl(25 84% 53% / 0.3))' }} />
-                <ShieldCheck style={{ width: 16, height: 16, color: 'hsl(25, 84%, 53%)' }} />
-                <span style={{ fontSize: '0.625rem', fontWeight: 600, color: 'hsl(220 15% 20% / 0.8)', textTransform: 'uppercase', letterSpacing: '0.25em', textShadow: '0 1px 3px rgba(0,0,0,0.4)' }}>Certificados</span>
-                <ShieldCheck style={{ width: 16, height: 16, color: 'hsl(25, 84%, 53%)' }} />
-                <div style={{ height: 1, flex: 1, background: 'linear-gradient(to left, transparent, hsl(25 84% 53% / 0.3))' }} />
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1.5rem' }}>
-                {[
-                  { src: certRaicv, alt: 'RAICV' },
-                  { src: certCrs, alt: 'CRS' },
-                  { src: certApi, alt: 'API' },
-                  { src: certMeta, alt: 'Meta' },
-                ].map(cert => (
-                  <img
-                    key={cert.alt}
-                    src={cert.src}
-                    alt={cert.alt}
-                    style={{ height: 48, width: 'auto', objectFit: 'contain', filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.3))', transition: 'transform 0.5s' }}
-                    onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.1)'; }}
-                    onMouseLeave={e => { e.currentTarget.style.transform = ''; }}
-                  />
-                ))}
-              </div>
-            </section>
+            <div ref={certificationsRef}>
+              {showCertifications ? (
+                <Suspense fallback={<div style={{ height: 108, marginTop: '2.5rem' }} />}><AgentCardCertifications /></Suspense>
+              ) : (
+                <div className="ac-fade-in-up ac-delay-500" style={{ marginTop: '2.5rem', opacity: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginBottom: '1.25rem' }}>
+                    <div style={{ height: 1, flex: 1, background: 'linear-gradient(to right, transparent, hsl(25 84% 53% / 0.3))' }} />
+                    <ShieldCheck style={{ width: 16, height: 16, color: 'hsl(25, 84%, 53%)' }} />
+                    <span style={{ fontSize: '0.625rem', fontWeight: 600, color: 'hsl(220 15% 20% / 0.8)', textTransform: 'uppercase', letterSpacing: '0.25em', textShadow: '0 1px 3px rgba(0,0,0,0.4)' }}>Certificados</span>
+                    <ShieldCheck style={{ width: 16, height: 16, color: 'hsl(25, 84%, 53%)' }} />
+                    <div style={{ height: 1, flex: 1, background: 'linear-gradient(to left, transparent, hsl(25 84% 53% / 0.3))' }} />
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* ─── Footer ─── */}
             <div style={{ marginTop: '2.5rem', textAlign: 'center' }}>

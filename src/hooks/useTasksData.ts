@@ -24,6 +24,19 @@ type Task = {
   properties?: { title: string } | null;
 };
 
+type TaskInsertPayload = {
+  title: string;
+  description: string | null;
+  due_date: string;
+  priority: string;
+  task_type: string;
+  contact_id: string | null;
+  property_id: string | null;
+  agent_id: string;
+  recurrence: string | null;
+  recurrence_parent_id: string;
+};
+
 const getNextDate = (date: Date, recurrence: string): Date => {
   if (recurrence === 'daily') return addDays(date, 1);
   if (recurrence === 'weekly') return addWeeks(date, 1);
@@ -78,7 +91,7 @@ export const useTasksData = ({ userId }: { userId?: string }) => {
 
     if (completed && task.recurrence) {
       const nextDate = getNextDate(new Date(task.due_date), task.recurrence);
-      await supabase.from('tasks').insert({
+      const nextTask: TaskInsertPayload = {
         title: task.title,
         description: task.description,
         due_date: nextDate.toISOString(),
@@ -89,7 +102,8 @@ export const useTasksData = ({ userId }: { userId?: string }) => {
         agent_id: task.agent_id,
         recurrence: task.recurrence,
         recurrence_parent_id: task.recurrence_parent_id || task.id,
-      } as any);
+      };
+      await supabase.from('tasks').insert(nextTask);
       toast.success(`✓ Completada. Próxima: ${format(nextDate, "d MMM HH:mm", { locale: es })}`);
     } else {
       toast.success(completed ? 'Tarea completada ✓' : 'Tarea reabierta');

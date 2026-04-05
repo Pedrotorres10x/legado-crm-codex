@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { startOfMonth } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
+import type { Database } from '@/integrations/supabase/types';
 import { getSemesterRange } from '@/lib/commissions';
 import { getAgentKpiSummary, getAgentKpiTargets } from '@/lib/agent-kpis';
 
@@ -23,6 +24,18 @@ const EMPTY_EDIT_FORM = {
   facebook_url: '',
 };
 
+type ProfileRow = Database['public']['Tables']['profiles']['Row'];
+type ProfileUpdate = Database['public']['Tables']['profiles']['Update'];
+type PropertyStatusRow = Pick<Database['public']['Tables']['properties']['Row'], 'id' | 'status'>;
+type MatchStatusRow = Pick<Database['public']['Tables']['matches']['Row'], 'id' | 'status'>;
+type VisitDateRow = Pick<Database['public']['Tables']['visits']['Row'], 'id' | 'visit_date'>;
+type OfferStatusRow = Pick<Database['public']['Tables']['offers']['Row'], 'id' | 'status'>;
+type CommissionRow = Pick<
+  Database['public']['Tables']['commissions']['Row'],
+  'agent_total' | 'agency_commission' | 'listing_origin_agent_id' | 'buying_origin_agent_id'
+>;
+type CommissionMonthRow = Pick<Database['public']['Tables']['commissions']['Row'], 'agent_total'>;
+
 export const useProfileData = ({
   userId,
   toast,
@@ -30,7 +43,7 @@ export const useProfileData = ({
   userId?: string;
   toast: ToastFn;
 }) => {
-  const [profile, setProfile] = useState<any>(null);
+  const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [editForm, setEditForm] = useState(EMPTY_EDIT_FORM);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -62,7 +75,7 @@ export const useProfileData = ({
   const [commissions, setCommissions] = useState({ semester: 0, month: 0, count: 0, originatedAccumulated: 0 });
   const [semesterLabel, setSemesterLabel] = useState('');
 
-  const loadAll = async () => {
+  const loadAll = useCallback(async () => {
     if (!userId) return;
 
     const monthStart = startOfMonth(new Date()).toISOString();
@@ -120,10 +133,10 @@ export const useProfileData = ({
     const resolvedTargets = await getAgentKpiTargets();
     setKpiTargets(resolvedTargets);
 
-    const propertiesData = propsRes.data || [];
-    const matchesData = matchesRes.data || [];
-    const visitsData = visitsRes.data || [];
-    const offersData = offersRes.data || [];
+    const propertiesData = (propsRes.data || []) as PropertyStatusRow[];
+    const matchesData = (matchesRes.data || []) as MatchStatusRow[];
+    const visitsData = (visitsRes.data || []) as VisitDateRow[];
+    const offersData = (offersRes.data || []) as OfferStatusRow[];
 
     setStats({
       properties: propertiesData.length,
@@ -152,12 +165,12 @@ export const useProfileData = ({
       toquesHorusHoy: summary.toquesHorusHoy,
     });
 
-    const commissionsData = (commRes.data as any[]) || [];
-    const semesterTotal = commissionsData.reduce((sum: number, row: any) => sum + (row.agent_total || 0), 0);
+    const commissionsData = ((commRes.data as CommissionRow[]) || []);
+    const semesterTotal = commissionsData.reduce((sum: number, row) => sum + (row.agent_total || 0), 0);
     const originatedAccumulated = commissionsData
-      .filter((row: any) => row.listing_origin_agent_id === userId || row.buying_origin_agent_id === userId)
-      .reduce((sum: number, row: any) => sum + (row.agency_commission || 0), 0);
-    const monthTotal = ((commMonthRes.data as any[]) || []).reduce((sum: number, row: any) => sum + (row.agent_total || 0), 0);
+      .filter((row) => row.listing_origin_agent_id === userId || row.buying_origin_agent_id === userId)
+      .reduce((sum: number, row) => sum + (row.agency_commission || 0), 0);
+    const monthTotal = (((commMonthRes.data as CommissionMonthRow[]) || []).reduce((sum: number, row) => sum + (row.agent_total || 0), 0));
 
     setCommissions({
       semester: semesterTotal,
@@ -166,19 +179,20 @@ export const useProfileData = ({
       originatedAccumulated,
     });
     setLoading(false);
-  };
+  }, [userId]);
 
   useEffect(() => {
     if (!userId) return;
-    loadAll();
-  }, [userId]);
+    void loadAll();
+  }, [userId, loadAll]);
 
   const handleSave = async () => {
     if (!userId) return false;
     setSaving(true);
+    const payload: ProfileUpdate = { ...editForm };
     const { error } = await supabase
       .from('profiles')
-      .update({ ...editForm } as any)
+      .update(payload)
       .eq('user_id', userId);
     setSaving(false);
 
@@ -192,7 +206,7 @@ export const useProfileData = ({
     return true;
   };
 
-  const handleAvatarUpload = async (file: File) => {
+  const handleAvatarUpload = useCallback(async (file: File) => {
     if (!userId) return;
     setUploadingAvatar(true);
     try {
@@ -206,15 +220,16 @@ export const useProfileData = ({
       } = supabase.storage.from('avatars').getPublicUrl(path);
       const avatarUrl = `${publicUrl}?t=${Date.now()}`;
 
-      await supabase.from('profiles').update({ avatar_url: avatarUrl } as any).eq('user_id', userId);
-      setProfile((current: any) => ({ ...current, avatar_url: avatarUrl }));
+      const payload: ProfileUpdate = { avatar_url: avatarUrl };
+      await supabase.from('profiles').update(payload).eq('user_id', userId);
+      setProfile((current) => (current ? { ...current, avatar_url: avatarUrl } : current));
       toast({ title: 'Foto actualizada' });
-    } catch (error: any) {
-      toast({ title: 'Error al subir foto', description: error.message, variant: 'destructive' });
+    } catch (error) {
+      toast({ title: 'Error al subir foto', description: error instanceof Error ? error.message : 'Error desconocido', variant: 'destructive' });
     } finally {
       setUploadingAvatar(false);
     }
-  };
+  }, [userId, toast]);
 
   return {
     profile,

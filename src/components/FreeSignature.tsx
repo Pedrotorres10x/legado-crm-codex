@@ -37,6 +37,29 @@ import FreeSignatureDialogs from '@/components/documents/FreeSignatureDialogs';
 import { useFreeSignatureSigning } from '@/hooks/useFreeSignatureSigning';
 import { useFreeSignatureManager } from '@/hooks/useFreeSignatureManager';
 
+type ContractSignerRow = {
+  id: string;
+  signer_label?: string | null;
+  signature_status?: string | null;
+  signature_token?: string | null;
+};
+
+type FreeSignatureContractRow = {
+  id: string;
+  signature_status: string;
+  created_at: string;
+  content: string;
+  agent_id?: string | null;
+  contact_id?: string | null;
+  contacts?: {
+    full_name?: string | null;
+  } | null;
+  contract_templates?: {
+    name?: string | null;
+  } | null;
+  contract_signers?: ContractSignerRow[] | null;
+};
+
 const FreeSignature = () => {
   const { isAdmin, canViewAll } = useAuth();
   const {
@@ -106,6 +129,8 @@ const FreeSignature = () => {
     refreshContracts: loadData,
   });
 
+  const typedContracts = contracts as FreeSignatureContractRow[];
+
   const statusBadge = (status: string) => {
     switch (status) {
       case 'firmado':
@@ -153,7 +178,7 @@ const FreeSignature = () => {
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
-      ) : contracts.length === 0 ? (
+      ) : typedContracts.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
             <PenTool className="mx-auto mb-3 h-12 w-12 opacity-30" />
@@ -163,9 +188,9 @@ const FreeSignature = () => {
         </Card>
       ) : (
         <div className="grid gap-3">
-          {contracts.map((contract) => {
+          {typedContracts.map((contract) => {
             const signers = contract.contract_signers || [];
-            const signedCount = signers.filter((signer: any) => signer.signature_status === 'firmado').length;
+            const signedCount = signers.filter((signer) => signer.signature_status === 'firmado').length;
             const totalSigners = signers.length;
             const templateName = contract.contract_templates?.name || 'Documento';
 
@@ -194,7 +219,7 @@ const FreeSignature = () => {
                             {signedCount}/{totalSigners} firmantes
                           </button>
                           <div className="flex flex-wrap gap-x-3 gap-y-0.5">
-                            {signers.map((signer: any) => (
+                            {signers.map((signer) => (
                               <span key={signer.id} className="flex items-center gap-1 text-[11px]">
                                 {signer.signature_status === 'firmado' ? (
                                   <span className="text-green-600">✅</span>
@@ -261,7 +286,7 @@ const FreeSignature = () => {
                             size="icon"
                             className="h-8 w-8"
                             onClick={() => {
-                              setGeneratedLinks(signers.map((signer: any) => ({ label: signer.signer_label, token: signer.signature_token })));
+                              setGeneratedLinks(signers.map((signer) => ({ label: signer.signer_label || 'Firmante', token: signer.signature_token || '' })));
                               setLinksDialogOpen(true);
                             }}
                           >

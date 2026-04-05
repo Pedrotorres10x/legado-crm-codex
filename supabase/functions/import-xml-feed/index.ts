@@ -44,7 +44,7 @@ function resolvePropertyType(rawType: string): string {
   const lower = rawType.toLowerCase().trim()
   if (!lower) return 'piso' // Default to 'piso' instead of 'otro'
   if (typeMap[lower]) return typeMap[lower]
-  for (const word of lower.split(/[\s\-_\/,]+/)) {
+  for (const word of lower.split(/[\s\-_/.,]+/)) {
     if (typeMap[word]) return typeMap[word]
   }
   if (lower.includes('apart') || lower.includes('flat') || lower.includes('piso')) return 'piso'
@@ -91,6 +91,68 @@ const typeLabels: Record<string, string> = {
   trastero: 'Trastero', otro: 'Propiedad',
 }
 
+type ParsedProperty = {
+  xml_id: string
+  title: string
+  property_type: string
+  operation: string
+  price: number | null
+  secondary_property_type: string | null
+  surface_area: number | null
+  built_area: number | null
+  bedrooms: number | null
+  bathrooms: number | null
+  city: string | null
+  province: string | null
+  zip_code: string | null
+  address: string | null
+  zone: string | null
+  floor: string | null
+  description: string | null
+  energy_cert: string | null
+  images: string[] | null
+  videos: string[] | null
+  floor_plans: string[] | null
+  source_url: string | null
+  virtual_tour_url: string | null
+  latitude: number | null
+  longitude: number | null
+  reference: string | null
+  features: string[] | null
+  year_built: number | null
+  key_location: string
+  source_metadata: Record<string, unknown> | null
+  source_raw_xml: string | null
+  has_garage?: boolean
+  has_pool?: boolean
+  has_terrace?: boolean
+  has_garden?: boolean
+  has_elevator?: boolean
+}
+
+type ImportResult = {
+  feed: string
+  error?: string
+  imported?: number
+  deleted?: number
+  skipped_cleanup_reason?: string | null
+}
+
+type ExistingImportedProperty = {
+  id: string
+  xml_id: string | null
+  source_url: string | null
+  images: string[] | null
+  videos: string[] | null
+  virtual_tour_url: string | null
+  floor_plans: string[] | null
+}
+
+type ExistingImportedPropertyId = {
+  id: string
+  xml_id: string | null
+}
+
 // ── Optimized: extract all tags from a block in a single pass ──
 function extractAllTags(block: string): Map<string, string[]> {
   const tags = new Map<string, string[]>()
@@ -107,6 +169,53 @@ function extractAllTags(block: string): Map<string, string[]> {
 
 function serializeTags(tags: Map<string, string[]>): Record<string, string[]> {
   return Object.fromEntries(Array.from(tags.entries()))
+}
+
+function extractCompactLocalizedValue(
+  container: string,
+  preferredLanguages: string[],
+  fallbackToAnyLanguage = false,
+): string {
+  if (!container) return ''
+  if (!container.includes('<')) return cleanText(container)
+
+  for (const lang of preferredLanguages) {
+    const match = container.match(new RegExp(`<${lang}[^>]*>([\\s\\S]*?)<\\/${lang}>`, 'i'))
+    if (match?.[1]) return cleanText(match[1])
+  }
+
+  if (!fallbackToAnyLanguage) return ''
+  const anyLanguageMatch = container.match(/<[a-z_]{2,10}[^>]*>([\s\S]*?)<\/[a-z_]{2,10}>/i)
+  return cleanText(anyLanguageMatch?.[1] || container)
+}
+
+function serializeRelevantRawTags(tags: Map<string, string[]>): Record<string, string[]> {
+  const compact: Record<string, string[]> = {}
+  const add = (key: string, value: string) => {
+    const cleaned = value.trim()
+    if (cleaned) compact[key] = [cleaned]
+  }
+
+  const titleContainer = getFirst(tags, ['title', 'titulo', 'name', 'headline', 'title_en', 'name_en', 'headline_en'])
+  const descContainer = getFirst(tags, [
+    'description', 'descripcion', 'desc', 'comments',
+    'description_en', 'desc_en',
+    'description_de', 'desc_de', 'description_german',
+    'description_fr', 'desc_fr', 'description_french',
+    'description_nl', 'desc_nl', 'description_dutch',
+  ])
+
+  add('title_en', extractCompactLocalizedValue(titleContainer, ['en', 'en_gb', 'en_us', 'english'], true))
+  add('title', extractCompactLocalizedValue(titleContainer, ['es', 'es_es', 'spanish', 'espanol', 'español'], true))
+  add('description_en', extractCompactLocalizedValue(descContainer, ['en', 'en_gb', 'en_us', 'english'], true))
+  add('description_de', extractCompactLocalizedValue(descContainer, ['de', 'de_de', 'german'], true))
+  add('description_fr', extractCompactLocalizedValue(descContainer, ['fr', 'fr_fr', 'french'], true))
+  add('description_nl', extractCompactLocalizedValue(descContainer, ['nl', 'nl_nl', 'dutch'], true))
+
+  add('catastral', getFirst(tags, ['catastral', 'cadastral_reference', 'catastro_ref', 'catastro']))
+  add('street_number', getFirst(tags, ['street_number', 'numero', 'number']))
+
+  return compact
 }
 
 function stripCdata(val: string): string {
@@ -127,6 +236,30 @@ function cleanText(val: string): string {
     .replace(/â€"/g, '–').replace(/â€"/g, '—').replace(/â€¦/g, '…')
     .replace(/Â /g, ' ').replace(/Â·/g, '·').replace(/Âº/g, 'º').replace(/Âª/g, 'ª')
     .replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim()
+}
+
+function sanitizeImportedText(val: string): string {
+  return cleanText(val)
+    .replace(/https?:\/\/\S+/gi, ' ')
+    .replace(/\bnot-available\b/gi, ' ')
+    .replace(/\bundefined\b/gi, ' ')
+    .replace(/\bnull\b/gi, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+function sanitizeImportedTitle(val: string): string {
+  const cleaned = sanitizeImportedText(val)
+  if (!cleaned) return ''
+
+  const firstSentence = cleaned.split(/(?<=[.!?])\s+/)[0]?.trim() || cleaned
+  const candidate = firstSentence.length >= 8 ? firstSentence : cleaned
+  const wordCount = candidate.split(/\s+/).filter(Boolean).length
+
+  if (candidate.length > 160 || wordCount > 14) return ''
+
+  return candidate.slice(0, 140).trim()
 }
 
 /** Normalize Spanish addresses from raw XML/catastro format to readable form */
@@ -153,7 +286,7 @@ function normalizeAddress(raw: string): string {
   }
 
   // Detect if address is ALL-CAPS catastro style (e.g. "AV MUNICIPI DEL 3")
-  const isCadastral = addr === addr.toUpperCase() && /^[A-ZÁÉÍÓÚÑÜ\s,.\d\/]+$/.test(addr)
+  const isCadastral = addr === addr.toUpperCase() && /^[A-ZÁÉÍÓÚÑÜ\s,.\d/]+$/.test(addr)
 
   if (isCadastral) {
     // Split into tokens
@@ -168,7 +301,6 @@ function normalizeAddress(raw: string): string {
     // Fix common word-order issues: "MUNICIPI DEL" → "del Municipi"  
     // Pattern: noun + preposition at the end → preposition + noun  
     // e.g. "Avenida MUNICIPI DEL 3" → "Avenida del Municipi, 3"  
-    const preps = ['DE', 'DEL', 'DE LA', 'DE LES', 'DE LOS', 'DE LAS', 'DELS', 'D\'']
     // Rejoin remaining tokens and apply Title Case
     const rest = tokens.slice(1).join(' ')
     // Check if rest matches pattern: WORD(S) PREPOSITION NUMBER
@@ -187,7 +319,7 @@ function normalizeAddress(raw: string): string {
     }
   } else {
     // Not cadastral, but still expand abbreviations at the start
-    const match = addr.match(/^([A-Za-zÁÉÍÓÚÑÜ.\/]+)\s+/)
+    const match = addr.match(/^([A-Za-zÁÉÍÓÚÑÜ./]+)\s+/)
     if (match) {
       const key = match[1].toUpperCase().replace(/\.$/,'')
       if (abbrMap[key]) {
@@ -486,15 +618,15 @@ function splitPropertyBlocks(xmlText: string): string[] {
   return blocks
 }
 
-function parseProperty(block: string): any | null {
+function parseProperty(block: string): ParsedProperty | null {
   const tags = extractAllTags(block)
 
-  // ── Helper: extract a localized value from a multilang container (prefer <es>) ──
+  // ── Helper: extract a localized value from a multilang container (prefer <en>) ──
   function getLocalized(container: string): string {
-    const esMatch = container.match(/<(?:es|es_ES|spanish|espanol|español)[^>]*>([\s\S]*?)<\/(?:es|es_ES|spanish|espanol|español)>/i)
-    if (esMatch) return stripCdata(esMatch[1])
     const enMatch = container.match(/<(?:en|en_GB|en_US|english)[^>]*>([\s\S]*?)<\/(?:en|en_GB|en_US|english)>/i)
     if (enMatch) return stripCdata(enMatch[1])
+    const esMatch = container.match(/<(?:es|es_ES|spanish|espanol|español)[^>]*>([\s\S]*?)<\/(?:es|es_ES|spanish|espanol|español)>/i)
+    if (esMatch) return stripCdata(esMatch[1])
     // First language tag found
     const anyLang = container.match(/<[a-z]{2}[^>]*>([\s\S]*?)<\/[a-z]{2}>/i)
     if (anyLang) return stripCdata(anyLang[1])
@@ -610,11 +742,14 @@ function parseProperty(block: string): any | null {
       }
     }
   }
-  // Also check explicit Spanish description tags
+  // Also check explicit language-specific description tags, preferring English
   if (!descRaw) {
-    descRaw = getFirst(tags, ['description_es', 'desc_es', 'descripcion_es', 'description_spanish']) || ''
+    descRaw = getFirst(tags, [
+      'description_en', 'desc_en', 'description_english',
+      'description_es', 'desc_es', 'descripcion_es', 'description_spanish',
+    ]) || ''
   }
-  const description = cleanText(descRaw)
+  const description = sanitizeImportedText(descRaw)
 
   // ── XML ID & basic fields ─────────────────────────────────────────────────
   const xml_id = getFirst(tags, ['id', 'ref', 'reference', 'referencia', 'property_id', 'adid', 'code', 'codigo'])
@@ -645,8 +780,25 @@ function parseProperty(block: string): any | null {
   const source_url = extractSourceUrl()
 
   const price = parsePrice(getFirst(tags, ['price', 'precio', 'amount', 'originalprice', 'sale_price', 'rent_price', 'precio_venta', 'precio_alquiler']))
-  const titleRaw = getFirst(tags, ['title', 'titulo', 'name', 'headline', 'subject'])
-  const title = cleanText(titleRaw) || `${typeLabels[property_type] || 'Propiedad'} en ${city || province || 'ubicación desconocida'}`
+  let titleRaw = ''
+  for (const titleTag of ['title', 'titulo', 'name', 'headline', 'subject']) {
+    const container = getFirst(tags, [titleTag])
+    if (!container) continue
+    if (container.includes('<')) {
+      const localized = getLocalized(container)
+      if (localized) { titleRaw = localized; break }
+    } else {
+      titleRaw = container
+      break
+    }
+  }
+  if (!titleRaw) {
+    titleRaw = getFirst(tags, [
+      'title_en', 'name_en', 'headline_en',
+      'title_es', 'titulo_es',
+    ])
+  }
+  const title = sanitizeImportedTitle(titleRaw) || `${typeLabels[property_type] || 'Propiedad'} en ${city || province || 'ubicación desconocida'}`
 
   const bedrooms = parseInt(getFirst(tags, ['beds', 'bedrooms', 'habitaciones', 'rooms', 'num_bedrooms', 'dormitorios', 'n_rooms'])) || 0
   const bathrooms = parseInt(getFirst(tags, ['baths', 'bathrooms', 'banos', 'num_bathrooms', 'aseos', 'n_baths'])) || 0
@@ -810,7 +962,7 @@ function parseProperty(block: string): any | null {
 
   // ── Surface area: default 200 m² ONLY if both surface AND built are missing ──
   let surfaceNum = parseNum(surfaceVal)
-  let builtNum = parseNum(builtAreaVal)
+  const builtNum = parseNum(builtAreaVal)
   if (!surfaceNum && !builtNum) {
     surfaceNum = 200
   }
@@ -824,12 +976,14 @@ function parseProperty(block: string): any | null {
   const source_metadata = {
     provider: 'habihub',
     import_format: 'xml',
-    raw_tags: serializeTags(tags),
+    // Persist only the raw fields that downstream portal exports still reuse.
+    // Keeping every nested XML tag here makes recurring feed imports much heavier.
+    raw_tags: serializeRelevantRawTags(tags),
     raw_values: {
       property_type: rawType || null,
       operation: opRaw || null,
       price: getFirst(tags, ['price', 'precio', 'amount', 'originalprice', 'sale_price', 'rent_price', 'precio_venta', 'precio_alquiler']) || null,
-      title: titleRaw || null,
+      title: sanitizeImportedTitle(titleRaw) || null,
       city,
       province,
       zone,
@@ -854,10 +1008,12 @@ function parseProperty(block: string): any | null {
       assigned_to_office: true,
       agent_assigned: false,
       translated_to_spanish: false,
+      preserved_source_language: true,
+      preferred_language: 'en',
     },
   }
 
-  const prop: any = {
+  const prop: ParsedProperty = {
     title, property_type: finalType, operation, price,
     secondary_property_type: rawType ? cleanText(rawType) : null,
     surface_area: surfaceNum,
@@ -876,7 +1032,8 @@ function parseProperty(block: string): any | null {
     year_built,
     key_location: 'oficina',
     source_metadata,
-    source_raw_xml: block,
+    // Storing the whole XML block for every recurring sync is too expensive for large feeds.
+    source_raw_xml: null,
   }
 
   // Door number (stored in floor field if no dedicated column, or skip)
@@ -889,78 +1046,6 @@ function parseProperty(block: string): any | null {
   if (has_elevator !== null) prop.has_elevator = has_elevator
 
   return prop
-}
-
-// Simple language detection: checks if text is likely Spanish
-function isLikelySpanish(text: string): boolean {
-  if (!text || text.length < 50) return true // too short to detect
-  const lower = text.toLowerCase()
-  const spanishWords = ['de ', 'en ', 'con ', 'los ', 'las ', 'del ', 'por ', 'para ', 'una ', 'este ', 'esta ', 'tiene ', 'cuenta ', 'situad', 'ubicad', 'dispone ', 'dormitorio', 'habitacion', 'baño', 'cocina', 'salón', 'salon', 'terraza', 'piscina', 'jardín', 'jardin', 'garaje', 'ampli', 'luminos']
-  const germanWords = ['der ', 'die ', 'das ', 'und ', 'mit ', 'für ', 'auf ', 'den ', 'dem ', 'ein ', 'eine ', 'ist ', 'von ', 'werden ', 'sind ', 'sich ', 'nicht ', 'kann ', 'über ', 'diese']
-  const englishWords = ['the ', 'and ', 'with ', 'for ', 'from ', 'this ', 'that ', 'has ', 'are ', 'which ', 'been ', 'will ', 'would ', 'features ', 'located ', 'bedroom', 'bathroom', 'property']
-  
-  let esCount = 0, foreignCount = 0
-  for (const w of spanishWords) if (lower.includes(w)) esCount++
-  for (const w of germanWords) if (lower.includes(w)) foreignCount++
-  for (const w of englishWords) if (lower.includes(w)) foreignCount++
-  
-  return esCount > foreignCount
-}
-
-// Translate descriptions to Spanish using AI
-async function translateToSpanish(texts: { idx: number; text: string }[]): Promise<Map<number, string>> {
-  const results = new Map<number, string>()
-  if (texts.length === 0) return results
-  
-  const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')
-  if (!LOVABLE_API_KEY) {
-    console.warn('LOVABLE_API_KEY not set, skipping translation')
-    return results
-  }
-
-  // Process in batches of 5 to avoid token limits
-  for (let i = 0; i < texts.length; i += 5) {
-    const batch = texts.slice(i, i + 5)
-    const prompt = batch.map((t, j) => `[${j}]\n${t.text.substring(0, 1500)}`).join('\n\n---\n\n')
-    
-    try {
-      const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'google/gemini-2.5-flash-lite',
-          messages: [
-            { role: 'system', content: 'Eres un traductor profesional inmobiliario. Traduce las siguientes descripciones de propiedades al español. Mantén el formato y estructura. Responde SOLO con las traducciones, separadas por ---. No añadas numeración ni texto extra.' },
-            { role: 'user', content: `Traduce estas ${batch.length} descripciones al español:\n\n${prompt}` },
-          ],
-          max_tokens: 4000,
-        }),
-      })
-
-      if (!response.ok) {
-        console.error(`Translation API error: ${response.status}`)
-        continue
-      }
-
-      const data = await response.json()
-      const translated = data.choices?.[0]?.message?.content || ''
-      const parts = translated.split(/\n---\n|\n-{3,}\n/)
-      
-      for (let j = 0; j < batch.length; j++) {
-        const part = (parts[j] || '').replace(/^\[\d+\]\s*/, '').trim()
-        if (part && part.length > 50) {
-          results.set(batch[j].idx, part)
-        }
-      }
-    } catch (err) {
-      console.error('Translation error:', err)
-    }
-  }
-  
-  return results
 }
 
 async function ensureHabihubOwnerContact(supabase: ReturnType<typeof createClient>): Promise<string> {
@@ -1044,17 +1129,37 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, serviceKey)
 
     const authHeader = req.headers.get('Authorization')
-    if (!authHeader) {
+    const apiKeyHeader = req.headers.get('apikey')?.trim() || ''
+    const authToken = authHeader?.replace('Bearer ', '').trim() || ''
+
+    if (!authToken && !apiKeyHeader) {
       return new Response(JSON.stringify({ error: 'No authorization' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
-    const token = authHeader.replace('Bearer ', '').trim()
-    const isInternalCron = token === serviceKey
+    const { data: runtimeSettings } = await supabase
+      .from('settings')
+      .select('key, value')
+      .in('key', ['service_role_key'])
+
+    const configuredServiceRoleKey = Array.isArray(runtimeSettings)
+      ? runtimeSettings.find((entry) => entry.key === 'service_role_key')?.value
+      : null
+
+    const settingsServiceRoleKey =
+      typeof configuredServiceRoleKey === 'string'
+        ? configuredServiceRoleKey
+        : configuredServiceRoleKey && typeof configuredServiceRoleKey === 'object' && '{}' in configuredServiceRoleKey
+          ? String((configuredServiceRoleKey as Record<string, unknown>)['{}'] ?? '')
+          : ''
+
+    const internalTokens = new Set([serviceKey, settingsServiceRoleKey].filter(Boolean))
+    const isInternalCron = internalTokens.has(authToken) || internalTokens.has(apiKeyHeader)
 
     if (!isInternalCron) {
+      const token = authToken || apiKeyHeader
       const { data: authData, error: authErr } = await supabase.auth.getUser(token)
       const user = authData?.user
 
@@ -1095,7 +1200,7 @@ Deno.serve(async (req) => {
       })
     }
 
-    const results: any[] = []
+    const results: ImportResult[] = []
     const habihubOwnerId = await ensureHabihubOwnerContact(supabase)
 
     for (const feed of feeds) {
@@ -1114,7 +1219,7 @@ Deno.serve(async (req) => {
         console.log(`Found ${blocks.length} property blocks`)
 
         // Parse properties from blocks
-        const parsedProperties: any[] = []
+        const parsedProperties: ParsedProperty[] = []
         for (const block of blocks) {
           const prop = parseProperty(block)
           if (prop) parsedProperties.push(prop)
@@ -1123,7 +1228,7 @@ Deno.serve(async (req) => {
 
         // Feed snapshots should be deterministic by xml_id. If the provider repeats
         // the same listing in one run, keep the latest parsed version only.
-        const propertyByXmlId = new Map<string, any>()
+        const propertyByXmlId = new Map<string, ParsedProperty>()
         for (const prop of parsedProperties) {
           if (prop?.xml_id) propertyByXmlId.set(prop.xml_id, prop)
         }
@@ -1133,59 +1238,43 @@ Deno.serve(async (req) => {
           console.log(`Collapsed ${duplicateCount} duplicate rows by xml_id for feed "${feed.name}"`)
         }
 
-        // Translate non-Spanish descriptions
-        const toTranslate: { idx: number; text: string }[] = []
-        for (let j = 0; j < properties.length; j++) {
-          if (properties[j].description && !isLikelySpanish(properties[j].description)) {
-            toTranslate.push({ idx: j, text: properties[j].description })
-          }
-        }
-        if (toTranslate.length > 0) {
-          console.log(`Translating ${toTranslate.length} non-Spanish descriptions...`)
-          const translations = await translateToSpanish(toTranslate)
-          for (const [idx, translated] of translations) {
-            properties[idx].description = translated.substring(0, 5000)
-            properties[idx].source_metadata = {
-              ...(properties[idx].source_metadata || {}),
-              import_notes: {
-                ...((properties[idx].source_metadata || {}).import_notes || {}),
-                translated_to_spanish: true,
-              },
-            }
-          }
-          console.log(`Translated ${translations.size} descriptions`)
-        }
         // Fetch existing media data to avoid overwriting with empty values
         const xmlIds = properties.map(p => p.xml_id).filter(Boolean)
         const previousSyncCount = Number(feed.last_sync_count || 0)
         const allowSnapshotShrinkCleanup = requestBody?.allow_snapshot_shrink_cleanup === true
-        const { data: existingProps } = await supabase
+        const { data: existingByXml } = await supabase
           .from('properties')
-          .select('xml_id, images, videos, virtual_tour_url, floor_plans, source_metadata')
+          // Keep this read lean. Pulling the full historical source payload back into the
+          // worker makes large HabiHub imports much heavier and encourages recursive growth.
+          .select('id, xml_id, source_url, images, videos, virtual_tour_url, floor_plans')
           .in('xml_id', xmlIds)
-        
-        const existingMap = new Map<string, {
-          images: string[] | null
-          videos: string[] | null
-          virtual_tour_url: string | null
-          floor_plans: string[] | null
-          source_metadata: Record<string, unknown> | null
-        }>()
-        for (const ep of (existingProps || [])) {
-          existingMap.set(ep.xml_id, {
+
+        const existingMap = new Map<string, ExistingImportedProperty>()
+        for (const ep of (existingByXml as ExistingImportedProperty[] | null) || []) {
+          if (!ep?.id) continue
+          const normalized: ExistingImportedProperty = {
+            id: ep.id,
+            xml_id: ep.xml_id,
+            source_url: ep.source_url,
             images: ep.images,
             videos: ep.videos,
             virtual_tour_url: ep.virtual_tour_url,
             floor_plans: ep.floor_plans,
-            source_metadata: ep.source_metadata,
-          })
+          }
+          if (ep.xml_id) existingMap.set(ep.xml_id, normalized)
         }
 
         let upserted = 0
         for (let i = 0; i < properties.length; i += 50) {
-            const batch = properties.slice(i, i + 50).map(p => {
-              const existing = existingMap.get(p.xml_id)
-            const merged: any = {
+          const batch = properties.slice(i, i + 50).map((p) => {
+            const existing = existingMap.get(p.xml_id)
+            const merged: ParsedProperty & {
+              agent_id: null
+              owner_id: string
+              source: string
+              source_feed_id: string
+              source_feed_name: string
+            } = {
               ...p,
               agent_id: null,
               owner_id: habihubOwnerId,
@@ -1217,29 +1306,18 @@ Deno.serve(async (req) => {
                 const mergedPlans = [...new Set([...xmlPlans, ...existing.floor_plans])]
                 merged.floor_plans = mergedPlans.length > 0 ? mergedPlans : null
               }
+            }
 
-              // Preserve previous source metadata while replacing raw snapshot with the latest one
-              merged.source_metadata = {
-                ...(existing.source_metadata || {}),
-                ...(merged.source_metadata || {}),
-                feed: {
-                  id: feed.id,
-                  name: feed.name,
-                  url: feed.url,
-                  assignment: 'oficina',
-                },
-                previous_snapshot: existing.source_metadata || null,
-              }
-            } else {
-              merged.source_metadata = {
-                ...(merged.source_metadata || {}),
-                feed: {
-                  id: feed.id,
-                  name: feed.name,
-                  url: feed.url,
-                  assignment: 'oficina',
-                },
-              }
+            // Always persist the latest normalized payload only. Chaining previous snapshots
+            // inside source_metadata causes unbounded row growth across recurring imports.
+            merged.source_metadata = {
+              ...(merged.source_metadata || {}),
+              feed: {
+                id: feed.id,
+                name: feed.name,
+                url: feed.url,
+                assignment: 'oficina',
+              },
             }
 
             return merged
@@ -1315,9 +1393,9 @@ Deno.serve(async (req) => {
               .in('status', ['disponible', 'reservado'])
 
           const feedXmlIdSet = new Set(xmlIds)
-          const staleIds = (existingAll || [])
-            .filter((p: any) => p.xml_id && !feedXmlIdSet.has(p.xml_id))
-            .map((p: any) => p.id)
+          const staleIds = ((existingAll as ExistingImportedPropertyId[] | null) || [])
+            .filter((property) => property.xml_id && !feedXmlIdSet.has(property.xml_id))
+            .map((property) => property.id)
 
           if (staleIds.length > 0) {
             console.log(`Deleting ${staleIds.length} properties no longer in feed "${feed.name}"`)

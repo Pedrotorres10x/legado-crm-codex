@@ -8,6 +8,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { SUGGESTED_CONTACT_TAGS } from '@/lib/contact-tags';
 
+type ContactEditValue = string | string[] | boolean | null | undefined;
+type ContactEditForm = Record<string, ContactEditValue>;
+
 const PIPELINE_STAGE_OPTIONS = [
   { value: 'nuevo', label: 'Nuevo' },
   { value: 'contactado', label: 'Contactado' },
@@ -50,8 +53,8 @@ export default function ContactEditDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  form: Record<string, any>;
-  setForm: Dispatch<SetStateAction<Record<string, any>>>;
+  form: ContactEditForm;
+  setForm: Dispatch<SetStateAction<ContactEditForm>>;
   tagInput: string;
   setTagInput: (value: string) => void;
   onAddTag: () => void;

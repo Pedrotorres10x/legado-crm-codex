@@ -26,6 +26,78 @@ interface TimelineEvent {
   amount?: number;
 }
 
+type InteractionRow = {
+  id: string;
+  interaction_date: string;
+  interaction_type: string;
+  subject?: string | null;
+  description?: string | null;
+  properties?: {
+    title?: string | null;
+  } | null;
+};
+
+type VisitRow = {
+  id: string;
+  visit_date: string;
+  confirmation_status?: string | null;
+  result?: string | null;
+  notes?: string | null;
+  properties?: {
+    title?: string | null;
+  } | null;
+};
+
+type OfferRow = {
+  id: string;
+  created_at: string;
+  status?: string | null;
+  amount?: number | null;
+  notes?: string | null;
+  properties?: {
+    title?: string | null;
+  } | null;
+};
+
+type TaskRow = {
+  id: string;
+  title: string;
+  description?: string | null;
+  due_date: string;
+  completed?: boolean | null;
+  completed_at?: string | null;
+  task_type?: string | null;
+  properties?: {
+    title?: string | null;
+  } | null;
+};
+
+type MatchRow = {
+  id: string;
+  created_at: string;
+  status?: string | null;
+  notes?: string | null;
+  properties?: {
+    title?: string | null;
+  } | null;
+};
+
+type ReengagementRow = {
+  id: string;
+  sent_at: string;
+  message_type?: string | null;
+  message_preview?: string | null;
+};
+
+type CommunicationLogRow = {
+  id: string;
+  channel: string;
+  created_at: string;
+  status?: string | null;
+  subject?: string | null;
+  body_preview?: string | null;
+};
+
 const interactionIcons: Record<string, { icon: React.ElementType; color: string; bg: string }> = {
   llamada: { icon: Phone, color: 'text-blue-600', bg: 'bg-blue-100 dark:bg-blue-900/30' },
   email: { icon: Mail, color: 'text-purple-600', bg: 'bg-purple-100 dark:bg-purple-900/30' },
@@ -36,13 +108,13 @@ const interactionIcons: Record<string, { icon: React.ElementType; color: string;
 };
 
 interface ContactTimelineProps {
-  interactions: any[];
-  visits: any[];
-  offers: any[];
-  tasks: any[];
-  matches: any[];
-  reengagement: any[];
-  communicationLogs?: any[];
+  interactions: InteractionRow[];
+  visits: VisitRow[];
+  offers: OfferRow[];
+  tasks: TaskRow[];
+  matches: MatchRow[];
+  reengagement: ReengagementRow[];
+  communicationLogs?: CommunicationLogRow[];
 }
 
 const ContactTimeline = ({ interactions, visits, offers, tasks, matches, reengagement, communicationLogs = [] }: ContactTimelineProps) => {

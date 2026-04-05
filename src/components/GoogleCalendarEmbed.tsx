@@ -9,6 +9,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
+type CalendarProfileRow = {
+  gcal_embed_url?: string | null;
+};
+
 const GoogleCalendarEmbed = () => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -27,7 +31,7 @@ const GoogleCalendarEmbed = () => {
       .eq('user_id', user.id)
       .maybeSingle()
       .then(({ data }) => {
-        const url = (data as any)?.gcal_embed_url ?? '';
+        const url = (data as CalendarProfileRow | null)?.gcal_embed_url ?? '';
         if (url) {
           setEmbedUrl(url);
           setInputUrl(url);
@@ -47,7 +51,7 @@ const GoogleCalendarEmbed = () => {
 
     const { error } = await supabase
       .from('profiles')
-      .update({ gcal_embed_url: url } as any)
+      .update({ gcal_embed_url: url })
       .eq('user_id', user.id);
 
     setSaving(false);
@@ -64,7 +68,7 @@ const GoogleCalendarEmbed = () => {
 
   const removeUrl = async () => {
     if (!user?.id) return;
-    await supabase.from('profiles').update({ gcal_embed_url: null } as any).eq('user_id', user.id);
+    await supabase.from('profiles').update({ gcal_embed_url: null }).eq('user_id', user.id);
     setEmbedUrl('');
     setInputUrl('');
     setOpen(false);

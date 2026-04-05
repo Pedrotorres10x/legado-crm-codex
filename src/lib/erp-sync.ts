@@ -23,7 +23,7 @@ export type ErpEvent =
 
 export async function notifyERP(
   event: ErpEvent,
-  data: Record<string, any>
+  data: Record<string, unknown>
 ): Promise<void> {
   try {
     const { error } = await supabase.functions.invoke('erp-dispatch', {

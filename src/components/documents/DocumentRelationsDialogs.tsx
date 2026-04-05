@@ -8,18 +8,20 @@ import { CheckCircle2, Clock, Copy, Home, Link2, Loader2, PenTool, Search, Send,
 type SignerContact = { id: string; full_name: string; email?: string | null } | null;
 type LinkContact = { id: string; full_name: string };
 type LinkProperty = { id: string; title?: string | null; address?: string | null };
+type SearchContact = { id: string; full_name: string; email?: string | null; phone?: string | null };
+type DocumentSummary = { id: string; title?: string | null; file_name?: string | null } | null;
 
 type DocumentRelationsDialogsProps = {
   signatureDialogOpen: boolean;
   setSignatureDialogOpen: (open: boolean) => void;
-  selectedDocument: any | null;
+  selectedDocument: DocumentSummary;
   signerCount: number;
   updateSignerCount: (count: number) => void;
   signerSearchTerms: string[];
   setSignerSearchTerms: React.Dispatch<React.SetStateAction<string[]>>;
   signerContacts: SignerContact[];
   setSignerContacts: React.Dispatch<React.SetStateAction<SignerContact[]>>;
-  signerSearchResults: any[][];
+  signerSearchResults: SearchContact[][];
   signerSearching: boolean[];
   searchContacts: (term: string, index: number) => Promise<void>;
   selectContactForSigner: (index: number, contact: { id: string; full_name: string; email?: string | null }) => void;
@@ -33,20 +35,20 @@ type DocumentRelationsDialogsProps = {
   copyAllLinks: () => Promise<void>;
   linkDialogOpen: boolean;
   setLinkDialogOpen: (open: boolean) => void;
-  linkingDocument: any | null;
+  linkingDocument: DocumentSummary;
   selectedContacts: LinkContact[];
   removeSelectedContact: (contactId: string) => void;
   contactSearch: string;
   setContactSearch: (value: string) => void;
   searchLinkContacts: (term: string) => Promise<void>;
-  contactResults: any[];
+  contactResults: LinkContact[];
   addSelectedContact: (contact: LinkContact) => void;
   selectedProperties: LinkProperty[];
   removeSelectedProperty: (propertyId: string) => void;
   propertySearch: string;
   setPropertySearch: (value: string) => void;
   searchProperties: (term: string) => Promise<void>;
-  propertyResults: any[];
+  propertyResults: LinkProperty[];
   addSelectedProperty: (property: LinkProperty) => void;
   saveDocumentLinks: () => Promise<void>;
   savingLinks: boolean;
@@ -144,7 +146,7 @@ export function DocumentRelationsDialogs({
                   {signerSearching[index] && <p className="text-xs text-muted-foreground">Buscando...</p>}
                   {(signerSearchResults[index] || []).length > 0 && (
                     <div className="space-y-1 max-h-40 overflow-y-auto">
-                      {(signerSearchResults[index] || []).map((contact: any) => (
+                      {(signerSearchResults[index] || []).map((contact) => (
                         <button
                           key={contact.id}
                           type="button"

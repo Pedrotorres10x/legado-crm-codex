@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, ArrowUpRight, Landmark, Megaphone, ShieldAlert, Signature, Target } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,6 +13,31 @@ import { buildTopReasons, extractMatchDiscardReason, extractOfferLossReason, get
 type AgentProfile = {
   user_id: string;
   full_name: string | null;
+};
+type ClosingPropertyRow = {
+  id: string;
+  title?: string | null;
+  status?: string | null;
+  agent_id?: string | null;
+  reservation_date?: string | null;
+  reservation_amount?: number | null;
+  arras_status?: string | null;
+  arras_date?: string | null;
+  arras_amount?: number | null;
+  arras_buyer_id?: string | null;
+  deed_date?: string | null;
+  deed_notary?: string | null;
+};
+type PropertyDocumentRow = {
+  doc_type?: string | null;
+};
+type SignatureDocumentRow = {
+  generated_contracts?: {
+    signature_status?: string | null;
+  } | null;
+};
+type NotesRow = {
+  notes?: string | null;
 };
 
 type ExecutiveState = {
@@ -115,7 +140,7 @@ const AdminExecutiveSummary = () => {
         .slice(0, 5)
         .map(({ missedGoals, ...item }) => item);
 
-      const closingItems = await Promise.all(((closingRows || []) as any[]).map(async (property) => {
+      const closingItems = await Promise.all(((closingRows || []) as ClosingPropertyRow[]).map(async (property) => {
         const [docsRes, signaturesRes, ownersRes] = await Promise.all([
           supabase.from('property_documents').select('doc_type').eq('property_id', property.id),
           supabase
@@ -125,9 +150,9 @@ const AdminExecutiveSummary = () => {
           supabase.from('property_owners').select('id', { count: 'exact', head: true }).eq('property_id', property.id),
         ]);
 
-        const uploadedDocTypes = Array.from(new Set((docsRes.data || []).map((doc: any) => doc.doc_type).filter(Boolean)));
-        const pendingSignatureCount = (signaturesRes.data || [])
-          .filter((doc: any) => doc.generated_contracts?.signature_status === 'pendiente')
+        const uploadedDocTypes = Array.from(new Set(((docsRes.data || []) as PropertyDocumentRow[]).map((doc) => doc.doc_type).filter(Boolean)));
+        const pendingSignatureCount = ((signaturesRes.data || []) as SignatureDocumentRow[])
+          .filter((doc) => doc.generated_contracts?.signature_status === 'pendiente')
           .length;
 
         const analysis = buildClosingOperationalBlockers({
@@ -150,8 +175,8 @@ const AdminExecutiveSummary = () => {
         blockedClosings: closingItems.filter((item) => item.blockers.length > 0).length,
         legalHigh: legalHighCount ?? 0,
         pendingSignatures: closingItems.reduce((sum, item) => sum + item.pendingSignatureCount, 0),
-        topMatchLossReason: buildTopReasons((matchLosses || []).map((row: any) => extractMatchDiscardReason(row.notes)))[0]?.[0] || null,
-        topOfferLossReason: buildTopReasons((offerLosses || []).map((row: any) => extractOfferLossReason(row.notes)))[0]?.[0] || null,
+        topMatchLossReason: buildTopReasons(((matchLosses || []) as NotesRow[]).map((row) => extractMatchDiscardReason(row.notes)))[0]?.[0] || null,
+        topOfferLossReason: buildTopReasons(((offerLosses || []) as NotesRow[]).map((row) => extractOfferLossReason(row.notes)))[0]?.[0] || null,
         watchlist,
       };
 
@@ -168,26 +193,26 @@ const AdminExecutiveSummary = () => {
     };
   }, [leads]);
 
-  const openAgentBoard = (agentId?: string) => {
+  const openAgentBoard = useCallback((agentId?: string) => {
     navigate(agentId ? `/admin?agent=${agentId}#admin-kpi-board` : '/admin#admin-kpi-board');
-  };
+  }, [navigate]);
 
-  const openOperations = (params?: { preset?: 'all' | 'legal' | 'closing'; agentId?: string; kind?: 'all' | 'legal' | 'closing' | 'signature' | 'deed' | 'task' }) => {
+  const openOperations = useCallback((params?: { preset?: 'all' | 'legal' | 'closing'; agentId?: string; kind?: 'all' | 'legal' | 'closing' | 'signature' | 'deed' | 'task' }) => {
     const next = new URLSearchParams();
     if (params?.preset && params.preset !== 'all') next.set('preset', params.preset);
     if (params?.kind && params.kind !== 'all') next.set('kind', params.kind);
     if (params?.agentId) next.set('agent', params.agentId);
     const query = next.toString();
     navigate(query ? `/operations?${query}` : '/operations');
-  };
+  }, [navigate]);
 
-  const openLegalRadar = () => {
+  const openLegalRadar = useCallback(() => {
     navigate('/admin#admin-legal-radar');
-  };
+  }, [navigate]);
 
-  const openClosingRadar = () => {
+  const openClosingRadar = useCallback(() => {
     navigate('/admin#admin-closing-radar');
-  };
+  }, [navigate]);
 
   const executiveCards = useMemo(() => [
     {
@@ -240,7 +265,7 @@ const AdminExecutiveSummary = () => {
       secondaryAction: () => openOperations({ preset: 'legal' }),
       secondaryLabel: 'Ir a operaciones',
     },
-  ], [state]);
+  ], [navigate, openAgentBoard, openClosingRadar, openLegalRadar, openOperations, state]);
 
   return (
     <Card className="border-0 shadow-[var(--shadow-card)]">

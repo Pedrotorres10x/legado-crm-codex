@@ -12,8 +12,37 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { getCoverImage } from '@/lib/get-cover-image';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { sanitizePropertyTitle } from '@/lib/property-text';
+import type { HealthInfo } from '@/hooks/useHealthColors';
+import type { TablesUpdate } from '@/integrations/supabase/types';
+import { statusColors, statusLabels } from './property-card-config';
 
-function getLegalRiskBadge(p: any) {
+type PropertyCardItem = {
+  id: string;
+  title: string;
+  images?: unknown;
+  image_order?: unknown;
+  legal_risk_level?: string | null;
+  source?: string | null;
+  source_feed_name?: string | null;
+  source_metadata?: { legacy_origin?: string | null } | null;
+  tags?: string[] | null;
+  country?: string | null;
+  status: string;
+  crm_reference?: string | null;
+  city?: string | null;
+  bedrooms?: number | null;
+  surface_area?: number | null;
+  price?: number | null;
+  mandate_type?: string | null;
+  description?: string | null;
+  xml_id?: string | null;
+  portal_token?: string | null;
+  owner_id?: string | null;
+  [key: string]: unknown;
+};
+
+function getLegalRiskBadge(p: PropertyCardItem) {
   if (!p.legal_risk_level) return null;
 
   if (p.legal_risk_level === 'alto') {
@@ -43,7 +72,7 @@ function getLegalRiskBadge(p: any) {
   };
 }
 
-function getPropertyOriginBadge(p: any) {
+function getPropertyOriginBadge(p: PropertyCardItem) {
   const source = String(p?.source || '').toLowerCase();
   const sourceFeedName = String(p?.source_feed_name || '').toLowerCase();
   const legacyOrigin = String(p?.source_metadata?.legacy_origin || '').toLowerCase();
@@ -71,25 +100,18 @@ function getPropertyOriginBadge(p: any) {
   };
 }
 
+function hasKyeroCohortTag(p: PropertyCardItem): boolean {
+  return Array.isArray(p?.tags) && p.tags.includes('portal_cohort_alicante_50');
+}
+
 /** Property is international (non-Spanish) */
-function isInternacional(p: any): boolean {
+function isInternacional(p: PropertyCardItem): boolean {
   return !!p.country && p.country !== 'España';
 }
 
-export const statusLabels: Record<string, string> = {
-  disponible: 'Disponible', arras: 'Arras', vendido: 'Vendido',
-  no_disponible: 'No disponible', reservado: 'Reservado',
-  alquilado: 'Alquilado', retirado: 'Retirado',
-};
-export const statusColors: Record<string, string> = {
-  disponible: 'bg-success', arras: 'bg-warning', vendido: 'bg-primary',
-  no_disponible: 'bg-muted', reservado: 'bg-warning',
-  alquilado: 'bg-info', retirado: 'bg-muted',
-};
-
 interface PropertyCardProps {
-  property: any;
-  healthInfo?: any;
+  property: PropertyCardItem;
+  healthInfo?: HealthInfo;
   mode: 'grid' | 'mobile';
   onRemoved?: () => void;
 }
@@ -99,14 +121,17 @@ export const PropertyCard = ({ property: p, healthInfo, mode, onRemoved }: Prope
   const [archiving, setArchiving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const coverImage = getCoverImage(p.images, p.image_order, p.id);
+  const safeTitle = sanitizePropertyTitle(p.title);
   const legalRiskBadge = getLegalRiskBadge(p);
   const originBadge = getPropertyOriginBadge(p);
   const OriginIcon = originBadge.icon;
+  const isKyeroCohort = hasKyeroCohortTag(p);
 
   const handleArchive = async (e: React.MouseEvent) => {
     e.stopPropagation();
     setArchiving(true);
-    const { error } = await supabase.from('properties').update({ status: 'retirado' as any }).eq('id', p.id);
+    const payload: TablesUpdate<'properties'> = { status: 'retirado' };
+    const { error } = await supabase.from('properties').update(payload).eq('id', p.id);
     setArchiving(false);
     if (error) { toast.error('Error al archivar'); return; }
     toast.success('Propiedad archivada');
@@ -131,7 +156,7 @@ export const PropertyCard = ({ property: p, healthInfo, mode, onRemoved }: Prope
       >
         <div className="w-20 shrink-0 bg-muted relative">
           {coverImage ? (
-            <img src={coverImage} alt={p.title} className="w-full h-full object-cover" loading="lazy" />
+            <img src={coverImage} alt={safeTitle} className="w-full h-full object-cover" loading="lazy" />
           ) : (
             <div className="w-full h-full flex items-center justify-center min-h-[72px]">
               <Home className="h-8 w-8 text-muted-foreground/30" />
@@ -141,7 +166,7 @@ export const PropertyCard = ({ property: p, healthInfo, mode, onRemoved }: Prope
         </div>
         <div className="flex-1 min-w-0 px-3 py-3">
           <div className="flex items-start justify-between gap-1">
-            <span className="font-semibold text-sm text-foreground line-clamp-1">{p.title}</span>
+            <span className="font-semibold text-sm text-foreground line-clamp-1">{safeTitle}</span>
             {p.crm_reference && (
               <span className="font-mono text-[10px] font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded shrink-0">
                 {p.crm_reference}
@@ -175,6 +200,11 @@ export const PropertyCard = ({ property: p, healthInfo, mode, onRemoved }: Prope
                 {legalRiskBadge.label}
               </Badge>
             )}
+            {isKyeroCohort && (
+              <Badge className="bg-indigo-600/90 text-white border-0 text-[9px] px-1.5 py-0 shrink-0">
+                Muestra Alicante 50
+              </Badge>
+            )}
             <Badge variant="outline" className={`${originBadge.className} text-[9px] px-1.5 py-0 flex items-center gap-0.5 shrink-0`}>
               <OriginIcon className="h-2.5 w-2.5" />
               {originBadge.label}
@@ -195,7 +225,7 @@ export const PropertyCard = ({ property: p, healthInfo, mode, onRemoved }: Prope
     >
       <div className="aspect-[4/3] bg-muted relative overflow-hidden">
         {coverImage ? (
-          <img src={coverImage} alt={p.title} className="w-full h-full object-cover" loading="lazy" />
+          <img src={coverImage} alt={safeTitle} className="w-full h-full object-cover" loading="lazy" />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             <Home className="h-14 w-14 text-muted-foreground/30" />
@@ -220,6 +250,11 @@ export const PropertyCard = ({ property: p, healthInfo, mode, onRemoved }: Prope
               {legalRiskBadge.label}
             </Badge>
           )}
+          {isKyeroCohort && (
+            <Badge className="bg-indigo-600/90 text-white border-0 text-[11px]">
+              Muestra Alicante 50
+            </Badge>
+          )}
           <Badge variant="outline" className={`${originBadge.className} bg-card/80 text-[11px] flex items-center gap-0.5`}>
             <OriginIcon className="h-3 w-3" />
             {originBadge.label}
@@ -229,7 +264,7 @@ export const PropertyCard = ({ property: p, healthInfo, mode, onRemoved }: Prope
       </div>
       <CardContent className="p-5">
         <div className="flex items-start justify-between gap-2 mb-1.5">
-          <h3 className="font-display font-semibold text-lg leading-snug line-clamp-2">{p.title}</h3>
+          <h3 className="font-display font-semibold text-lg leading-snug line-clamp-2">{safeTitle}</h3>
           {p.crm_reference && (
             <span className="font-mono text-[11px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded shrink-0">
               {p.crm_reference}
@@ -276,7 +311,7 @@ export const PropertyCard = ({ property: p, healthInfo, mode, onRemoved }: Prope
               <AlertDialogHeader>
                 <AlertDialogTitle>¿Eliminar propiedad?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Se eliminará permanentemente "{p.title}" ({p.crm_reference}). Esta acción no se puede deshacer.
+                  Se eliminará permanentemente "{safeTitle}" ({p.crm_reference}). Esta acción no se puede deshacer.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -295,8 +330,8 @@ export const PropertyCard = ({ property: p, healthInfo, mode, onRemoved }: Prope
 };
 
 interface PropertyListViewProps {
-  properties: any[];
-  healthColors: Record<string, any>;
+  properties: PropertyCardItem[];
+  healthColors: Record<string, HealthInfo | undefined>;
   onRemoved?: () => void;
 }
 
@@ -308,7 +343,7 @@ export const PropertyListView = ({ properties, healthColors, onRemoved }: Proper
         <TableHeader>
          <TableRow>
             <TableHead>Referencia</TableHead><TableHead>Inmueble</TableHead><TableHead>Salud</TableHead>
-            <TableHead>País</TableHead><TableHead>Ciudad</TableHead><TableHead>Origen</TableHead><TableHead>Legal</TableHead><TableHead>Hab.</TableHead><TableHead>Superficie</TableHead>
+            <TableHead>País</TableHead><TableHead>Ciudad</TableHead><TableHead>Origen</TableHead><TableHead>Legal</TableHead><TableHead>Cohorte</TableHead><TableHead>Hab.</TableHead><TableHead>Superficie</TableHead>
             <TableHead>Precio</TableHead><TableHead>Estado</TableHead><TableHead>Mandato</TableHead>
             <TableHead className="w-10"></TableHead>
           </TableRow>
@@ -322,7 +357,7 @@ export const PropertyListView = ({ properties, healthColors, onRemoved }: Proper
             return (
             <TableRow key={p.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/properties/${p.id}`)}>
               <TableCell><span className="font-mono text-xs font-bold text-primary">{p.crm_reference || '—'}</span></TableCell>
-              <TableCell className="font-medium">{p.title}</TableCell>
+              <TableCell className="font-medium">{sanitizePropertyTitle(p.title)}</TableCell>
               <TableCell><HealthDot info={healthColors[p.id]} /></TableCell>
               <TableCell>
                 {isInternacional(p) ? (
@@ -344,6 +379,15 @@ export const PropertyListView = ({ properties, healthColors, onRemoved }: Proper
                 {legalRiskBadge ? (
                   <Badge className={`${legalRiskBadge.className} text-[10px] w-fit`}>
                     {legalRiskBadge.label}
+                  </Badge>
+                ) : (
+                  <span className="text-xs text-muted-foreground">—</span>
+                )}
+              </TableCell>
+              <TableCell>
+                {hasKyeroCohortTag(p) ? (
+                  <Badge className="bg-indigo-600/90 text-white border-0 text-[10px] w-fit">
+                    Muestra Alicante 50
                   </Badge>
                 ) : (
                   <span className="text-xs text-muted-foreground">—</span>
@@ -376,14 +420,15 @@ export const PropertyListView = ({ properties, healthColors, onRemoved }: Proper
 };
 
 /** Inline action buttons for table rows */
-const PropertyRowActions = ({ property: p, onRemoved }: { property: any; onRemoved?: () => void }) => {
+const PropertyRowActions = ({ property: p, onRemoved }: { property: PropertyCardItem; onRemoved?: () => void }) => {
   const [archiving, setArchiving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   const handleArchive = async (e: React.MouseEvent) => {
     e.stopPropagation();
     setArchiving(true);
-    const { error } = await supabase.from('properties').update({ status: 'retirado' as any }).eq('id', p.id);
+    const payload: TablesUpdate<'properties'> = { status: 'retirado' };
+    const { error } = await supabase.from('properties').update(payload).eq('id', p.id);
     setArchiving(false);
     if (error) { toast.error('Error al archivar'); return; }
     toast.success('Propiedad archivada');
@@ -415,7 +460,7 @@ const PropertyRowActions = ({ property: p, onRemoved }: { property: any; onRemov
           <AlertDialogHeader>
             <AlertDialogTitle>¿Eliminar propiedad?</AlertDialogTitle>
             <AlertDialogDescription>
-              Se eliminará permanentemente "{p.title}" ({p.crm_reference}). Esta acción no se puede deshacer.
+              Se eliminará permanentemente "{sanitizePropertyTitle(p.title)}" ({p.crm_reference}). Esta acción no se puede deshacer.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

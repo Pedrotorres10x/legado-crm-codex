@@ -3,6 +3,22 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
 type SignerContact = { id: string; full_name: string } | null;
+type SignerSearchResult = {
+  id: string;
+  full_name: string;
+  phone?: string | null;
+  email?: string | null;
+  contact_type?: string | null;
+};
+
+type ContractContentRow = {
+  content: string | null;
+};
+
+type InsertedSignerRow = {
+  signer_label: string;
+  signature_token: string;
+};
 
 export function useFreeSignatureSigning({
   refreshContracts,
@@ -19,7 +35,7 @@ export function useFreeSignatureSigning({
   const [linksDialogOpen, setLinksDialogOpen] = useState(false);
   const [signerContacts, setSignerContacts] = useState<SignerContact[]>([]);
   const [signerSearchTerms, setSignerSearchTerms] = useState<string[]>([]);
-  const [signerSearchResults, setSignerSearchResults] = useState<Array<any[]>>([]);
+  const [signerSearchResults, setSignerSearchResults] = useState<SignerSearchResult[][]>([]);
   const [signerSearching, setSignerSearching] = useState<boolean[]>([]);
 
   const searchContacts = async (term: string, index: number) => {
@@ -46,7 +62,7 @@ export function useFreeSignatureSigning({
 
     setSignerSearchResults((prev) => {
       const next = [...prev];
-      next[index] = data || [];
+      next[index] = (data || []) as SignerSearchResult[];
       return next;
     });
     setSignerSearching((prev) => {
@@ -143,10 +159,11 @@ export function useFreeSignatureSigning({
         .select('content')
         .eq('id', pendingContractId)
         .single();
+      const contractContent = contractData as ContractContentRow | null;
 
       let contentHash: string | null = null;
-      if (contractData?.content) {
-        const encoded = new TextEncoder().encode(contractData.content);
+      if (contractContent?.content) {
+        const encoded = new TextEncoder().encode(contractContent.content);
         const hashBuffer = await crypto.subtle.digest('SHA-256', encoded);
         contentHash = Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, '0')).join('');
       }
@@ -156,7 +173,7 @@ export function useFreeSignatureSigning({
         .update({
           signature_status: 'pendiente',
           ...(contentHash ? { content_hash: contentHash } : {}),
-        } as any)
+        })
         .eq('id', pendingContractId);
       if (error) throw error;
 
@@ -181,8 +198,8 @@ export function useFreeSignatureSigning({
       setSignerCountOpen(false);
       setLinksDialogOpen(true);
       await refreshContracts();
-    } catch (err: any) {
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } catch (error: unknown) {
+      toast({ title: 'Error', description: error instanceof Error ? error.message : 'No se pudo enviar a firma', variant: 'destructive' });
     } finally {
       setSendingToSign(false);
     }
@@ -203,8 +220,8 @@ export function useFreeSignatureSigning({
       if (!res.ok) throw new Error(data.error);
       toast({ title: '🚫 Firma revocada', description: 'Los enlaces de firma han sido invalidados.' });
       await refreshContracts();
-    } catch (err: any) {
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } catch (error: unknown) {
+      toast({ title: 'Error', description: error instanceof Error ? error.message : 'No se pudo revocar la firma', variant: 'destructive' });
     }
   };
 

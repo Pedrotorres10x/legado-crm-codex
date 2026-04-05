@@ -10,12 +10,29 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
+type PropertyVisit = {
+  id: string;
+  visit_date: string;
+  notes: string | null;
+  confirmation_status: string | null;
+  contacts: { id: string; full_name: string | null } | null;
+};
+
+type PropertyMatch = {
+  id: string;
+  contact_id: string | null;
+  status: string | null;
+  created_at: string;
+  score: number | null;
+  contacts: { full_name: string | null } | null;
+};
+
 type PropertyCommercialActivityPanelProps = {
   propertyId: string;
   propertyTitle?: string | null;
   propertyAddress?: string | null;
-  propertyVisits: any[];
-  propertyMatches: any[];
+  propertyVisits: PropertyVisit[];
+  propertyMatches: PropertyMatch[];
   onNavigateContact: (contactId: string) => void;
   onUpdateMatchStatus: (matchId: string, status: string) => Promise<void>;
 };

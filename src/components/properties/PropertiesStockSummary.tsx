@@ -3,7 +3,12 @@ import { Badge } from '@/components/ui/badge';
 import { Globe, ImageOff, Rss, ShieldCheck, ShieldX } from 'lucide-react';
 import { getPropertyStockSummary } from '@/lib/property-stock-health';
 
-export const PropertiesStockSummary = ({ properties }: { properties: any[] }) => {
+type StockProperty = {
+  status?: string | null;
+  [key: string]: unknown;
+};
+
+export const PropertiesStockSummary = ({ properties }: { properties: StockProperty[] }) => {
   const summary = getPropertyStockSummary(properties);
 
   return (

@@ -3,6 +3,51 @@ import { corsHeaders, json, handleCors } from '../_shared/cors.ts';
 
 type LeadSource = 'web' | 'portal' | 'fb';
 
+interface PropertySummary {
+  id: string;
+  title: string | null;
+  crm_reference: string | null;
+}
+
+interface InteractionSummary {
+  property_id: string | null;
+  created_at: string | null;
+  properties: PropertySummary | null;
+}
+
+interface ContactLeadRow {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+  phone: string | null;
+  agent_id: string | null;
+  status: string | null;
+  pipeline_stage: string | null;
+  created_at: string;
+  tags: string[] | null;
+  buyer_intent: Record<string, unknown> | null;
+  intent_score: number | null;
+  intent_stage: string | null;
+  intent_top_area_slug: string | null;
+  intent_top_topic: string | null;
+  interactions: InteractionSummary[] | null;
+}
+
+interface TaskRow {
+  contact_id: string;
+  completed: boolean | null;
+}
+
+interface VisitRow {
+  id: string;
+  contact_id: string;
+}
+
+interface OfferRow {
+  id: string;
+  contact_id: string;
+}
+
 function normalizePositiveInt(value: string | null, fallback: number, max: number) {
   const parsed = Number.parseInt(value ?? '', 10);
   if (!Number.isFinite(parsed) || parsed < 0) return fallback;
@@ -113,8 +158,8 @@ Deno.serve(async (req) => {
     const { data: contacts, error, count } = await query;
     if (error) return json({ error: error.message }, 500);
 
-    const contactRows = contacts ?? [];
-    const contactIds = contactRows.map((contact: any) => contact.id);
+    const contactRows: ContactLeadRow[] = (contacts ?? []) as ContactLeadRow[];
+    const contactIds = contactRows.map((contact) => contact.id);
 
     let tasksByContact = new Map<string, Array<{ completed: boolean | null }>>();
     let visitsByContact = new Map<string, Array<{ id: string }>>();
@@ -140,21 +185,21 @@ Deno.serve(async (req) => {
       if (visitsResult.error) return json({ error: visitsResult.error.message }, 500);
       if (offersResult.error) return json({ error: offersResult.error.message }, 500);
 
-      tasksByContact = (tasksResult.data ?? []).reduce((map, task: any) => {
+      tasksByContact = ((tasksResult.data ?? []) as TaskRow[]).reduce((map, task) => {
         const list = map.get(task.contact_id) ?? [];
         list.push(task);
         map.set(task.contact_id, list);
         return map;
       }, new Map<string, Array<{ completed: boolean | null }>>());
 
-      visitsByContact = (visitsResult.data ?? []).reduce((map, visit: any) => {
+      visitsByContact = ((visitsResult.data ?? []) as VisitRow[]).reduce((map, visit) => {
         const list = map.get(visit.contact_id) ?? [];
         list.push(visit);
         map.set(visit.contact_id, list);
         return map;
       }, new Map<string, Array<{ id: string }>>());
 
-      offersByContact = (offersResult.data ?? []).reduce((map, offer: any) => {
+      offersByContact = ((offersResult.data ?? []) as OfferRow[]).reduce((map, offer) => {
         const list = map.get(offer.contact_id) ?? [];
         list.push(offer);
         map.set(offer.contact_id, list);
@@ -162,12 +207,12 @@ Deno.serve(async (req) => {
       }, new Map<string, Array<{ id: string }>>());
     }
 
-    const leads = contactRows.map((contact: any) => {
+    const leads = contactRows.map((contact) => {
       const tags: string[] = contact.tags ?? [];
-      const interactions = contact.interactions ?? [];
-      const propertyInteraction = interactions.find((interaction: any) => interaction.property_id && interaction.properties);
+      const interactions: InteractionSummary[] = contact.interactions ?? [];
+      const propertyInteraction = interactions.find((interaction) => interaction.property_id && interaction.properties);
       const lastInteractionAt = interactions
-        .map((interaction: any) => interaction.created_at)
+        .map((interaction) => interaction.created_at)
         .filter(Boolean)
         .sort()
         .at(-1) ?? null;

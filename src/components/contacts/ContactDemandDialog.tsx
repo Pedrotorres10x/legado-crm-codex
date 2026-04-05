@@ -1,20 +1,12 @@
+import { useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-
-type DemandForm = {
-  property_type: string;
-  operation: string;
-  min_price: string;
-  max_price: string;
-  min_surface: string;
-  min_bedrooms: string;
-  notes: string;
-  cities: string;
-  zones: string;
-};
+import { Textarea } from '@/components/ui/textarea';
+import { ClipboardPaste, Loader2, ScanSearch, Upload } from 'lucide-react';
+import type { DemandForm } from '@/hooks/useContactDemands';
 
 type Props = {
   open: boolean;
@@ -24,7 +16,9 @@ type Props = {
   setDemandForm: (form: DemandForm) => void;
   propertyTypes: readonly string[];
   demandSaving: boolean;
+  demandExtracting: boolean;
   onSubmit: () => void;
+  onExtractFromScreenshot: (file: File) => void | Promise<void>;
 };
 
 export default function ContactDemandDialog({
@@ -35,8 +29,13 @@ export default function ContactDemandDialog({
   setDemandForm,
   propertyTypes,
   demandSaving,
+  demandExtracting,
   onSubmit,
+  onExtractFromScreenshot,
 }: Props) {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const pasteAreaRef = useRef<HTMLDivElement | null>(null);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -44,6 +43,61 @@ export default function ContactDemandDialog({
           <DialogTitle>{demandEditId ? 'Editar Demanda' : 'Nueva Demanda'}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
+          <div
+            ref={pasteAreaRef}
+            className="rounded-xl border border-dashed border-primary/30 bg-primary/5 p-4"
+            tabIndex={0}
+            onPaste={(event) => {
+              const items = Array.from(event.clipboardData?.items ?? []);
+              const imageItem = items.find((item) => item.type.startsWith('image/'));
+              if (!imageItem) return;
+              event.preventDefault();
+              const file = imageItem.getAsFile();
+              if (file) void onExtractFromScreenshot(file);
+            }}
+          >
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1">
+                <p className="text-sm font-medium">Crear desde pantallazo del email</p>
+                <p className="text-xs text-muted-foreground">
+                  Pega una captura con Ctrl+V o sube archivo. Te rellenamos ciudad, presupuesto, tipo y notas para revisarlo antes de guardar.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => pasteAreaRef.current?.focus()}
+                  disabled={demandExtracting}
+                  className="shrink-0"
+                >
+                  <ClipboardPaste className="h-4 w-4 mr-2" />
+                  Pegar captura
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={demandExtracting}
+                  className="shrink-0"
+                >
+                  {demandExtracting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <ScanSearch className="h-4 w-4 mr-2" />}
+                  {demandExtracting ? 'Leyendo...' : 'Subir pantallazo'}
+                </Button>
+              </div>
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void onExtractFromScreenshot(file);
+                event.currentTarget.value = '';
+              }}
+            />
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Tipo inmueble</Label>
@@ -100,12 +154,20 @@ export default function ContactDemandDialog({
           </div>
           <div className="space-y-2">
             <Label>Notas</Label>
-            <Input value={demandForm.notes} onChange={(event) => setDemandForm({ ...demandForm, notes: event.target.value })} />
+            <Textarea
+              value={demandForm.notes}
+              onChange={(event) => setDemandForm({ ...demandForm, notes: event.target.value })}
+              placeholder="Resumen de lo que pide el cliente, contexto del email, matices..."
+              rows={4}
+            />
           </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button onClick={onSubmit} disabled={demandSaving}>{demandSaving ? 'Guardando...' : 'Guardar'}</Button>
+          <Button onClick={onSubmit} disabled={demandSaving || demandExtracting}>
+            {demandSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
+            {demandSaving ? 'Guardando...' : 'Guardar'}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

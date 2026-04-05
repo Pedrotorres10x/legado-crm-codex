@@ -94,7 +94,6 @@ const trafficSource = (ref: string | null, pv?: { utm_source?: string | null }):
   if (h.includes('linkedin')) return 'LinkedIn';
   if (h.includes('youtube')) return 'YouTube';
   if (h.includes('whatsapp')) return 'WhatsApp';
-  if (h.includes('lovable')) return 'Preview (internal)';
   return h || 'Otros';
 };
 
@@ -103,7 +102,7 @@ function pageName(page: string, propertyMap: Record<string, string> = {}): strin
 
   // Strip query params that are internal/technical noise
   const noisy = [
-    '__lovable_token', 'forceHideBadge', 'fbclid', 'gclid', 'utm_source',
+    'forceHideBadge', 'fbclid', 'gclid', 'utm_source',
     'utm_medium', 'utm_campaign', '_ga',
   ];
   try {
@@ -168,6 +167,7 @@ export default function WebLeads() {
   const [showSnippet, setShowSnippet] = useState(false);
   const [leadFilter, setLeadFilter] = useState<'all' | 'needs_follow_up' | 'missing_property' | 'general_inquiry' | 'with_offer' | 'with_visit' | 'with_open_task' | 'discarded'>('all');
   const [leadSourceFilter, setLeadSourceFilter] = useState<'all' | 'web' | 'portal' | 'fb'>('all');
+  const [leadOriginFilter, setLeadOriginFilter] = useState<'all' | 'legadocoleccion' | 'alicanteconnectnews'>('all');
 
   // Exclusions panel state
   const { data: exclusions = [], refetch: refetchExclusions } = useExclusions();
@@ -247,6 +247,10 @@ export default function WebLeads() {
       nextLeads = nextLeads.filter((lead) => lead.lead_source === leadSourceFilter);
     }
 
+    if (leadOriginFilter !== 'all') {
+      nextLeads = nextLeads.filter((lead) => lead.web_origin === leadOriginFilter);
+    }
+
     if (leadFilter === 'needs_follow_up') return nextLeads.filter((lead) => lead.needs_follow_up);
     if (leadFilter === 'general_inquiry') return nextLeads.filter((lead) => lead.is_general_inquiry);
     if (leadFilter === 'missing_property') return nextLeads.filter((lead) => !lead.linked_property);
@@ -255,7 +259,7 @@ export default function WebLeads() {
     if (leadFilter === 'with_open_task') return nextLeads.filter((lead) => lead.open_task_count > 0);
     if (leadFilter === 'discarded') return nextLeads.filter((lead) => lead.is_discarded);
     return nextLeads;
-  }, [filteredLeads, leadFilter, leadSourceFilter]);
+  }, [filteredLeads, leadFilter, leadOriginFilter, leadSourceFilter]);
 
   const handleDiscardLead = async (leadId: string, reason: string) => {
     const cleanReason = reason.trim().toLowerCase().replace(/\s+/g, '_');
@@ -636,6 +640,8 @@ export default function WebLeads() {
               setLeadFilter={setLeadFilter}
               leadSourceFilter={leadSourceFilter}
               setLeadSourceFilter={setLeadSourceFilter}
+              leadOriginFilter={leadOriginFilter}
+              setLeadOriginFilter={setLeadOriginFilter}
               onDiscardLead={handleDiscardLead}
             />
           )}

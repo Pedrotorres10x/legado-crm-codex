@@ -16,6 +16,10 @@ type LinkInBioOverviewPanelProps = {
   ctr: string;
 };
 
+type ShareError = {
+  name?: string;
+};
+
 export function LinkInBioOverviewPanel({
   agentProfile,
   pageviews,
@@ -76,8 +80,9 @@ export function LinkInBioOverviewPanel({
                       await navigator.clipboard.writeText(socialUrl);
                       toast({ title: 'Enlace copiado ✅' });
                     }
-                  } catch (error: any) {
-                    if (error?.name !== 'AbortError') {
+                  } catch (error: unknown) {
+                    const shareError = error as ShareError;
+                    if (shareError.name !== 'AbortError') {
                       try {
                         await navigator.clipboard.writeText(socialUrl);
                         toast({ title: 'Enlace copiado ✅' });

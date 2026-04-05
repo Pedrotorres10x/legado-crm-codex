@@ -6,6 +6,29 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+interface HealthPropertyRow {
+  id: string;
+  title: string;
+  created_at: string;
+  agent_id: string | null;
+}
+
+interface MandatePropertyRow {
+  id: string;
+  title: string;
+  agent_id: string | null;
+  mandate_type: string | null;
+  mandate_end: string;
+}
+
+interface HealthContactRow {
+  id: string;
+  full_name: string;
+  created_at: string;
+  agent_id: string | null;
+  status: string | null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -25,11 +48,11 @@ Deno.serve(async (req) => {
     .select("id, title, created_at, agent_id")
     .eq("status", "disponible");
 
-  const propList = properties || [];
-  const propIds = propList.map((p: any) => p.id);
+  const propList: HealthPropertyRow[] = properties || [];
+  const propIds = propList.map((p) => p.id);
 
-  let latestMatchByProp: Record<string, string> = {};
-  let latestVisitByProp: Record<string, string> = {};
+  const latestMatchByProp: Record<string, string> = {};
+  const latestVisitByProp: Record<string, string> = {};
   const hasMatch = new Set<string>();
 
   if (propIds.length > 0) {
@@ -37,11 +60,11 @@ Deno.serve(async (req) => {
       supabase.from("matches").select("property_id, created_at").in("property_id", propIds).order("created_at", { ascending: false }),
       supabase.from("visits").select("property_id, created_at").in("property_id", propIds).order("created_at", { ascending: false }),
     ]);
-    (matchesRes.data || []).forEach((m: any) => {
+    ((matchesRes.data || []) as Array<{ property_id: string; created_at: string }>).forEach((m) => {
       hasMatch.add(m.property_id);
       if (!latestMatchByProp[m.property_id]) latestMatchByProp[m.property_id] = m.created_at;
     });
-    (visitsRes.data || []).forEach((v: any) => {
+    ((visitsRes.data || []) as Array<{ property_id: string; created_at: string }>).forEach((v) => {
       if (!latestVisitByProp[v.property_id]) latestVisitByProp[v.property_id] = v.created_at;
     });
   }
@@ -85,7 +108,7 @@ Deno.serve(async (req) => {
     .neq("mandate_type", "sin_mandato")
     .not("mandate_end", "is", null);
 
-  for (const mp of mandateProps || []) {
+  for (const mp of (mandateProps || []) as MandatePropertyRow[]) {
     const daysLeft = Math.floor((new Date(mp.mandate_end).getTime() - now.getTime()) / 86400000);
     if (daysLeft < 0 || daysLeft > 30) continue;
 
@@ -110,17 +133,17 @@ Deno.serve(async (req) => {
     .select("id, full_name, created_at, agent_id, status")
     .in("status", ["nuevo", "en_seguimiento", "activo"]);
 
-  const contactList = contacts || [];
-  const contactIds = contactList.map((c: any) => c.id);
+  const contactList: HealthContactRow[] = contacts || [];
+  const contactIds = contactList.map((c) => c.id);
 
-  let latestInterByContact: Record<string, string> = {};
+  const latestInterByContact: Record<string, string> = {};
   if (contactIds.length > 0) {
     const { data: interactions } = await supabase
       .from("interactions")
       .select("contact_id, interaction_date")
       .in("contact_id", contactIds)
       .order("interaction_date", { ascending: false });
-    (interactions || []).forEach((i: any) => {
+    ((interactions || []) as Array<{ contact_id: string; interaction_date: string }>).forEach((i) => {
       if (!latestInterByContact[i.contact_id]) latestInterByContact[i.contact_id] = i.interaction_date;
     });
   }

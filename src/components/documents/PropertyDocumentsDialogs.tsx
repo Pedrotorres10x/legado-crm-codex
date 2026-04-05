@@ -9,10 +9,26 @@ interface PropertyDocumentsDialogsProps {
   setLinkDialogOpen: (open: boolean) => void;
   linkingOwnerName: string;
   loadingSuggestions: boolean;
-  ownerSuggestions: any[];
-  linkingDoc: any | null;
+  ownerSuggestions: Array<{
+    id: string;
+    full_name: string;
+    contact_type?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    id_number?: string | null;
+    match_reason?: string | null;
+  }>;
+  linkingDoc: { id: string } | null;
   resolvingHolder: string | null;
-  handleLinkExistingOwner: (contact: any) => void;
+  handleLinkExistingOwner: (contact: {
+    id: string;
+    full_name: string;
+    contact_type?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    id_number?: string | null;
+    match_reason?: string | null;
+  }) => void;
   resetLinkingState: () => void;
   showAdd: boolean;
   setShowAdd: (open: boolean) => void;

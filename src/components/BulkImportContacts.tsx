@@ -64,6 +64,9 @@ const TYPE_MAP: Record<string, ContactType> = {
   vendedor: 'prospecto', vendedora: 'prospecto',
   ambos: 'ambos', both: 'ambos',
   prospecto: 'prospecto', prospect: 'prospecto', lead: 'prospecto',
+  statefox: 'prospecto',
+  comprador_cerrado: 'comprador',
+  vendedor_cerrado: 'propietario',
   colaborador: 'colaborador', colaboradora: 'colaborador', partner: 'colaborador', notaría: 'colaborador', banco: 'colaborador',
 };
 
@@ -159,7 +162,7 @@ function mapRow(raw: Record<string, string>, mapping: Record<string, string>, ag
         mapped.needs_mortgage = ['sí', 'si', 'yes', '1', 'true'].includes(val.toLowerCase());
         break;
       default:
-        (mapped as any)[field] = val;
+        Object.assign(mapped, { [field]: val });
     }
   }
 
@@ -300,7 +303,7 @@ export default function BulkImportContacts({ open, onClose, onImported, agentId 
         agent_id: agentId,
       }));
 
-      const { error } = await supabase.from('contacts').insert(inserts as any);
+      const { error } = await supabase.from('contacts').insert(inserts);
       if (error) {
         skipped += batch.length;
         errors.push(`Lote ${Math.floor(i / BATCH) + 1}: ${error.message}`);
