@@ -12,6 +12,7 @@ import { usePortalFeedsManager } from '@/hooks/usePortalFeedsManager';
 const PortalFeedsManager = () => {
   const {
     feeds,
+    fotocasaActive,
     loading,
     forcingAll,
     launchingPublication,
@@ -35,7 +36,7 @@ const PortalFeedsManager = () => {
         <Rss className="h-5 w-5 text-primary" />
         <h2 className="text-lg font-semibold">Portales de Difusión</h2>
         <Badge variant="secondary" className="ml-auto">
-          {feeds.filter((feed) => feed.is_active).length + 1} activos
+          {feeds.filter((feed) => feed.is_active).length + (fotocasaActive ? 1 : 0)} activos
         </Badge>
         <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5" disabled={refreshingKyeroCohort} onClick={refreshKyeroCohort}>
           <Target className={`h-3.5 w-3.5 ${refreshingKyeroCohort ? 'animate-pulse' : ''}`} />
