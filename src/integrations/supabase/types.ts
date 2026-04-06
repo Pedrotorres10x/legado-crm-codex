@@ -2731,6 +2731,7 @@ export type Database = {
           contact_id: string | null
           created_at: string
           display_name: string
+          handoff_due_at: string | null
           handoff_task_id: string | null
           handoff_to_human: boolean
           id: string
@@ -2754,6 +2755,7 @@ export type Database = {
           contact_id?: string | null
           created_at?: string
           display_name: string
+          handoff_due_at?: string | null
           handoff_task_id?: string | null
           handoff_to_human?: boolean
           id?: string
@@ -2777,6 +2779,7 @@ export type Database = {
           contact_id?: string | null
           created_at?: string
           display_name?: string
+          handoff_due_at?: string | null
           handoff_task_id?: string | null
           handoff_to_human?: boolean
           id?: string

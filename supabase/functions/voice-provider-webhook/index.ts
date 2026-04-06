@@ -274,6 +274,10 @@ Deno.serve(async (req) => {
     if (event.type === 'post_call_transcription') {
       handoffTaskId = await maybeCreateHandoffTask(service, enrichedQueueRow, outcome, summary);
 
+      const handoffDueAt = outcome.handoff
+        ? new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
+        : null;
+
       await service
         .from('voice_campaign_contacts')
         .update({
@@ -281,6 +285,7 @@ Deno.serve(async (req) => {
           outcome_code: outcome.outcomeCode,
           positive_signal_score: outcome.positiveScore,
           handoff_to_human: outcome.handoff,
+          handoff_due_at: handoffDueAt,
           handoff_task_id: handoffTaskId,
           notes: summary,
         })
