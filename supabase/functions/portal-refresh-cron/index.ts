@@ -1,5 +1,4 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { corsHeaders, json, handleCors } from '../_shared/cors.ts';
 
 /**
  * portal-refresh-cron — Daily property freshness refresh
@@ -10,9 +9,23 @@ import { corsHeaders, json, handleCors } from '../_shared/cors.ts';
  * Runs every 12 hours (00:00 and 12:00 UTC) via pg_cron.
  */
 
+const allowedOrigin = Deno.env.get('ALLOWED_ORIGIN') ?? '*';
+const corsHeaders = {
+  'Access-Control-Allow-Origin': allowedOrigin,
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+function json(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
 Deno.serve(async (req) => {
-  const cors = handleCors(req);
-  if (cors) return cors;
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
 
   try {
     const supabase = createClient(
@@ -69,8 +82,10 @@ Deno.serve(async (req) => {
     const xmlResults: Array<Record<string, unknown>> = [];
     for (const feed of xmlFeeds || []) {
       const feedUrl = `${supabaseUrl}/functions/v1/portal-xml-feed?token=${encodeURIComponent(feed.feed_token)}`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000);
       try {
-        const response = await fetch(feedUrl);
+        const response = await fetch(feedUrl, { signal: controller.signal });
         const body = await response.text();
         xmlResults.push({
           portal_name: feed.portal_name,
@@ -80,14 +95,17 @@ Deno.serve(async (req) => {
           bytes: body.length,
         });
       } catch (xmlError) {
+        const timedOut = xmlError instanceof DOMException && xmlError.name === 'AbortError';
         console.error(`[portal-refresh] xml feed refresh failed for ${feed.portal_name}:`, xmlError);
         xmlResults.push({
           portal_name: feed.portal_name,
           display_name: feed.display_name,
           ok: false,
-          status: 0,
-          error: String(xmlError),
+          status: timedOut ? 504 : 0,
+          error: timedOut ? 'timeout' : String(xmlError),
         });
+      } finally {
+        clearTimeout(timeoutId);
       }
     }
 

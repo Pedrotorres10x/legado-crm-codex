@@ -75,6 +75,7 @@ const isRetiredPortalFeed = (feed: PortalFeed) => {
 
 export function usePortalFeedsManager() {
   const [feeds, setFeeds] = useState<PortalFeed[]>([]);
+  const [fotocasaActive, setFotocasaActive] = useState(false);
   const [loading, setLoading] = useState(true);
   const [forcingAll, setForcingAll] = useState(false);
   const [launchingPublication, setLaunchingPublication] = useState(false);
@@ -85,30 +86,46 @@ export function usePortalFeedsManager() {
   const fetchFeeds = async () => {
     const { data } = await supabase.from('portal_feeds').select('*').order('display_name');
     const allFeeds = (data as unknown as PortalFeed[]) || [];
+    setFotocasaActive(allFeeds.some((feed) => isFotocasaXmlFeed(feed) && feed.is_active));
     setFeeds(allFeeds.filter((feed) => !isFotocasaXmlFeed(feed) && !isRetiredPortalFeed(feed)));
     setLoading(false);
   };
 
   const fetchLastCronRuns = async () => {
-    const { data: fotocasaLog } = await supabase
-      .from('erp_sync_logs')
-      .select('created_at')
-      .eq('target', 'fotocasa')
-      .eq('event', 'sync_batch_summary')
-      .order('created_at', { ascending: false })
-      .limit(1);
+    const [{ data: fotocasaLog }, { data: portalRefreshLog }, { data: latestFeedRow }] = await Promise.all([
+      supabase
+        .from('erp_sync_logs')
+        .select('created_at')
+        .eq('target', 'fotocasa')
+        .eq('event', 'sync_batch_summary')
+        .order('created_at', { ascending: false })
+        .limit(1),
+      supabase
+        .from('erp_sync_logs')
+        .select('created_at')
+        .eq('target', 'portal-refresh')
+        .eq('event', 'refresh_cron')
+        .order('created_at', { ascending: false })
+        .limit(1),
+      supabase
+        .from('portal_feeds')
+        .select('updated_at')
+        .neq('portal_name', 'fotocasa')
+        .eq('is_active', true)
+        .order('updated_at', { ascending: false })
+        .limit(1),
+    ]);
 
-    const { data: portalRefreshLog } = await supabase
-      .from('erp_sync_logs')
-      .select('created_at')
-      .eq('target', 'portal-refresh')
-      .eq('event', 'refresh_cron')
-      .order('created_at', { ascending: false })
-      .limit(1);
+    const cronXml = portalRefreshLog?.[0]?.created_at || '';
+    const feedXml = latestFeedRow?.[0]?.updated_at || '';
+    // Use whichever is more recent: the cron log or the last time any active feed was regenerated
+    const xmlTime = cronXml && feedXml
+      ? (cronXml > feedXml ? cronXml : feedXml)
+      : (cronXml || feedXml);
 
     setLastCronRuns({
       fotocasa: fotocasaLog?.[0]?.created_at || '',
-      xml: portalRefreshLog?.[0]?.created_at || '',
+      xml: xmlTime,
     });
   };
 
@@ -345,6 +362,7 @@ export function usePortalFeedsManager() {
 
   return {
     feeds,
+    fotocasaActive,
     loading,
     forcingAll,
     launchingPublication,

@@ -117,26 +117,24 @@ Deno.serve(async (req) => {
     const fotocasaResult = fotocasaFeed
       ? await (async () => {
           try {
-            const watchdog = await callFotocasaSync(supabaseUrl, serviceRoleKey, {
+            // Run watchdog first to recover any stale state, ignore its result
+            await callFotocasaSync(supabaseUrl, serviceRoleKey, {
               action: 'watchdog',
               batch_size: 10,
             })
 
-            const sync = await callFotocasaSync(supabaseUrl, serviceRoleKey, {
+            // Return the sync result directly — shape { ok, status, payload } matches
+            // what the frontend hook expects for fotocasa_result
+            return await callFotocasaSync(supabaseUrl, serviceRoleKey, {
               action: 'sync_all',
               batch_size: 10,
               offset: 0,
             })
-
-            return {
-              watchdog,
-              sync,
-            }
           } catch (err) {
             return {
               ok: false,
               status: 0,
-              error: String(err),
+              payload: { error: String(err) },
             }
           }
         })()
