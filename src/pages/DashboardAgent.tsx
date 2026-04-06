@@ -266,10 +266,34 @@ const DashboardAgent = () => {
     <div className="space-y-8">
       <DashboardNotifications />
 
+      {/* Playbook + prioridades del día — al principio para acción inmediata */}
       {ultraSimpleAgentView && (
         <TodayPriorities playbook={dailyPlaybook} storageKey={`agent-playbook:${user?.id || 'guest'}`} />
       )}
+      {!ultraSimpleAgentView && <AgentDailyPlaybookCard playbook={dailyPlaybook} storageKey={`agent-playbook:${user?.id || 'guest'}`} />}
+      {!ultraSimpleAgentView && <TodayPriorities />}
 
+      {/* Recordatorio matches pendientes */}
+      {pendingMatches > 0 && (
+        <Card className="animate-fade-in-up border-0 shadow-card bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20 overflow-hidden">
+          <CardContent className="flex items-center justify-between py-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-100 dark:bg-green-900/30 text-green-600 ring-1 ring-green-200 dark:ring-green-800">
+                <MessageCircle className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="font-medium text-sm">📱 Recordatorio diario</p>
+                <p className="text-xs text-muted-foreground">Tienes <strong>{pendingMatches} matches pendientes</strong> de enviar por WhatsApp</p>
+              </div>
+            </div>
+            <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white shadow-sm" onClick={() => navigate('/matches')}>
+              Enviar ahora
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* KPI cards de actividad */}
       {!ultraSimpleAgentView && <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
         {cards.map(({ title, value, icon: Icon, description, color }, i) => {
           const c = colorMap[color];
@@ -289,63 +313,6 @@ const DashboardAgent = () => {
           );
         })}
       </div>}
-
-      {!ultraSimpleAgentView && <EcosystemHealth />}
-      {!ultraSimpleAgentView && <PipelineVelocity />}
-      {!ultraSimpleAgentView && <TodayPriorities />}
-
-      {!ultraSimpleAgentView && pendingMatches > 0 && (
-        <Card className="animate-fade-in-up border-0 shadow-card bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20 overflow-hidden">
-          <CardContent className="flex items-center justify-between py-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-100 dark:bg-green-900/30 text-green-600 ring-1 ring-green-200 dark:ring-green-800">
-                <MessageCircle className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="font-medium text-sm">📱 Recordatorio diario</p>
-                <p className="text-xs text-muted-foreground">Tienes <strong>{pendingMatches} matches pendientes</strong> de enviar por WhatsApp</p>
-              </div>
-            </div>
-            <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white shadow-sm" onClick={() => navigate('/matches')}>
-              Enviar ahora
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Comisiones */}
-      <Card className="animate-fade-in-up border-0 shadow-card hover-lift cursor-pointer card-shine overflow-hidden" onClick={() => navigate('/profile')}>
-        <CardContent className="p-5 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl ring-1 ring-primary/20" style={{ background: 'var(--gradient-primary)' }}>
-              <Euro className="h-5 w-5 text-primary-foreground" />
-            </div>
-            <div>
-              <p className="text-sm font-semibold">Mis Comisiones</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Este mes: <span className="font-bold text-foreground stat-number">{fmtCurrency(earnings.month)}</span>
-                {' · '}Semestre: <span className="font-bold text-foreground stat-number">{fmtCurrency(earnings.semester)}</span>
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                {tier.next
-                  ? `Te faltan ${fmtCurrency(tier.remaining)} para pasar a ${nextTierLabel}.`
-                  : 'Ya estás en el tramo más alto del semestre.'}
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Solo suma comisión de agencia originada por ti.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" className="rounded-xl" onClick={e => { e.stopPropagation(); navigate('/properties'); }}>
-              <ArrowUpRight className="h-4 w-4 mr-1" />Simular
-            </Button>
-            <Button size="sm" variant="outline" className="rounded-xl" onClick={e => { e.stopPropagation(); navigate('/profile'); }}>
-              Ver detalle
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Objetivos KPI */}
       <Card className="animate-fade-in-up border-0 shadow-card card-shine overflow-hidden">
@@ -382,8 +349,44 @@ const DashboardAgent = () => {
         </CardContent>
       </Card>
 
-      {!ultraSimpleAgentView && <AgentDailyPlaybookCard playbook={dailyPlaybook} storageKey={`agent-playbook:${user?.id || 'guest'}`} />}
+      {/* Comisiones */}
+      <Card className="animate-fade-in-up border-0 shadow-card hover-lift cursor-pointer card-shine overflow-hidden" onClick={() => navigate('/profile')}>
+        <CardContent className="p-5 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl ring-1 ring-primary/20" style={{ background: 'var(--gradient-primary)' }}>
+              <Euro className="h-5 w-5 text-primary-foreground" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold">Mis Comisiones</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Este mes: <span className="font-bold text-foreground stat-number">{fmtCurrency(earnings.month)}</span>
+                {' · '}Semestre: <span className="font-bold text-foreground stat-number">{fmtCurrency(earnings.semester)}</span>
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {tier.next
+                  ? `Te faltan ${fmtCurrency(tier.remaining)} para pasar a ${nextTierLabel}.`
+                  : 'Ya estás en el tramo más alto del semestre.'}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Solo suma comisión de agencia originada por ti.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" className="rounded-xl" onClick={e => { e.stopPropagation(); navigate('/properties'); }}>
+              <ArrowUpRight className="h-4 w-4 mr-1" />Simular
+            </Button>
+            <Button size="sm" variant="outline" className="rounded-xl" onClick={e => { e.stopPropagation(); navigate('/profile'); }}>
+              Ver detalle
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Sección analítica — parte baja */}
       {!ultraSimpleAgentView && <AgentCommercialFocusCard focus={commercialFocus} autonomy={autonomyStatus} />}
+      {!ultraSimpleAgentView && <EcosystemHealth />}
+      {!ultraSimpleAgentView && <PipelineVelocity />}
 
       {!ultraSimpleAgentView && <Card className="animate-fade-in-up border-0 shadow-card card-shine overflow-hidden">
         <CardHeader>

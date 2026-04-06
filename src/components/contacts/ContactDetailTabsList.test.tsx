@@ -18,7 +18,7 @@ const renderTabs = ({
   tasks?: Array<{ id: string; completed: boolean; due_date: string }>;
 } = {}) =>
   render(
-    <Tabs defaultValue="timeline">
+    <Tabs defaultValue="actividad">
       <ContactDetailTabsList
         contact={contact as never}
         demandsCount={2}
@@ -33,28 +33,37 @@ const renderTabs = ({
   );
 
 describe('ContactDetailTabsList', () => {
-  it('muestra los contadores principales', () => {
+  it('muestra los 5 tabs consolidados', () => {
     renderTabs();
-    expect(screen.getByText('Demandas (2)')).toBeInTheDocument();
-    expect(screen.getByText('Cruces (4)')).toBeInTheDocument();
-    expect(screen.getByText('Visitas (3)')).toBeInTheDocument();
-    expect(screen.getByText('Ofertas (5)')).toBeInTheDocument();
+    expect(screen.getByText(/Actividad/)).toBeInTheDocument();
+    expect(screen.getByText(/Agenda/)).toBeInTheDocument();
+    expect(screen.getByText(/Negocio/)).toBeInTheDocument();
+    expect(screen.getByText(/Pipeline/)).toBeInTheDocument();
+    expect(screen.getByText(/Documentos/)).toBeInTheDocument();
   });
 
-  it('muestra fidelización para tipos con reengagement', () => {
+  it('agrega contador en Actividad cuando hay llamadas', () => {
     renderTabs();
-    expect(screen.getByText('Fidelización (6)')).toBeInTheDocument();
+    // callsCount=1
+    expect(screen.getByText('Actividad (1)')).toBeInTheDocument();
   });
 
-  it('oculta fidelización para compradores abiertos', () => {
-    renderTabs({
-      contact: {
-        id: 'contact-2',
-        full_name: 'Carlos Comprador',
-        contact_type: 'comprador',
-      },
-    });
-    expect(screen.queryByText('Fidelización (6)')).not.toBeInTheDocument();
+  it('agrega contador en Agenda (tareas pendientes + visitas)', () => {
+    renderTabs();
+    // pendingTasks=0 + visitsCount=3 = 3
+    expect(screen.getByText('Agenda (3)')).toBeInTheDocument();
+  });
+
+  it('agrega contador en Negocio (demandas + matches)', () => {
+    renderTabs();
+    // demandsCount=2 + matchesCount=4 = 6
+    expect(screen.getByText('Negocio (6)')).toBeInTheDocument();
+  });
+
+  it('agrega contador en Pipeline (ofertas + reengagement)', () => {
+    renderTabs();
+    // offersCount=5 + reengagementCount=6 = 11
+    expect(screen.getByText('Pipeline (11)')).toBeInTheDocument();
   });
 
   it('marca tareas vencidas con indicador visual', () => {
