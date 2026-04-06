@@ -6,7 +6,6 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { Building2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 const Auth = () => {
@@ -47,11 +46,15 @@ const Auth = () => {
 
       <Card className="w-full max-w-md border-0 shadow-dramatic animate-scale-in relative card-shine overflow-hidden">
         <CardHeader className="text-center pb-2 pt-8">
-          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl animate-fade-in glow-ring"
-            style={{ background: 'var(--gradient-primary)' }}>
-            <Building2 className="h-8 w-8 text-primary-foreground" />
+          {/* Legado wordmark */}
+          <div className="mx-auto mb-5 animate-fade-in">
+            <svg viewBox="0 0 220 100" className="h-16 w-auto" xmlns="http://www.w3.org/2000/svg">
+              <rect width="220" height="100" rx="14" fill="#0a0a0a"/>
+              <path d="M 30 55 Q 110 5 190 55" stroke="#F97316" strokeWidth="5" fill="none" strokeLinecap="round"/>
+              <text x="110" y="72" textAnchor="middle" fill="white" fontFamily="Arial Black, Arial, sans-serif" fontWeight="900" fontSize="28" letterSpacing="3">LEGADO</text>
+              <text x="110" y="90" textAnchor="middle" fill="white" fontFamily="Arial, sans-serif" fontWeight="400" fontSize="10" letterSpacing="5">INMOBILIARIA</text>
+            </svg>
           </div>
-          <CardTitle className="text-2xl font-display tracking-tight">InmoCRM</CardTitle>
           <CardDescription className="text-muted-foreground mt-1">
             {isLogin ? 'Accede a tu cuenta' : 'Crea una cuenta nueva'}
           </CardDescription>

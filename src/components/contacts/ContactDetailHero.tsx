@@ -3,7 +3,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import ChangeRequestButton from '@/components/ChangeRequestButton';
 import ContactHealthBadge from '@/components/ContactHealthBadge';
 import { hapticLight } from '@/lib/haptics';
@@ -147,42 +147,57 @@ export default function ContactDetailHero({
         </div>
 
         <div className="flex gap-2 px-4 py-3 bg-muted/30">
-          <Button size="sm" variant="outline" className="flex-1 text-xs h-9" onClick={() => { hapticLight(); onOpenInteraction(); }}>
+          <Button size="sm" className="flex-1 h-9 text-xs" onClick={() => { hapticLight(); onOpenInteraction(); }}>
             <Plus className="h-3.5 w-3.5 mr-1" />Interacción
           </Button>
-          {(isAdmin || isCoordinadora) && (
-            <Button size="sm" variant="outline" className="flex-1 text-xs h-9" onClick={() => { hapticLight(); onOpenEdit(); }}>
-              <Pencil className="h-3.5 w-3.5 mr-1" />Editar
-            </Button>
-          )}
-          {isAdmin && (
-            <AlertDialog open={deleteOpen} onOpenChange={onOpenDeleteChange}>
-              <AlertDialogTrigger asChild>
-                <Button size="sm" variant="outline" className="text-xs h-9 text-destructive hover:text-destructive" onClick={() => hapticLight()}>
-                  <Trash2 className="h-3.5 w-3.5" />
+          <ChangeRequestButton entityType="contact" entityId={contact.id} entityLabel={contact.full_name} size="sm" variant="outline" className="h-9 text-xs" />
+          <AlertDialog open={deleteOpen} onOpenChange={onOpenDeleteChange}>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" variant="outline" className="h-9 text-xs gap-1">
+                  Más <ChevronDown className="h-3 w-3" />
                 </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>¿Eliminar contacto?</AlertDialogTitle>
-                  <AlertDialogDescription>Se eliminará permanentemente a <strong>{contact.full_name}</strong> y no se podrá recuperar.</AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                  <AlertDialogAction onClick={onDeleteContact} disabled={deleting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                    {deleting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Trash2 className="h-4 w-4 mr-1" />}Eliminar
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          )}
-          <ChangeRequestButton entityType="contact" entityId={contact.id} entityLabel={contact.full_name} size="sm" className="flex-1 text-xs h-9" />
-          <Button size="sm" variant="outline" className="flex-1 text-xs h-9" onClick={() => { hapticLight(); onOpenTask(); }}>
-            <CalendarClock className="h-3.5 w-3.5 mr-1" />Tarea
-          </Button>
-          <Button size="sm" variant="outline" className="flex-1 text-xs h-9" onClick={() => { hapticLight(); onOpenFaktura(); }}>
-            <Receipt className="h-3.5 w-3.5 mr-1" />Faktura
-          </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuItem onClick={() => { hapticLight(); onOpenTask(); }}>
+                  <CalendarClock className="mr-2 h-4 w-4" />Crear tarea
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { hapticLight(); onOpenFaktura(); }}>
+                  <Receipt className="mr-2 h-4 w-4" />Generar Faktura
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { hapticLight(); onFetchSummary(); }} disabled={summaryLoading}>
+                  <MessageSquare className="mr-2 h-4 w-4" />Resumen IA
+                </DropdownMenuItem>
+                {(isAdmin || isCoordinadora) && (
+                  <DropdownMenuItem onClick={() => { hapticLight(); onOpenEdit(); }}>
+                    <Pencil className="mr-2 h-4 w-4" />Editar contacto
+                  </DropdownMenuItem>
+                )}
+                {isAdmin && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <AlertDialogTrigger asChild>
+                      <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => hapticLight()}>
+                        <Trash2 className="mr-2 h-4 w-4" />Eliminar contacto
+                      </DropdownMenuItem>
+                    </AlertDialogTrigger>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>¿Eliminar contacto?</AlertDialogTitle>
+                <AlertDialogDescription>Se eliminará permanentemente a <strong>{contact.full_name}</strong> y no se podrá recuperar.</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction onClick={onDeleteContact} disabled={deleting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                  {deleting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Trash2 className="h-4 w-4 mr-1" />}Eliminar
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </div>
     );
@@ -249,7 +264,7 @@ export default function ContactDetailHero({
           </CardContent>
         </Card>
 
-        <Card className="border-primary/15 bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.14),transparent_45%),linear-gradient(135deg,rgba(99,102,241,0.05),rgba(255,255,255,0.98))] shadow-sm">
+        <Card className="border-primary/20 bg-gradient-to-br from-card via-primary/5 to-primary/10 shadow-sm">
           <CardContent className="space-y-6 p-6">
             <div className="space-y-3">
               <div className="inline-flex items-center rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-primary">

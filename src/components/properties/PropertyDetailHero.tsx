@@ -275,7 +275,7 @@ export default function PropertyDetailHero({
           </CardContent>
         </Card>
 
-        <Card className="border-primary/15 bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.14),transparent_45%),linear-gradient(135deg,rgba(99,102,241,0.05),rgba(255,255,255,0.98))] shadow-sm">
+        <Card className="border-primary/20 bg-gradient-to-br from-card via-primary/5 to-primary/10 shadow-sm">
           <CardContent className="space-y-6 p-6">
             <div className="space-y-3">
               <div className="inline-flex items-center rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-primary">

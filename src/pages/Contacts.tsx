@@ -235,57 +235,65 @@ const Contacts = () => {
         userId={user?.id}
       />
 
-      <ContactsPipelineControls
-        isMobile={isMobile}
-        isAgentMode={isAgentMode}
-        searchField={searchField}
-        setSearchField={setSearchField}
-        search={search}
-        setSearch={setSearch}
-        typeCounts={typeCounts}
-        pipelineTab={pipelineTab}
-        setPipelineTab={setPipelineTab}
-        captacionCount={captacionCount}
-        compradoresCount={compradoresCount}
-        cerradosCount={cerradosCount}
-        redCount={redCount}
-        pipelineStages={pipelineStages}
-        pipelineContacts={pipelineContacts}
-        stageFilter={stageFilter}
-        setStageFilter={setStageFilter}
-      />
+      <Card className="border-border/60 shadow-sm overflow-hidden">
+        <CardContent className="p-0">
+          <div className="px-4 pt-4 pb-2 md:px-6 md:pt-5 border-b border-border/40">
+            <ContactsPipelineControls
+              isMobile={isMobile}
+              isAgentMode={isAgentMode}
+              searchField={searchField}
+              setSearchField={setSearchField}
+              search={search}
+              setSearch={setSearch}
+              typeCounts={typeCounts}
+              pipelineTab={pipelineTab}
+              setPipelineTab={setPipelineTab}
+              captacionCount={captacionCount}
+              compradoresCount={compradoresCount}
+              cerradosCount={cerradosCount}
+              redCount={redCount}
+              pipelineStages={pipelineStages}
+              pipelineContacts={pipelineContacts}
+              stageFilter={stageFilter}
+              setStageFilter={setStageFilter}
+            />
+          </div>
 
-      <ContactsCaptacionPanel pipelineTab={pipelineTab} />
+          <div className="px-4 md:px-6">
+            <ContactsCaptacionPanel pipelineTab={pipelineTab} />
 
-      <ContactsInfluenceCirclePanel
-        isMobile={isMobile}
-        isCircleView={isCircleView}
-        pipelineContactsLength={pipelineContacts.length}
-        circleTierCounts={circleTierCounts}
-        circleValidationCounts={circleValidationCounts}
-        circleTierFilter={circleTierFilter}
-        setCircleTierFilter={setCircleTierFilter}
-        circleValidationFilter={circleValidationFilter}
-        setCircleValidationFilter={setCircleValidationFilter}
-      />
+            <ContactsInfluenceCirclePanel
+              isMobile={isMobile}
+              isCircleView={isCircleView}
+              pipelineContactsLength={pipelineContacts.length}
+              circleTierCounts={circleTierCounts}
+              circleValidationCounts={circleValidationCounts}
+              circleTierFilter={circleTierFilter}
+              setCircleTierFilter={setCircleTierFilter}
+              circleValidationFilter={circleValidationFilter}
+              setCircleValidationFilter={setCircleValidationFilter}
+            />
 
-      <ContactsListPanel
-        contacts={pipelineContacts}
-        isMobile={isMobile}
-        pipelineStages={pipelineStages}
-        healthColors={healthColors}
-        onOpenVisits={fetchContactVisits}
-        onOpenSummary={fetchSummary}
-        summaryLoading={summaryLoading}
-        summaryOpen={summaryOpen}
-        onPhoneLogged={refreshContactsFirstPage}
-        currentPage={currentPage}
-        setCurrentPage={setCurrentPage}
-        totalCount={isCircleView ? pipelineContacts.length : totalCount}
-        typeLabels={typeLabels}
-        showCircleMeta={isCircleView}
-        circleMeta={circleMeta}
-      />
+            <ContactsListPanel
+              contacts={pipelineContacts}
+              isMobile={isMobile}
+              pipelineStages={pipelineStages}
+              healthColors={healthColors}
+              onOpenVisits={fetchContactVisits}
+              onOpenSummary={fetchSummary}
+              summaryLoading={summaryLoading}
+              summaryOpen={summaryOpen}
+              onPhoneLogged={refreshContactsFirstPage}
+              currentPage={currentPage}
+              setCurrentPage={setCurrentPage}
+              totalCount={isCircleView ? pipelineContacts.length : totalCount}
+              typeLabels={typeLabels}
+              showCircleMeta={isCircleView}
+              circleMeta={circleMeta}
+            />
+          </div>
+        </CardContent>
+      </Card>
 
       <ContactsMobileFab isMobile={isMobile} onOpenCreate={openCreateDialog} />
 

@@ -79,10 +79,11 @@ const ContactsListPanel = ({
 
   if (contacts.length === 0) {
     return (
-      <Card>
-        <CardContent className="py-12 text-center text-muted-foreground">
-          <LayoutGrid className="mx-auto mb-4 h-12 w-12 opacity-50" />
-          <p>No hay contactos en esta categoría.</p>
+      <Card className="border-dashed border-border/60 bg-muted/20">
+        <CardContent className="py-16 text-center">
+          <LayoutGrid className="mx-auto mb-4 h-12 w-12 text-muted-foreground/30" />
+          <p className="font-medium text-muted-foreground">Sin resultados</p>
+          <p className="mt-1 text-sm text-muted-foreground/60">Prueba a cambiar los filtros o la búsqueda.</p>
         </CardContent>
       </Card>
     );

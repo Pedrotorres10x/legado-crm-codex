@@ -225,6 +225,12 @@ const AppSidebar = () => {
             : "text-sidebar-foreground/45 group-hover:text-sidebar-foreground/75"
         )}>
           <item.icon className="h-[18px] w-[18px]" />
+          {item.to === '/admin/activity' && urgentCount > 0 && collapsed && (
+            <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-destructive border border-sidebar-background" />
+          )}
+          {(item.to === '/tasks' || item.to === '/operations') && urgentCount > 0 && collapsed && (
+            <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-primary/80 border border-sidebar-background" />
+          )}
         </div>
         {!collapsed && <span className="relative z-10">{item.label}</span>}
         {item.to === '/admin/activity' && urgentCount > 0 && !collapsed && (
@@ -254,15 +260,17 @@ const AppSidebar = () => {
     >
       {/* Logo */}
       <div className="flex items-center gap-3 px-5 py-5 border-b border-sidebar-border/40 animate-fade-in">
-        <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl glow-ring"
-          style={{ background: 'var(--gradient-primary)' }}>
-          <Building2 className="h-5 w-5 text-sidebar-primary-foreground" />
+        <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl overflow-hidden bg-[#0a0a0a]">
+          <svg viewBox="0 0 44 44" className="h-9 w-9" xmlns="http://www.w3.org/2000/svg">
+            <path d="M 6 26 Q 22 6 38 26" stroke="#F97316" strokeWidth="3" fill="none" strokeLinecap="round"/>
+            <text x="22" y="34" textAnchor="middle" fill="white" fontFamily="Arial Black, Arial, sans-serif" fontWeight="900" fontSize="11" letterSpacing="0.5">LEGADO</text>
+          </svg>
           <div className="absolute -top-0.5 -right-0.5 h-3 w-3 rounded-full bg-accent border-2 border-sidebar-background animate-pulse-soft" />
         </div>
         {!collapsed && (
           <div className="animate-fade-in overflow-hidden">
-            <span className="text-lg font-display font-bold tracking-tight text-sidebar-foreground">InmoCRM</span>
-            <p className="text-[10px] text-sidebar-foreground/40 font-medium tracking-widest uppercase">Enterprise Suite</p>
+            <span className="text-lg font-display font-bold tracking-tight text-sidebar-foreground">Legado CRM</span>
+            <p className="text-[10px] text-sidebar-foreground/40 font-medium tracking-widest uppercase">Inmobiliaria</p>
           </div>
         )}
       </div>
