@@ -41,11 +41,17 @@ const dailyNavEntries: NavEntry[] = [
 
 const crmNavEntries: NavEntry[] = [
   { to: '/properties', icon: Building2, label: 'Inmuebles' },
-  { to: '/contacts', icon: Users, label: 'Personas' },
-  { to: '/demands', icon: Search, label: 'Demandas' },
-  { to: '/buyers-without-demand', icon: UserRoundSearch, label: 'Compradores sin demanda' },
-  { to: '/matches', icon: TrendingUp, label: 'Compradores y cruces' },
-  { to: '/whatsapp-pending', icon: MessageSquare, label: 'Pendientes WhatsApp' },
+  { to: '/contacts', icon: Users, label: 'Contactos' },
+  {
+    label: 'Comercial',
+    icon: TrendingUp,
+    children: [
+      { to: '/demands', icon: Search, label: 'Demandas' },
+      { to: '/matches', icon: TrendingUp, label: 'Cruces y matches' },
+      { to: '/whatsapp-pending', icon: MessageSquare, label: 'WhatsApp pendiente' },
+      { to: '/buyers-without-demand', icon: UserRoundSearch, label: 'Sin demanda' },
+    ],
+  },
   { to: '/guide/advisors', icon: Receipt, label: 'Guía asesores' },
   { to: '/tools', icon: Wrench, label: 'Herramientas' },
 ];
@@ -82,6 +88,10 @@ const AppSidebar = () => {
     location.pathname === '/portales';
   const [adminOpen, setAdminOpen] = useState(isAdminActive);
 
+  const comercialRoutes = ['/demands', '/matches', '/whatsapp-pending', '/buyers-without-demand'];
+  const isComercialActive = comercialRoutes.some(r => location.pathname === r || location.pathname.startsWith(r + '/'));
+  const [comercialOpen, setComercialOpen] = useState(isComercialActive);
+
   const websRoutes = ['/linkinbio-stats', '/web-leads'];
   const isWebsActive = websRoutes.some(r => location.pathname === r || location.pathname.startsWith(r + '/'));
   const [websOpen, setWebsOpen] = useState(isWebsActive);
@@ -98,12 +108,7 @@ const AppSidebar = () => {
     }
   }, [isAdminActive]);
 
-  const crmEntries = isAgentMode
-    ? crmNavEntries.filter((entry) =>
-        'to' in entry &&
-        ['/properties', '/contacts', '/demands', '/buyers-without-demand', '/matches', '/whatsapp-pending', '/guide/advisors'].includes(entry.to),
-      )
-    : crmNavEntries;
+  const crmEntries = crmNavEntries;
 
   const renderNavEntries = (entries: NavEntry[]) => entries.map((entry) => {
     if (isGroup(entry)) {
@@ -114,8 +119,8 @@ const AppSidebar = () => {
       }
 
       const isGroupActive = entry.children.some(c => location.pathname === c.to || location.pathname.startsWith(c.to + '/'));
-      const isOpen = entry.label === 'Paneles' ? adminOpen : false;
-      const setOpen = entry.label === 'Paneles' ? setAdminOpen : () => {};
+      const isOpen = entry.label === 'Paneles' ? adminOpen : entry.label === 'Comercial' ? comercialOpen : false;
+      const setOpen = entry.label === 'Paneles' ? setAdminOpen : entry.label === 'Comercial' ? setComercialOpen : () => {};
 
       return (
         <div key={entry.label}>

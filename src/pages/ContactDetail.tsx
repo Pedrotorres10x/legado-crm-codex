@@ -51,7 +51,24 @@ const WhatsAppComposer = lazy(() => import('@/components/WhatsAppComposer'));
 const typeLabels: Record<string, string> = { prospecto: 'Prospecto (dueño sin firmar)', propietario: 'Propietario (cliente)', comprador: 'Comprador', comprador_cerrado: 'Comprador (cerrado)', vendedor_cerrado: 'Vendedor (cerrado)', ambos: 'Ambos', colaborador: 'Colaborador', statefox: 'Statefox', contacto: 'Contacto' };
 const statusLabels: Record<string, string> = { nuevo: 'Nuevo', en_seguimiento: 'En seguimiento', activo: 'Activo', cerrado: 'Cerrado' };
 const interactionLabels: Record<string, string> = { llamada: 'Llamada', email: 'Email', visita: 'Visita', whatsapp: 'WhatsApp', reunion: 'Reunión', nota: 'Nota' };
-const CONTACT_DETAIL_TABS = ['timeline', 'tasks', 'properties', 'demands', 'calls', 'visits', 'matches', 'offers', 'reengagement', 'emails', 'documents'] as const;
+const CONTACT_DETAIL_TABS = ['actividad', 'agenda', 'negocio', 'pipeline', 'documentos'] as const;
+
+// Maps legacy URL tab params to consolidated tabs for backward compat
+const LEGACY_TAB_MAP: Record<string, (typeof CONTACT_DETAIL_TABS)[number]> = {
+  timeline: 'actividad', calls: 'actividad', emails: 'actividad',
+  tasks: 'agenda', visits: 'agenda',
+  properties: 'negocio', demands: 'negocio', matches: 'negocio',
+  offers: 'pipeline', reengagement: 'pipeline',
+  documents: 'documentos',
+};
+
+function resolveTab(raw: string | null): (typeof CONTACT_DETAIL_TABS)[number] {
+  if (!raw) return 'actividad';
+  if (CONTACT_DETAIL_TABS.includes(raw as (typeof CONTACT_DETAIL_TABS)[number])) {
+    return raw as (typeof CONTACT_DETAIL_TABS)[number];
+  }
+  return LEGACY_TAB_MAP[raw] ?? 'actividad';
+}
 
 // Tipos de interacción y tarea adaptados al tipo de contacto
 const INTERACTION_TYPES_BY_CONTACT: Record<string, { value: string; label: string }[]> = {
@@ -122,9 +139,7 @@ const ContactDetail = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get('tab');
-  const initialTab = CONTACT_DETAIL_TABS.includes((requestedTab as (typeof CONTACT_DETAIL_TABS)[number]) ?? 'timeline')
-    ? (requestedTab as (typeof CONTACT_DETAIL_TABS)[number])
-    : 'timeline';
+  const initialTab = resolveTab(requestedTab);
   const [activeTab, setActiveTab] = useState<(typeof CONTACT_DETAIL_TABS)[number]>(initialTab);
   const { user, isAdmin, isCoordinadora, canViewAll } = useAuth();
   const isMobile = useIsMobile();
@@ -284,12 +299,7 @@ const ContactDetail = () => {
   }, [contact, searchParams, setSearchParams]);
 
   useEffect(() => {
-    const nextRequestedTab = searchParams.get('tab');
-    if (CONTACT_DETAIL_TABS.includes((nextRequestedTab as (typeof CONTACT_DETAIL_TABS)[number]) ?? 'timeline')) {
-      setActiveTab((nextRequestedTab as (typeof CONTACT_DETAIL_TABS)[number]) || 'timeline');
-      return;
-    }
-    setActiveTab('timeline');
+    setActiveTab(resolveTab(searchParams.get('tab')));
   }, [searchParams]);
   const handleDeleteContact = async () => {
     if (!id) return;
@@ -341,7 +351,7 @@ const ContactDetail = () => {
       return {
         label: 'Ver cruces activos',
         description: 'Hay inmuebles compatibles listos para trabajar con este comprador.',
-        onClick: () => setActiveTab('matches'),
+        onClick: () => setActiveTab('negocio'),
       };
     }
 
@@ -391,7 +401,7 @@ const ContactDetail = () => {
         onDeleteContact={handleDeleteContact}
         onOpenTask={openNewTaskInCentralTray}
         onOpenFaktura={openFakturaDialog}
-        onOpenPropertiesTab={() => setActiveTab('properties')}
+        onOpenPropertiesTab={() => setActiveTab('negocio')}
         onNeedsMortgageChange={async (checked) => {
           const payload: ContactUpdate = { needs_mortgage: checked };
           setContact((current) => (current ? { ...current, needs_mortgage: checked } : current));
@@ -533,7 +543,7 @@ const ContactDetail = () => {
           setActiveTab(nextValue);
           setSearchParams((prev) => {
             const params = new URLSearchParams(prev);
-            if (nextValue === 'timeline') params.delete('tab');
+            if (nextValue === 'actividad') params.delete('tab');
             else params.set('tab', nextValue);
             return params;
           }, { replace: true });
@@ -550,7 +560,8 @@ const ContactDetail = () => {
           reengagementCount={reengagementHistory.length}
         />
 
-        <TabsContent value="timeline">
+        {/* ACTIVIDAD: timeline + llamadas + comunicaciones */}
+        <TabsContent value="actividad" className="space-y-6">
           <ContactTimeline
             interactions={interactions}
             visits={visits}
@@ -560,10 +571,16 @@ const ContactDetail = () => {
             reengagement={reengagementHistory}
             communicationLogs={communicationLogs}
           />
+          <ContactCallsPanel
+            interactions={interactions}
+            callFilter={callFilter}
+            onCallFilterChange={setCallFilter}
+          />
+          <ContactCommunicationHistory contactId={id!} />
         </TabsContent>
 
-        {/* TAREAS */}
-        <TabsContent value="tasks">
+        {/* AGENDA: tareas + visitas */}
+        <TabsContent value="agenda" className="space-y-6">
           <ContactTasksPanel
             tasks={contactTasks}
             taskFilter={taskFilter}
@@ -575,11 +592,16 @@ const ContactDetail = () => {
             getAutomaticTaskRoute={getAutomaticTaskRoute}
             onOpenAutomaticTask={navigate}
           />
+          <ContactVisitsPanel
+            visits={visits}
+            contactName={contact?.full_name}
+            onOpenProperty={(propertyId) => navigate(`/properties/${propertyId}`)}
+          />
         </TabsContent>
 
-        <TabsContent value="properties">
+        {/* NEGOCIO: propiedades + demandas + cruces */}
+        <TabsContent value="negocio" className="space-y-6">
           <div className="space-y-4">
-            {/* Assign property button + search */}
             <AssignPropertyToContact contactId={id!} contactName={contact.full_name} contactType={contact.contact_type} onAssigned={loadData} />
             <ContactPropertiesPanel
               contactType={contact.contact_type}
@@ -590,10 +612,6 @@ const ContactDetail = () => {
               onOpenProperty={(propertyId) => navigate(`/properties/${propertyId}`)}
             />
           </div>
-        </TabsContent>
-
-        {/* Demands Tab */}
-        <TabsContent value="demands">
           <ContactDemandsTab
             demands={demands as DemandRow[]}
             onOpenNewDemand={openNewDemand}
@@ -607,25 +625,6 @@ const ContactDetail = () => {
               toast({ title: checked ? 'Cruce automático activado' : 'Cruce automático desactivado' });
             }}
           />
-        </TabsContent>
-
-        <TabsContent value="calls">
-          <ContactCallsPanel
-            interactions={interactions}
-            callFilter={callFilter}
-            onCallFilterChange={setCallFilter}
-          />
-        </TabsContent>
-
-        <TabsContent value="visits">
-          <ContactVisitsPanel
-            visits={visits}
-            contactName={contact?.full_name}
-            onOpenProperty={(propertyId) => navigate(`/properties/${propertyId}`)}
-          />
-        </TabsContent>
-
-        <TabsContent value="matches">
           <ContactMatchesPanel
             matches={contactMatches}
             onOpenProperty={(propertyId) => navigate(`/properties/${propertyId}`)}
@@ -633,7 +632,8 @@ const ContactDetail = () => {
           />
         </TabsContent>
 
-        <TabsContent value="offers">
+        {/* PIPELINE: ofertas + fidelización */}
+        <TabsContent value="pipeline" className="space-y-6">
           <OffersSection
             offers={offers}
             contactId={id!}
@@ -644,33 +644,20 @@ const ContactDetail = () => {
             ].filter((p, i, arr) => arr.findIndex(x => x.id === p.id) === i)}
             onReload={loadData}
           />
-        </TabsContent>
-
-        {/* Reengagement / Fidelización tab for propietarios */}
-        {(contact.contact_type === 'propietario' || contact.contact_type === 'comprador_cerrado' || contact.contact_type === 'vendedor_cerrado') && (
-          <TabsContent value="reengagement">
-            <ContactReengagementPanel
-              contact={contact}
-              reengagementHistory={reengagementHistory}
-            />
-          </TabsContent>
-        )}
-
-        {/* HISTORIAL DE COMUNICACIONES */}
-        <TabsContent value="emails">
-          <ContactCommunicationHistory contactId={id!} />
+          <ContactReengagementPanel
+            contact={contact}
+            reengagementHistory={reengagementHistory}
+          />
         </TabsContent>
 
         {/* DOCUMENTOS */}
-        <TabsContent value="documents">
-          <div className="space-y-4">
-            <Suspense fallback={sectionFallback}>
-              <DocumentRelationsPanel contactId={id!} />
-            </Suspense>
-            <Suspense fallback={sectionFallback}>
-              <ContactDocuments contactId={id!} contactName={contact.full_name} />
-            </Suspense>
-          </div>
+        <TabsContent value="documentos" className="space-y-4">
+          <Suspense fallback={sectionFallback}>
+            <DocumentRelationsPanel contactId={id!} />
+          </Suspense>
+          <Suspense fallback={sectionFallback}>
+            <ContactDocuments contactId={id!} contactName={contact.full_name} />
+          </Suspense>
         </TabsContent>
       </Tabs>
 

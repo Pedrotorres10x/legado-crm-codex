@@ -1,11 +1,11 @@
 {
-  "devServers": [
+  "version": "0.0.1",
+  "configurations": [
     {
-      "name": "Legado CRM (Vite)",
-      "command": "npm run dev",
-      "port": 8080,
-      "url": "http://localhost:8080",
-      "cwd": "."
+      "name": "Legado CRM — Dev (Vite)",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 8080
     }
   ]
 }
