@@ -116,6 +116,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(session?.user ?? null);
       setLoading(false);
       if (session?.user) checkRoles(session.user.id);
+    }).catch(() => {
+      // getSession() can fail (AbortError, network error) if Supabase is
+      // temporarily unreachable. Always unblock the UI so the app renders.
+      setLoading(false);
     });
 
     return () => subscription.unsubscribe();
