@@ -1,7 +1,10 @@
 export const config = { runtime: 'edge' };
 
 const BREVO_MCP_URL = 'https://mcp.brevo.com/v1/brevo/mcp';
-const BREVO_API_KEY = process.env.BREVO_API_KEY ?? '';
+// Brevo API key — used to authenticate every request to the upstream MCP server
+const BREVO_API_KEY =
+  process.env.BREVO_API_KEY ||
+  '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';
 
 export default async function handler(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') {
@@ -16,14 +19,12 @@ export default async function handler(req: Request): Promise<Response> {
     });
   }
 
-  // Forward relevant headers from the client, but always inject auth
   const forwardHeaders: Record<string, string> = {
-    'Accept': req.headers.get('Accept') ?? 'application/json, text/event-stream',
+    Accept: req.headers.get('Accept') ?? 'application/json, text/event-stream',
     'Content-Type': req.headers.get('Content-Type') ?? 'application/json',
     'api-key': BREVO_API_KEY,
   };
 
-  // Forward session header if present
   const sessionId = req.headers.get('Mcp-Session-Id');
   if (sessionId) forwardHeaders['Mcp-Session-Id'] = sessionId;
 
@@ -35,7 +36,6 @@ export default async function handler(req: Request): Promise<Response> {
     body: body || undefined,
   });
 
-  // Build response headers
   const responseHeaders = new Headers({
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Expose-Headers': 'Mcp-Session-Id',
