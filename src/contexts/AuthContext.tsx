@@ -118,7 +118,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (session?.user) checkRoles(session.user.id);
     }).catch(() => {
       // getSession() can fail (AbortError, network error) if Supabase is
-      // temporarily unreachable. Always unblock the UI so the app renders.
+      // temporarily unreachable. Clear any stale tokens so the SDK stops
+      // retrying in the background, then unblock the UI.
+      clearLocalSession();
       setLoading(false);
     });
 
